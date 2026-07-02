@@ -1,7 +1,8 @@
+import pytest
 from policybot.models import RequestInfo
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
-from policybot.interview.orchestrator import Interview
+from policybot.interview.orchestrator import Interview, UnknownToolError
 
 
 def _terms_get(url):
@@ -53,3 +54,41 @@ def test_public_data_public_tool_authorised(tmp_path):
     )
     assert state.usages[0].verdict == "Autoriser"
     assert state.result_global.recommendation == "Autoriser"
+
+
+def test_unregistered_tool_without_override_raises_unknown_tool_error(tmp_path):
+    llm = FakeLLMProvider(json_responses=[])
+    store = PreApprovedStore(str(tmp_path / "pb.db"))
+    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    with pytest.raises(UnknownToolError):
+        itv.assess(
+            request=RequestInfo(numero="IAG-2026-003"),
+            tool_name="OutilInconnu",
+            usage_inputs=[{"description": "Résumer un document",
+                           "data_description": "notes internes",
+                           "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
+        )
+
+
+def test_unregistered_tool_with_override_uses_override_iag_type(tmp_path):
+    llm = FakeLLMProvider(json_responses=[
+        {"already_public": False, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": True,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+        {"trains_on_input": "no", "data_retention": "limited", "data_residency": "canada",
+         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+    ])
+    store = PreApprovedStore(str(tmp_path / "pb.db"))
+    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    state = itv.assess(
+        request=RequestInfo(numero="IAG-2026-006"),
+        tool_name="OutilInconnu",
+        usage_inputs=[{"description": "Résumer des notes internes",
+                       "data_description": "notes internes non publiques",
+                       "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
+        iag_type_override="circuit_ferme",
+    )
+    assert state.tools[0].iag_type == "circuit_ferme"
+    assert state.usages[0].data_classification == "Protégé A"
+    assert state.usages[0].matrix_result == "PERMIS"
+    assert state.usages[0].verdict != "Refuser"

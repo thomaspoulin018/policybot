@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Callable, Optional
 from policybot.models import (
-    InterviewState, RequestInfo, ToolRef, Usage, ContractFacts,
+    InterviewState, RequestInfo, ToolRef, Usage, ContractFacts, IagType,
 )
 from policybot.llm.provider import LLMProvider
 from policybot.preapproved.store import PreApprovedStore
@@ -12,6 +12,22 @@ from policybot.contract.fetcher import fetch_terms
 from policybot.contract.arp import extract_contract_facts, build_arp
 from policybot.grille.engine import evaluate_usage, synthesize
 import uuid
+
+
+class UnknownToolError(ValueError):
+    """Raised when a tool isn't in the registry and no IAG type override was
+    supplied. Callers must disambiguate via
+    policybot.classify.tool_type.tool_type_question() and retry with
+    iag_type_override set."""
+
+    def __init__(self, tool_name: str):
+        super().__init__(
+            f"Unknown tool '{tool_name}': cannot determine its IAG type. "
+            "Ask the disambiguation question from "
+            "policybot.classify.tool_type.tool_type_question() and retry "
+            "assess() with iag_type_override set to the user's answer."
+        )
+        self.tool_name = tool_name
 
 
 class Interview:
@@ -33,10 +49,15 @@ class Interview:
         return facts
 
     def assess(self, request: RequestInfo, tool_name: str,
-               usage_inputs: list[dict]) -> InterviewState:
+               usage_inputs: list[dict],
+               iag_type_override: IagType | None = None) -> InterviewState:
         state = InterviewState(interview_id=str(uuid.uuid4()), request=request)
         entry = lookup_tool(tool_name)
         iag_type = classify_tool_type(tool_name)
+        if iag_type is None:
+            if iag_type_override is None:
+                raise UnknownToolError(tool_name)
+            iag_type = iag_type_override
         state.tools.append(ToolRef(
             name=tool_name,
             vendor=entry["vendor"] if entry else None,

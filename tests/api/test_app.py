@@ -42,3 +42,17 @@ def test_report_endpoint_returns_html(tmp_path):
     assert resp.status_code == 200
     assert "PolicyBot" in resp.text
     assert "IAG-2026-005" in resp.text
+
+
+def test_assess_endpoint_unknown_tool_returns_422_with_question(tmp_path):
+    client = _client(tmp_path)
+    resp = client.post("/assess", json={
+        "request": {"numero": "IAG-2026-007"},
+        "tool_name": "OutilInconnu",
+        "usage_inputs": [{"description": "info interne", "data_description": "notes internes",
+                          "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
+    })
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error"] == "unknown_tool"
+    assert "question" in body
