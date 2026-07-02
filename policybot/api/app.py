@@ -5,6 +5,7 @@ from policybot.models import InterviewState, RequestInfo
 from policybot.interview.orchestrator import Interview
 from policybot.interview.graph import run_graph
 from policybot.report.renderer import render_html
+from policybot.api.deps import default_interview
 
 
 def create_app(itv: Interview) -> FastAPI:
@@ -24,3 +25,6 @@ def create_app(itv: Interview) -> FastAPI:
         return render_html(state)
 
     return app
+
+
+app = create_app(default_interview())
