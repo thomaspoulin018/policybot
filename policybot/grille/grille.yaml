@@ -1,0 +1,25 @@
+# Starter rules of thumb. Officers extend this file; it is data, not code.
+# Each rule runs only for usages the matrix marks PERMIS / OBLIGATOIRE.
+- id: R-07
+  when:
+    trains_on_input: ["yes", "unknown"]
+    data_classification: ["Protégé A", "Protégé B", "Protégé C"]
+  then:
+    risk_level: "Élevé"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Confirmer l'opt-out d'entraînement auprès du fournisseur."]
+- id: R-12
+  when:
+    data_residency: ["us", "other", "unknown"]
+    data_classification: ["Protégé A", "Protégé B"]
+  then:
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Vérifier l'hébergement des données au Québec."]
+- id: R-20
+  when:
+    automated_decisions: ["True"]
+  then:
+    risk_level: "Élevé"
+    recommendation: "Escalader"
+    conditions: ["Décision automatisée affectant des individus — supervision humaine requise."]
