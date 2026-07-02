@@ -6,7 +6,7 @@ from policybot.models import ArpRecord, PreApprovedRecord, DataClass, IagType
 
 class PreApprovedStore:
     def __init__(self, db_path: str):
-        self._db = sqlite3.connect(db_path)
+        self._db = sqlite3.connect(db_path, check_same_thread=False)
         self._db.execute(
             "CREATE TABLE IF NOT EXISTS arp (tool_name TEXT PRIMARY KEY, json TEXT)"
         )
