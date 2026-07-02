@@ -57,3 +57,24 @@ def test_find_decision_prefers_valid_over_expired_for_same_key(tmp_path):
     # find_decision should return the valid one (new), not None
     found = store.find_decision("Copilot", "Protégé A", "circuit_ferme")
     assert found is not None and found.id == "new"
+
+
+def test_find_decision_prefers_permanent_over_expired_for_same_key(tmp_path):
+    store = _store(tmp_path)
+    # Save an expired decision with id "expired-1"
+    expired_rec = PreApprovedRecord(
+        id="expired-1", tool_name="ChatGPT", data_classification="Protégé A",
+        iag_type="publique", verdict="Autoriser", risk_level="Faible",
+        expires_at=date.today() - timedelta(days=365),
+    )
+    store.save_decision(expired_rec)
+    # Save a permanent decision (no expiry) with id "permanent-1" for the same key
+    permanent_rec = PreApprovedRecord(
+        id="permanent-1", tool_name="ChatGPT", data_classification="Protégé A",
+        iag_type="publique", verdict="Autoriser", risk_level="Faible",
+        expires_at=None,
+    )
+    store.save_decision(permanent_rec)
+    # find_decision should return the permanent one, not None or the expired one
+    found = store.find_decision("ChatGPT", "Protégé A", "publique")
+    assert found is not None and found.id == "permanent-1"

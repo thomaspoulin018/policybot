@@ -44,14 +44,14 @@ class PreApprovedStore:
         today: date | None = None,
     ) -> PreApprovedRecord | None:
         today = today or date.today()
+        today_iso = today.isoformat()
         row = self._db.execute(
             "SELECT json, expires_at FROM decision WHERE tool_name = ? "
-            "AND data_classification = ? AND iag_type = ? ORDER BY expires_at DESC",
-            (tool_name.lower(), data_classification, iag_type),
+            "AND data_classification = ? AND iag_type = ? "
+            "AND (expires_at = '' OR expires_at >= ?) "
+            "ORDER BY expires_at DESC",
+            (tool_name.lower(), data_classification, iag_type, today_iso),
         ).fetchone()
         if not row:
-            return None
-        _, expires = row
-        if expires and date.fromisoformat(expires) < today:
             return None
         return PreApprovedRecord.model_validate_json(row[0])
