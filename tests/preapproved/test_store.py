@@ -36,3 +36,24 @@ def test_find_decision_ignores_expired(tmp_path):
     )
     store.save_decision(rec)
     assert store.find_decision("Copilot", "Protégé A", "circuit_ferme") is None
+
+
+def test_find_decision_prefers_valid_over_expired_for_same_key(tmp_path):
+    store = _store(tmp_path)
+    # Save an expired decision with id "old"
+    old_rec = PreApprovedRecord(
+        id="old", tool_name="Copilot", data_classification="Protégé A",
+        iag_type="circuit_ferme", verdict="Autoriser", risk_level="Faible",
+        expires_at=date.today() - timedelta(days=1),
+    )
+    store.save_decision(old_rec)
+    # Save a valid decision with id "new" for the same key
+    new_rec = PreApprovedRecord(
+        id="new", tool_name="Copilot", data_classification="Protégé A",
+        iag_type="circuit_ferme", verdict="Autoriser", risk_level="Faible",
+        expires_at=date.today() + timedelta(days=30),
+    )
+    store.save_decision(new_rec)
+    # find_decision should return the valid one (new), not None
+    found = store.find_decision("Copilot", "Protégé A", "circuit_ferme")
+    assert found is not None and found.id == "new"

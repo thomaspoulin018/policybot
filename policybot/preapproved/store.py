@@ -46,7 +46,7 @@ class PreApprovedStore:
         today = today or date.today()
         row = self._db.execute(
             "SELECT json, expires_at FROM decision WHERE tool_name = ? "
-            "AND data_classification = ? AND iag_type = ?",
+            "AND data_classification = ? AND iag_type = ? ORDER BY expires_at DESC",
             (tool_name.lower(), data_classification, iag_type),
         ).fetchone()
         if not row:
