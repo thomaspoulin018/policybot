@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Plan: LangSmith Tracing Layer for PolicyBot</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.6; color: #1a1a2e;
+    background: #f4f6fb; padding: 2rem;
+  }
+  .container { max-width: 880px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.8rem; font-weight: 700; }
+  header p  { margin-top: .4rem; opacity: .8; font-size: .95rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1rem; font-size: .85rem; opacity: .7; }
+
+  .section {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+  }
+  .section h2 {
+    font-size: 1.05rem; font-weight: 700; color: #16213e;
+    border-left: 4px solid #4361ee; padding-left: .75rem;
+    margin-bottom: 1rem;
+  }
+  .section h3 { font-size: .92rem; font-weight: 700; color: #16213e; margin: 1rem 0 .5rem; }
+
+  ol.steps { padding-left: 1.25rem; }
+  ol.steps li { margin-bottom: .6rem; }
+  ol.steps li strong { color: #4361ee; }
+  ul.plain { padding-left: 1.25rem; }
+  ul.plain li { margin-bottom: .4rem; }
+
+  .badge {
+    display: inline-block; font-size: .72rem; font-weight: 600;
+    padding: .15rem .55rem; border-radius: 99px; margin-right: .3rem;
+  }
+  .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-yellow { background: #fef9c3; color: #a16207; }
+  .badge-red    { background: #fee2e2; color: #b91c1c; }
+  .badge-gray   { background: #eef0f4; color: #47506b; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; margin-top: .5rem; }
+  th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .75rem; }
+  td { padding: .5rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  code { background: #f0f4ff; color: #16213e; padding: .1rem .35rem; border-radius: 4px; font-size: .85em; }
+
+  .callout {
+    border-left: 4px solid #4361ee; background: #f0f4ff;
+    padding: .75rem 1rem; border-radius: 0 8px 8px 0;
+    font-size: .88rem; margin-top: .75rem;
+  }
+  .callout.warn { border-color: #f59e0b; background: #fffbeb; }
+  .callout.danger { border-color: #ef4444; background: #fef2f2; }
+  .callout.good { border-color: #22c55e; background: #f0fdf4; }
+
+  .code-block {
+    background: #16213e; color: #e2e8f0; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .82rem; padding: 1rem 1.2rem; border-radius: 8px; overflow-x: auto;
+    white-space: pre; margin-top: .5rem; line-height: 1.5;
+  }
+  .file-tag { font-family: Consolas, Menlo, monospace; font-size: .82rem; color: #4361ee; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>LangSmith Tracing Layer for PolicyBot</h1>
+    <p>Give every LLM-assisted step (classification, extraction, drafting) visible, inspectable traces in LangSmith for solo dev debugging &mdash; without changing the deterministic decision engine or the <code>LLMProvider</code> interface.</p>
+    <div class="meta">
+      <span>Date: 2026-07-02</span>
+      <span>Scope: LLM call instrumentation only</span>
+      <span>Audience: solo dev</span>
+      <span>Priority: after core pipeline lands</span>
+    </div>
+  </header>
+
+  <div class="section">
+    <h2>Overview &amp; Goal</h2>
+    <p>PolicyBot's LLM calls (<span class="file-tag">policybot/llm/openrouter.py</span>) currently go straight to OpenRouter over raw <code>httpx</code>. That's outside LangChain, so nothing shows up in LangSmith automatically. The fix is to swap the OpenRouter client for LangChain's <code>ChatOpenAI</code> (pointed at OpenRouter's OpenAI-compatible endpoint) &mdash; this gets LangSmith tracing essentially for free, and will also cover the <strong>planned</strong> LangGraph interview orchestrator once it's built, since LangGraph nodes trace natively through the same env vars.</p>
+    <div class="callout">
+      <strong>Decided scope</strong> (from requirements pass): dev-debugging traces only, not a compliance audit trail. Solo-dev LangSmith account. Trace <em>all</em> LLM-assisted call sites, not just the tricky ones. Execute this <strong>after</strong> the current 16-task implementation plan's core pipeline (interview → grille → PDF) is functional &mdash; this document is written now so it's ready to pick up then.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Phase 0 &mdash; LangSmith account &amp; project (manual, ~5 min)</h2>
+    <ol class="steps">
+      <li><strong>Step 1:</strong> You already have a LangSmith account/API key &mdash; just create a new project for this app. Suggested name: <code>policybot</code> (or <code>policybot-dev</code> to keep it separate from any future prod project).</li>
+      <li><strong>Step 2:</strong> Copy the API key from LangSmith settings (<code>Settings → API Keys</code>). Do not commit it &mdash; it goes in a local <code>.env</code> file (gitignored), same pattern as the eventual <code>OPENROUTER_API_KEY</code>.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Phase 1 &mdash; Dependencies &amp; environment config</h2>
+    <ol class="steps">
+      <li><strong>Step 1:</strong> Add <code>langchain-openai</code> and <code>langsmith</code> to <span class="file-tag">pyproject.toml</span> dependencies (alongside the existing <code>langgraph&gt;=0.2</code>, which already pulls in <code>langsmith</code> as a transitive dep &mdash; pin it explicitly anyway for clarity).</li>
+      <li><strong>Step 2:</strong> Add a <span class="file-tag">.env.example</span> (if one doesn't exist) documenting the required variables, and confirm <span class="file-tag">.env</span> is in <span class="file-tag">.gitignore</span>.</li>
+      <li><strong>Step 3:</strong> Load env vars at process startup (wherever the app entrypoint / FastAPI startup lives) via <code>python-dotenv</code> or equivalent, consistent with however <code>OPENROUTER_API_KEY</code> ends up being loaded.</li>
+    </ol>
+    <h3>Required environment variables</h3>
+    <table>
+      <tr><th>Variable</th><th>Purpose</th></tr>
+      <tr><td><code>LANGCHAIN_TRACING_V2</code></td><td><code>true</code> to enable tracing, unset/<code>false</code> to disable (e.g. in CI/tests)</td></tr>
+      <tr><td><code>LANGCHAIN_API_KEY</code></td><td>Your LangSmith API key</td></tr>
+      <tr><td><code>LANGCHAIN_PROJECT</code></td><td><code>policybot</code> (or <code>policybot-dev</code>) &mdash; groups traces in the LangSmith UI</td></tr>
+      <tr><td><code>LANGCHAIN_ENDPOINT</code></td><td>Optional, only needed for EU/self-hosted LangSmith; default is fine otherwise</td></tr>
+    </table>
+    <div class="callout warn">
+      <strong>Keep tests clean.</strong> Do not set <code>LANGCHAIN_TRACING_V2</code> in the test environment (pytest config / CI). Tests use <span class="file-tag">policybot/llm/fake.py</span>, which never calls out to a real model anyway, so this mostly matters if a test ever exercises <code>OpenRouterProvider</code> directly against a live key.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Phase 2 &mdash; Migrate <span class="file-tag">OpenRouterProvider</span> to <code>langchain-openai</code></h2>
+    <p>Keep the existing <code>LLMProvider</code> ABC (<code>complete_json</code>, <code>draft_text</code>) completely unchanged so every current and future call site is unaffected. Only the internals of <span class="file-tag">policybot/llm/openrouter.py</span> change.</p>
+    <ol class="steps">
+      <li><strong>Step 1:</strong> Replace the <code>httpx.Client</code> with <code>langchain_openai.ChatOpenAI</code>, setting <code>base_url="https://openrouter.ai/api/v1"</code> and <code>api_key</code> from the constructor arg (OpenRouter is OpenAI-compatible, so this is a drop-in swap).</li>
+      <li><strong>Step 2:</strong> <code>complete_json</code> &rarr; call <code>ChatOpenAI</code> with <code>model_kwargs={"response_format": {"type": "json_object"}}</code>, matching the current JSON-mode behavior, then <code>json.loads(response.content)</code>.</li>
+      <li><strong>Step 3:</strong> <code>draft_text</code> &rarr; plain invocation, return <code>response.content</code>.</li>
+      <li><strong>Step 4:</strong> Tag each call site with a <code>run_name</code> / <code>tags</code> (see Phase 4) so traces are distinguishable in the LangSmith UI without opening each one.</li>
+      <li><strong>Step 5:</strong> Verify existing behavior/error handling (e.g. HTTP errors, timeouts) is preserved or intentionally improved &mdash; <code>ChatOpenAI</code>'s error surface differs slightly from raw <code>httpx.raise_for_status()</code>.</li>
+    </ol>
+    <div class="callout">
+      <strong>Why this approach over manual <code>@traceable</code>:</strong> since the <a>planned</a> LangGraph interview orchestrator will already be part of the stack, standardizing all LLM calls on LangChain means tracing is consistent end-to-end with zero extra decorators once that orchestrator exists &mdash; one instrumentation strategy for the whole app, not two.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Phase 3 &mdash; Confirm every LLM-assisted call site is covered</h2>
+    <p>All current and near-term call sites should be traced automatically once <code>OpenRouterProvider</code> is swapped, since they all go through the same <code>LLMProvider</code> interface. Sanity-check each of these appears in LangSmith after wiring:</p>
+    <table>
+      <tr><th>Call site</th><th>File</th><th>Status</th></tr>
+      <tr><td>Data classification assist</td><td><span class="file-tag">policybot/classify/data_classifier.py</span></td><td><span class="badge badge-blue">exists</span></td></tr>
+      <tr><td>Tool-type classification</td><td><span class="file-tag">policybot/classify/tool_type.py</span></td><td><span class="badge badge-blue">exists</span></td></tr>
+      <tr><td>Contract / ARP fact extraction</td><td><span class="file-tag">policybot/contract/arp.py</span></td><td><span class="badge badge-blue">exists</span></td></tr>
+      <tr><td>Grille engine F/M/E/C proposals</td><td><span class="file-tag">policybot/grille/engine.py</span></td><td><span class="badge badge-yellow">check on landing</span></td></tr>
+      <tr><td>Narrative / report drafting</td><td>TBD (PDF/report module)</td><td><span class="badge badge-gray">not yet built</span></td></tr>
+      <tr><td>Interview orchestrator (LangGraph)</td><td>TBD (<code>interview/orchestrator.py</code>)</td><td><span class="badge badge-gray">not yet built</span></td></tr>
+    </table>
+    <div class="callout">
+      Grep for every <code>LLMProvider</code> instantiation/usage (<code>complete_json(</code> / <code>draft_text(</code>) at execution time to catch anything added between now and when this phase runs.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Phase 4 &mdash; Per-call metadata &amp; tags</h2>
+    <p>Raw traces are only useful if you can tell them apart at a glance. Pass <code>tags</code> and a <code>run_name</code> (or LangSmith <code>metadata</code>) per call site:</p>
+    <div class="code-block">provider.complete_json(
+    system=..., user=...,
+    tags=["data_classification"],
+    run_name="classify_data_sensitivity",
+)</div>
+    <ul class="plain">
+      <li>Suggested tags: <code>data_classification</code>, <code>tool_type_classification</code>, <code>arp_extraction</code>, <code>grille_proposal</code>, <code>report_drafting</code>.</li>
+      <li>If <code>complete_json</code>/<code>draft_text</code> need new optional kwargs to carry tags through to <code>ChatOpenAI.invoke(..., config={...})</code>, add them with defaults so existing call sites don't break.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Phase 5 &mdash; Tests stay isolated</h2>
+    <ol class="steps">
+      <li><strong>Step 1:</strong> <span class="file-tag">policybot/llm/fake.py</span> (used across the test suite) needs no changes &mdash; it never touches <code>ChatOpenAI</code> or the network.</li>
+      <li><strong>Step 2:</strong> If any test exercises <code>OpenRouterProvider</code> directly, make sure it either mocks <code>ChatOpenAI</code> or is skipped without a real API key/tracing enabled.</li>
+      <li><strong>Step 3:</strong> Run the full suite (<code>pytest</code>) after the migration to confirm nothing regresses.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Risks &amp; Mitigations</h2>
+    <div class="callout warn">
+      <strong>Risk &mdash; JSON mode compatibility.</strong> OpenRouter's <code>response_format: json_object</code> support varies by underlying model. Verify it still works identically through <code>ChatOpenAI.model_kwargs</code> for the Gemma model in use before trusting <code>complete_json</code> in production paths.
+    </div>
+    <div class="callout warn">
+      <strong>Risk &mdash; API key hygiene.</strong> Two secrets now (<code>OPENROUTER_API_KEY</code>, <code>LANGCHAIN_API_KEY</code>). Keep both in <code>.env</code> only, never in code or committed config.
+    </div>
+    <div class="callout good">
+      <strong>Non-risk &mdash; sensitive data exposure.</strong> Per PolicyBot's existing design, interview entries sent to the LLM are already metadata/descriptions only, never the sensitive data itself &mdash; so LangSmith traces won't contain anything more sensitive than what already goes to OpenRouter today.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Success Criteria</h2>
+    <ul class="plain">
+      <li>Every LLM-assisted call site listed in Phase 3 produces a visible, correctly-tagged trace in the <code>policybot</code> LangSmith project.</li>
+      <li><code>LLMProvider</code>'s public interface (<code>complete_json</code>, <code>draft_text</code>) is unchanged for all existing callers.</li>
+      <li>Tracing is togglable via <code>LANGCHAIN_TRACING_V2</code> with no code changes.</li>
+      <li>No secrets committed; full test suite passes with tracing disabled.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Environnement &amp; lancement</h2>
+    <div class="code-block">cd C:\code\Travail\PolicyBot
+python -m venv .venv
+
+# Windows
+.\.venv\Scripts\activate
+
+pip install -e ".[dev,pdf]"
+pip install langchain-openai langsmith
+
+# .env (gitignored)
+OPENROUTER_API_KEY=...
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=...
+LANGCHAIN_PROJECT=policybot
+
+pytest</div>
+    <div class="callout">
+      Always activate the venv before running anything: <code>.\.venv\Scripts\activate</code>. Never set <code>LANGCHAIN_TRACING_V2=true</code> in the environment pytest runs in.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
