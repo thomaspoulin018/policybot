@@ -13,7 +13,10 @@ _SYSTEM = (
 
 
 def extract_contract_facts(terms: FetchedTerms, llm: LLMProvider) -> ContractFacts:
-    raw = llm.complete_json(_SYSTEM, terms.text[:12000])
+    raw = llm.complete_json(
+        _SYSTEM, terms.text[:12000],
+        run_name="extract_contract_facts", tags=["arp_extraction"],
+    )
     return ContractFacts(
         trains_on_input=raw.get("trains_on_input", "unknown"),
         data_retention=raw.get("data_retention", "unknown"),
