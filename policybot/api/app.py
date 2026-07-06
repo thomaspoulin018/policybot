@@ -1,4 +1,6 @@
 from __future__ import annotations
+import sys
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from policybot.models import InterviewState, RequestInfo
@@ -7,6 +9,12 @@ from policybot.interview.graph import run_graph
 from policybot.classify.tool_type import tool_type_question
 from policybot.report.renderer import render_html
 from policybot.api.deps import default_interview
+
+# Load .env so the OpenRouter and LangSmith keys are picked up automatically on a
+# real run. Skipped under pytest so the suite never turns tracing on (see also
+# tests/conftest.py, which hard-disables it even if exported in the shell).
+if "pytest" not in sys.modules:
+    load_dotenv()
 
 
 def create_app(itv: Interview) -> FastAPI:

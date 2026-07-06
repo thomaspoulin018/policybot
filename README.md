@@ -181,30 +181,24 @@ through the same environment variables. Each call site is tagged
 glance in the UI.
 
 Tracing is **off unless you opt in**, so tests and CI never emit traces. To
-enable it, set the variables *before launching the process* (they are read once
-at startup — copy `.env.example` to `.env` or export them in your shell):
+enable it, copy `.env.example` to `.env` and fill in your keys:
 
-```powershell
-# PowerShell (Windows)
-$env:LANGCHAIN_TRACING_V2 = "true"
-$env:LANGCHAIN_API_KEY     = "<your LangSmith key from Settings → API Keys>"
-$env:LANGCHAIN_PROJECT     = "policybot"
+```dotenv
+OPENROUTER_API_KEY=<your OpenRouter key>
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=<your LangSmith key from Settings → API Keys>
+LANGCHAIN_PROJECT=policybot
 ```
 
-```bash
-# bash
-export LANGCHAIN_TRACING_V2=true
-export LANGCHAIN_API_KEY=<your LangSmith key>
-export LANGCHAIN_PROJECT=policybot
-```
-
-Leave `LANGCHAIN_TRACING_V2` unset (or `false`) — the default — to disable
-tracing. Never set it in the environment `pytest` runs in. The modern aliases
-`LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` work too. Keep
-both `OPENROUTER_API_KEY` and the LangSmith key in `.env` only (gitignored),
-never committed. Prompts sent to the LLM are already descriptions/metadata, not
-the sensitive data itself, so traces contain nothing more sensitive than what
-already goes to OpenRouter.
+The app loads `.env` automatically at startup (via `python-dotenv`), so no shell
+export is needed. To disable tracing, set `LANGCHAIN_TRACING_V2=false` (or remove
+the line). The `.env` is deliberately **not** loaded under `pytest` (and
+`tests/conftest.py` hard-disables tracing regardless), so the suite always stays
+offline and clean. The modern aliases `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` /
+`LANGSMITH_PROJECT` work too. Keep both keys in `.env` only (gitignored), never
+committed. Prompts sent to the LLM are already descriptions/metadata, not the
+sensitive data itself, so traces contain nothing more sensitive than what already
+goes to OpenRouter.
 
 ## Testing strategy
 
