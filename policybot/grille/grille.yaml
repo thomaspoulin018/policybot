@@ -55,3 +55,25 @@
     risk_level: "Élevé"
     recommendation: "Escalader"
     conditions: ["Renseignements personnels traités hors Québec — valider la conformité LAI/PRP avant autorisation."]
+- id: R-25
+  when:
+    needs_officer_confirmation: ["True"]
+  then:
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Classification à faible confiance ou réponse libre « Autre » — confirmation de l'agent SI requise avant de considérer ce résultat final."]
+- id: R-26
+  when:
+    encryption_standard: ["none", "unknown"]
+    data_classification: ["Protégé A", "Protégé B", "Protégé C"]
+  then:
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Confirmer le niveau de chiffrement des données en transit et au repos auprès du fournisseur."]
+- id: R-27
+  when:
+    ip_ownership: ["vendor", "unclear"]
+  then:
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Le fournisseur pourrait revendiquer des droits sur le contenu généré — vérifier les clauses de propriété intellectuelle avant publication ou usage externe."]

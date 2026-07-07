@@ -139,3 +139,46 @@ def test_r24_does_not_trigger_when_residency_is_canada():
     facts = ContractFacts(data_residency="canada")
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     assert not any("lai/prp" in c.lower() for c in out.conditions)
+
+
+def test_r25_needs_officer_confirmation_triggers():
+    usage = Usage(data_classification="Non classifié", needs_officer_confirmation=True)
+    out = evaluate_usage(usage, ContractFacts(), iag_type="publique")
+    assert out.risk_level == "Modéré"
+    assert any("agent si" in c.lower() for c in out.conditions)
+
+
+def test_r25_does_not_trigger_when_confirmation_not_needed():
+    usage = Usage(data_classification="Non classifié", needs_officer_confirmation=False)
+    out = evaluate_usage(usage, ContractFacts(), iag_type="publique")
+    assert not any("agent si" in c.lower() for c in out.conditions)
+
+
+def test_r26_weak_encryption_with_classified_data():
+    usage = Usage(data_classification="Protégé C")
+    facts = ContractFacts(encryption_standard="none", trains_on_input="no", data_retention="limited")
+    out = evaluate_usage(usage, facts, iag_type="gouvernementale")
+    assert out.risk_level == "Modéré"
+    assert any("chiffrement" in c.lower() for c in out.conditions)
+
+
+def test_r26_does_not_trigger_with_strong_encryption():
+    usage = Usage(data_classification="Protégé C")
+    facts = ContractFacts(encryption_standard="strong", trains_on_input="no", data_retention="limited")
+    out = evaluate_usage(usage, facts, iag_type="gouvernementale")
+    assert not any("chiffrement" in c.lower() for c in out.conditions)
+
+
+def test_r27_unclear_ip_ownership_triggers():
+    usage = Usage(data_classification="Non classifié")
+    facts = ContractFacts(ip_ownership="vendor")
+    out = evaluate_usage(usage, facts, iag_type="publique")
+    assert out.risk_level == "Modéré"
+    assert any("propriété intellectuelle" in c.lower() for c in out.conditions)
+
+
+def test_r27_does_not_trigger_when_customer_owns_ip():
+    usage = Usage(data_classification="Non classifié")
+    facts = ContractFacts(ip_ownership="customer")
+    out = evaluate_usage(usage, facts, iag_type="publique")
+    assert not any("propriété intellectuelle" in c.lower() for c in out.conditions)
