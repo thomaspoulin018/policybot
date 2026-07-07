@@ -1,5 +1,7 @@
 from __future__ import annotations
 import os
+import sys
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +14,12 @@ from policybot.api.deps import default_interview
 from policybot.web.routes import router as web_router
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "web", "static")
+
+# Load .env so the OpenRouter and LangSmith keys are picked up automatically on a
+# real run. Skipped under pytest so the suite never turns tracing on (see also
+# tests/conftest.py, which hard-disables it even if exported in the shell).
+if "pytest" not in sys.modules:
+    load_dotenv()
 
 
 def create_app(itv: Interview) -> FastAPI:

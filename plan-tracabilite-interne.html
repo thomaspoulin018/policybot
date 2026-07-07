@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Plan : Couche de traçabilité interne — PolicyBot</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.6; color: #1a1a2e;
+    background: #f4f6fb; padding: 2rem;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.8rem; font-weight: 700; }
+  header p  { margin-top: .4rem; opacity: .8; font-size: .95rem; }
+  .meta { display: flex; gap: 1.5rem; margin-top: 1rem; font-size: .85rem; opacity: .65; flex-wrap: wrap; }
+
+  .section {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+  }
+  .section h2 {
+    font-size: 1.05rem; font-weight: 700; color: #16213e;
+    border-left: 4px solid #4361ee; padding-left: .75rem;
+    margin-bottom: 1rem;
+  }
+  .section h3 {
+    font-size: .92rem; font-weight: 700; color: #16213e;
+    margin: 1rem 0 .5rem;
+  }
+
+  ol.steps { padding-left: 1.25rem; }
+  ol.steps li { margin-bottom: .6rem; }
+  ol.steps li strong { color: #4361ee; }
+
+  .badge {
+    display: inline-block; font-size: .75rem; font-weight: 600;
+    padding: .15rem .55rem; border-radius: 99px; margin-right: .3rem;
+  }
+  .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-yellow { background: #fef9c3; color: #a16207; }
+  .badge-red    { background: #fee2e2; color: #b91c1c; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .75rem; }
+  td { padding: .5rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  .callout {
+    border-left: 4px solid #4361ee; background: #f0f4ff;
+    padding: .75rem 1rem; border-radius: 0 8px 8px 0;
+    font-size: .9rem; margin-top: .75rem;
+  }
+  .callout.warn { border-color: #f59e0b; background: #fffbeb; }
+  .callout.danger { border-color: #ef4444; background: #fef2f2; }
+
+  .code-block {
+    background: #16213e; color: #e8ecfb; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .82rem; line-height: 1.55; padding: 1rem 1.2rem; border-radius: 8px;
+    overflow-x: auto; white-space: pre; margin: .5rem 0;
+  }
+  .code-block .cmt { color: #8b93b8; }
+
+  ul.plain { padding-left: 1.25rem; }
+  ul.plain li { margin-bottom: .4rem; }
+
+  .file-path { font-family: Consolas, Menlo, monospace; background: #f0f4ff; padding: .1rem .4rem; border-radius: 4px; font-size: .85rem; }
+
+  .phase-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Couche de traçabilité interne — PolicyBot</h1>
+    <p>Journaliser chaque étape du pipeline d'évaluation (interview → classification → ARP → LLM → grille) pour comprendre rapidement ce que l'application fait, sans jamais écrire de renseignements personnels en clair dans les fichiers de log.</p>
+    <div class="meta">
+      <span>Date : 2026-07-06</span>
+      <span>Portée : débogage local, solo dev</span>
+      <span>Échéancier : cette semaine</span>
+      <span>Stockage : fichiers locaux (JSON lines)</span>
+    </div>
+  </header>
+
+  <div class="section">
+    <h2>Contexte & décisions issues des questions</h2>
+    <table>
+      <tr><th>Question</th><th>Réponse retenue</th></tr>
+      <tr><td>But principal</td><td>Débogage / support technique — pas un système d'audit de conformité formel pour l'instant</td></tr>
+      <tr><td>Audience</td><td>Toi seul, via fichiers/terminal — pas de dashboard à construire</td></tr>
+      <tr><td>Échéancier</td><td>Cette semaine — privilégier une version simple et fonctionnelle à l'exhaustivité</td></tr>
+      <tr><td>Stockage</td><td>Fichiers locaux en JSON lines — pas de nouvelle dépendance externe (pas de LangSmith, pas de SQLite pour l'instant)</td></tr>
+      <tr><td>Granularité</td><td>Chaque étape du pipeline, reliée par un <code>interview_id</code> commun</td></tr>
+      <tr><td>Données sensibles</td><td>Le texte libre (descriptions d'usage, contenu LLM) ne doit <strong>jamais</strong> apparaître en clair — seulement longueur + hash + résultats de classification</td></tr>
+    </table>
+    <div class="callout warn">
+      <strong>Pourquoi ce dernier point compte particulièrement ici :</strong> PolicyBot classifie explicitement des données comme <code>rens_personnels</code> / « Protégé B/C ». Une couche de logs qui recopierait le texte brut créerait elle-même une nouvelle fuite de renseignements personnels dans un fichier non protégé. Le design ci-dessous traite ça comme une contrainte dure, pas une option.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Vue d'ensemble de l'architecture actuelle (état des lieux)</h2>
+    <p>Aucune journalisation n'existe actuellement dans <span class="file-path">policybot/</span> (aucun <code>import logging</code> trouvé). Le point d'entrée réel est :</p>
+    <ul class="plain">
+      <li><span class="file-path">policybot/api/app.py</span> → <code>run_graph()</code> (LangGraph, un seul nœud) → <code>Interview.assess()</code></li>
+      <li><span class="file-path">policybot/interview/orchestrator.py</span> — <code>Interview.assess()</code> : classification des données, résolution ARP (cache ou fetch + LLM), évaluation de la grille</li>
+      <li><span class="file-path">policybot/classify/data_classifier.py</span> — <code>classify_data()</code> appelle <code>llm.complete_json()</code></li>
+      <li><span class="file-path">policybot/llm/openrouter.py</span> / <span class="file-path">policybot/llm/fake.py</span> — un seul point de passage : <code>_chat()</code></li>
+      <li><span class="file-path">policybot/grille/engine.py</span> — <code>evaluate_usage()</code> / <code>synthesize()</code>, purement déterministe (pas d'appel LLM)</li>
+    </ul>
+    <p style="margin-top:.75rem;">Ce pipeline est linéaire et déjà bien découpé en fonctions pures — c'est un bon terrain pour instrumenter sans le réécrire.</p>
+  </div>
+
+  <div class="section">
+    <h2>Phase 1 — Module de tracing central</h2>
+    <div class="phase-header"><span class="badge badge-blue">Fondation</span></div>
+    <ol class="steps">
+      <li><strong>Créer</strong> <span class="file-path">policybot/tracing.py</span> avec un logger dédié (<code>logging.getLogger("policybot.trace")</code>), un <code>Formatter</code> qui sérialise chaque enregistrement en une ligne JSON, et un <code>RotatingFileHandler</code> pointant vers <span class="file-path">logs/policybot.jsonl</span> (5 Mo × 5 fichiers de backup, pour éviter une croissance illimitée).</li>
+      <li><strong>Exposer un context manager</strong> <code>trace_step(interview_id, step, **fields)</code> qui mesure la durée, journalise un événement <code>ok</code> ou <code>error</code> à la sortie, et ré-émet toute exception après l'avoir journalisée (jamais d'exception avalée).</li>
+      <li><strong>Exposer <code>mask_text(text: str) -&gt; dict</code></strong> : retourne <code>{"len": ..., "sha256": ...[:12]}</code>. C'est le seul moyen autorisé de faire apparaître un texte libre dans les logs.</li>
+      <li><strong>Rendre le chemin du fichier de log configurable</strong> via une variable d'environnement <code>POLICYBOT_LOG_PATH</code> (défaut : <span class="file-path">logs/policybot.jsonl</span>), pour ne pas polluer le repo ni les tests.</li>
+    </ol>
+    <h3>Esquisse de l'API</h3>
+    <div class="code-block"><span class="cmt"># policybot/tracing.py</span>
+import time, json, logging, hashlib
+from contextlib import contextmanager
+from logging.handlers import RotatingFileHandler
+
+_logger = logging.getLogger("policybot.trace")
+_logger.setLevel(logging.INFO)
+_logger.propagate = False
+
+def mask_text(text: str) -&gt; dict:
+    return {"len": len(text), "sha256": hashlib.sha256(text.encode()).hexdigest()[:12]}
+
+@contextmanager
+def trace_step(interview_id: str, step: str, **fields):
+    start = time.monotonic()
+    try:
+        yield
+    except Exception as exc:
+        _emit(interview_id, step, "error", time.monotonic() - start,
+              error=type(exc).__name__, message=str(exc), **fields)
+        raise
+    else:
+        _emit(interview_id, step, "ok", time.monotonic() - start, **fields)
+
+def _emit(interview_id, step, status, duration, **fields):
+    _logger.info(json.dumps({
+        "ts": time.time(), "interview_id": interview_id,
+        "step": step, "status": status,
+        "duration_ms": round(duration * 1000, 1),
+        **fields,
+    }))</div>
+    <div class="callout">
+      Pas de nouvelle dépendance : tout repose sur <code>logging</code> et <code>hashlib</code> de la stdlib, conforme à l'objectif « rapide, cette semaine ».
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Phase 2 — Instrumenter l'orchestrateur</h2>
+    <div class="phase-header"><span class="badge badge-blue">Cœur du pipeline</span></div>
+    <ol class="steps">
+      <li>Dans <code>Interview.assess()</code> (<span class="file-path">policybot/interview/orchestrator.py:51</span>) : englober tout le corps dans <code>trace_step(state.interview_id, "assess", tool=tool_name)</code>, juste après la création de <code>state.interview_id</code>.</li>
+      <li>Autour de chaque appel <code>classify_data(...)</code> (ligne 71-73) : <code>trace_step(interview_id, "classify_data", usage_index=i, **mask_text(item["data_description"]))</code>, puis journaliser le résultat (<code>data_classification</code>, <code>rens_personnels</code>, <code>confidence</code>, <code>needs_officer_confirmation</code>) comme champs additionnels — jamais le texte source.</li>
+      <li>Dans <code>_resolve_arp()</code> (ligne 40) : journaliser <code>cache=hit</code> ou <code>cache=miss</code>, et si <code>fetch_terms</code>/<code>extract_contract_facts</code> sont appelés, envelopper cette branche dans son propre <code>trace_step</code>.</li>
+      <li>Autour de chaque <code>evaluate_usage(...)</code> (ligne 88) : journaliser <code>usage_index</code>, <code>matrix_result</code>, <code>risk_level</code>, <code>verdict</code>.</li>
+      <li>Après <code>synthesize()</code> (ligne 90) : journaliser le résultat global (<code>risk_level</code>, <code>recommendation</code>, <code>efvpr_required</code>).</li>
+      <li><code>UnknownToolError</code> (déjà levée avant la création de tracing utile) : journaliser un événement d'erreur minimal avant de laisser l'exception remonter — <code>tool_name</code> connu, <code>interview_id</code> pas encore généré à ce stade, donc utiliser un id temporaire ou déplacer la génération de l'id plus tôt dans <code>assess()</code>.</li>
+    </ol>
+    <div class="callout warn">
+      Petit ajustement nécessaire : <code>state.interview_id</code> est généré à la ligne 54, mais <code>lookup_tool</code> / <code>classify_tool_type</code> (lignes 55-56) peuvent lever <code>UnknownToolError</code> avant. Il faudra générer l'<code>interview_id</code> en tout premier, avant tout risque d'exception, pour que même les échecs précoces soient traçables.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Phase 3 — Instrumenter la couche LLM</h2>
+    <div class="phase-header"><span class="badge badge-blue">Appels externes</span></div>
+    <ol class="steps">
+      <li>Dans <span class="file-path">policybot/llm/openrouter.py</span>, envelopper <code>_chat()</code> (seul point de passage pour <code>complete_json</code> et <code>draft_text</code>) : journaliser <code>model</code>, <code>json_mode</code>, durée, code HTTP, et en cas d'erreur (<code>httpx.HTTPStatusError</code>) le statut et le message — jamais le contenu de <code>system</code>/<code>user</code>/la réponse, seulement leurs longueurs via <code>mask_text</code>.</li>
+      <li>Faire de même dans <span class="file-path">policybot/llm/fake.py</span> pour que les traces de test ressemblent à celles de prod (utile pour les tests de la Phase 6 qui tournent sans clé API).</li>
+      <li>Comme les deux providers implémentent <code>LLMProvider</code>, envisager un seul point d'instrumentation générique : soit un décorateur appliqué aux deux classes, soit un petit wrapper <code>TracedLLMProvider</code> qui enveloppe n'importe quel <code>LLMProvider</code> et que <code>deps.py</code> pourrait injecter — évite de dupliquer la logique de tracing dans chaque provider.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Phase 4 — Instrumenter l'API</h2>
+    <div class="phase-header"><span class="badge badge-blue">Frontière externe</span></div>
+    <ol class="steps">
+      <li>Dans <span class="file-path">policybot/api/app.py</span>, journaliser la réception de <code>POST /assess</code> (tool_name, pas le payload complet) et la réponse (succès ou <code>422 unknown_tool</code>).</li>
+      <li>Comme le graphe LangGraph n'a qu'un seul nœud aujourd'hui, il n'a pas besoin de tracing propre — <code>Interview.assess()</code> couvre déjà tout le travail utile. À revisiter si le graphe devient multi-nœuds.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Phase 5 — Tests</h2>
+    <div class="phase-header"><span class="badge badge-green">Garde-fou</span></div>
+    <ol class="steps">
+      <li><span class="file-path">tests/test_tracing.py</span> : lancer <code>Interview.assess()</code> avec <code>FakeLLMProvider</code> et un handler de log en mémoire ; vérifier qu'au moins un événement par étape attendue (<code>assess</code>, <code>classify_data</code>, <code>resolve_arp</code>, <code>llm_call</code>, <code>evaluate_usage</code>) est émis, et que tous partagent le même <code>interview_id</code>.</li>
+      <li><strong>Test anti-fuite (le plus important) :</strong> passer une <code>data_description</code> contenant une chaîne sentinelle reconnaissable (ex. un faux NAS/email) et affirmer que cette chaîne n'apparaît <em>nulle part</em> dans les lignes de log capturées — seulement sa longueur et son hash.</li>
+      <li>Un test d'erreur : déclencher <code>UnknownToolError</code> et vérifier qu'un événement <code>status=error</code> est bien journalisé avant la propagation de l'exception.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Phase 6 — Documentation</h2>
+    <div class="phase-header"><span class="badge badge-green">Finition</span></div>
+    <ol class="steps">
+      <li>Ajouter une section « Traçabilité / logs » au <span class="file-path">README.md</span> : emplacement du fichier (<span class="file-path">logs/policybot.jsonl</span>), comment le lire (<code>tail -f</code> + <code>jq</code>), comment changer le chemin via <code>POLICYBOT_LOG_PATH</code>.</li>
+      <li>Ajouter <span class="file-path">logs/</span> au <span class="file-path">.gitignore</span> pour ne jamais committer de fichiers de log locaux.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Dépendances entre phases</h2>
+    <table>
+      <tr><th>Phase</th><th>Dépend de</th><th>Peut être parallélisée avec</th></tr>
+      <tr><td>1. Module de tracing</td><td>—</td><td>—</td></tr>
+      <tr><td>2. Orchestrateur</td><td>Phase 1</td><td>Phase 3</td></tr>
+      <tr><td>3. Couche LLM</td><td>Phase 1</td><td>Phase 2</td></tr>
+      <tr><td>4. API</td><td>Phases 1-2</td><td>—</td></tr>
+      <tr><td>5. Tests</td><td>Phases 1-4</td><td>—</td></tr>
+      <tr><td>6. Documentation</td><td>Phase 5 (une fois le comportement stabilisé)</td><td>—</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Risques & mitigations</h2>
+    <div class="callout danger">
+      <strong>Fuite de renseignements personnels dans les logs.</strong> Mitigation : <code>mask_text()</code> comme seul chemin autorisé pour tout texte libre ; test anti-fuite en Phase 5 non négociable avant de considérer la fonctionnalité terminée.
+    </div>
+    <div class="callout warn">
+      <strong>Croissance illimitée du fichier de log.</strong> Mitigation : <code>RotatingFileHandler</code> avec taille max + nombre de backups dès la Phase 1.
+    </div>
+    <div class="callout warn">
+      <strong>Sur-ingénierie / dérive de portée.</strong> Le besoin exprimé est un outil de débogage solo, pas un système d'audit. Mitigation : rester sur fichiers JSON lines + stdlib, ne pas construire de dashboard ni intégrer un service externe (LangSmith etc.) dans cette itération — à revisiter seulement si le besoin de conformité devient explicite.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Environnement & lancement</h2>
+    <div class="code-block">cd C:\code\05_Travail\PolicyBot
+python -m venv .venv
+
+<span class="cmt"># Windows</span>
+.\.venv\Scripts\activate
+
+<span class="cmt"># macOS / Linux</span>
+source .venv/bin/activate
+
+pip install -e ".[dev]"
+
+<span class="cmt"># lancer les tests, y compris le futur test_tracing.py</span>
+pytest tests/ -v
+
+<span class="cmt"># suivre les traces en direct pendant un run local</span>
+uvicorn policybot.api.app:app --reload
+Get-Content logs\policybot.jsonl -Wait   <span class="cmt"># PowerShell</span>
+tail -f logs/policybot.jsonl             <span class="cmt"># bash</span></div>
+    <div class="callout">
+      Activer systématiquement le venv avant de lancer le projet : <code>.\.venv\Scripts\activate</code> (Windows) ou <code>source .venv/bin/activate</code> (macOS/Linux). Aucune nouvelle dépendance externe n'est requise pour cette fonctionnalité.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Critères de succès (« done »)</h2>
+    <ul class="plain">
+      <li>Chaque appel à <code>Interview.assess()</code> produit une trace JSON lines dans <span class="file-path">logs/policybot.jsonl</span>, avec un <code>interview_id</code> commun reliant toutes les sous-étapes (classification, ARP, appel LLM, évaluation, synthèse).</li>
+      <li>Aucun texte libre brut (description d'usage, contenu de contrat, prompt/réponse LLM) n'apparaît jamais dans le fichier de log — uniquement longueur/hash/champs structurés.</li>
+      <li>Les erreurs (<code>UnknownToolError</code>, échecs HTTP du LLM) sont journalisées avec type + message + <code>interview_id</code> avant de remonter.</li>
+      <li><span class="file-path">tests/test_tracing.py</span> passe, y compris le test anti-fuite.</li>
+      <li>Le README documente l'emplacement des logs et comment les consulter.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Questions ouvertes</h2>
+    <ul class="plain">
+      <li>Faut-il un niveau de verbosité configurable (ex. <code>POLICYBOT_LOG_LEVEL</code>) pour désactiver le tracing en environnement de test, ou est-ce acceptable que les tests écrivent aussi dans <span class="file-path">logs/</span> (probablement redirigé vers un fichier temporaire) ?</li>
+      <li>Si un besoin de conformité/audit émerge plus tard, faudra-t-il migrer ces traces vers SQLite ou un service dédié — à garder en tête comme extension possible, pas à construire maintenant.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

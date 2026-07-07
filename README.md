@@ -170,6 +170,37 @@ A real run swaps in `OpenRouterProvider` (see `policybot/llm/openrouter.py`);
 no unit test ever calls the network — the OpenRouter path is exercised only
 behind an integration-test flag.
 
+## Traceability (LangSmith)
+
+Every LLM-assisted step (data classification, ARP fact extraction, and any
+future drafting) is traced in [LangSmith](https://smith.langchain.com) for
+debugging. `OpenRouterProvider` is built on `langchain_openai.ChatOpenAI`
+pointed at OpenRouter's OpenAI-compatible endpoint, so tracing comes for free
+and stays consistent with the LangGraph interview graph, whose nodes trace
+through the same environment variables. Each call site is tagged
+(`data_classification`, `arp_extraction`) so traces are distinguishable at a
+glance in the UI.
+
+Tracing is **off unless you opt in**, so tests and CI never emit traces. To
+enable it, copy `.env.example` to `.env` and fill in your keys:
+
+```dotenv
+OPENROUTER_API_KEY=<your OpenRouter key>
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=<your LangSmith key from Settings → API Keys>
+LANGCHAIN_PROJECT=policybot
+```
+
+The app loads `.env` automatically at startup (via `python-dotenv`), so no shell
+export is needed. To disable tracing, set `LANGCHAIN_TRACING_V2=false` (or remove
+the line). The `.env` is deliberately **not** loaded under `pytest` (and
+`tests/conftest.py` hard-disables tracing regardless), so the suite always stays
+offline and clean. The modern aliases `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` /
+`LANGSMITH_PROJECT` work too. Keep both keys in `.env` only (gitignored), never
+committed. Prompts sent to the LLM are already descriptions/metadata, not the
+sensitive data itself, so traces contain nothing more sensitive than what already
+goes to OpenRouter.
+
 ## Testing strategy
 
 - **Grille engine — pure unit tests, priority.** All 16 matrix cells and every
