@@ -53,7 +53,7 @@ d'utilisation publique récupérée par `TermsFetcher`.
 
 ## Section B — Câblage dans le moteur (`engine.py`)
 
-Le dict `facts` construit dans `evaluate_usage()` passe de 4 à 9 clés :
+Le dict `facts` construit dans `evaluate_usage()` passe de 4 à 11 clés :
 
 - `data_classification`, `automated_decisions` (déjà présents)
 - `trains_on_input`, `data_residency` (déjà présents)
@@ -121,14 +121,14 @@ pratiques.
   `RiskFactor` Partie A au lieu de 2 (5 nouvelles : sub_processors,
   data_retention, human_review, encryption_standard, ip_ownership)
 - `policybot/grille/grille.yaml` — 12 nouvelles règles
-- `policybot/grille/engine.py` — dict `facts` étendu à 9 clés ; dédoublonnage
+- `policybot/grille/engine.py` — dict `facts` étendu à 11 clés ; dédoublonnage
   dans `synthesize()`
 
 **Tests étendus (aucun nouveau fichier de test) :**
 - `tests/grille/test_rules.py` — un cas de déclenchement + un cas de
   non-déclenchement par nouvelle règle conditionnelle, plus un test pour les
   rappels fixes (toujours présents, jamais de `risk_level`)
-- `tests/grille/test_engine.py` — les 9 clés arrivent dans `facts` ;
+- `tests/grille/test_engine.py` — les 11 clés arrivent dans `facts` ;
   dédoublonnage vérifié dans `synthesize()`
 - `tests/contract/test_arp.py` — extraction des 2 nouveaux champs + 7 lignes
   Partie A générées par `build_arp()`
