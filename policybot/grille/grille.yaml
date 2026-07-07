@@ -78,3 +78,23 @@
     risk_level: "Modéré"
     recommendation: "Autoriser_avec_conditions"
     conditions: ["Le fournisseur pourrait revendiquer des droits sur le contenu généré — vérifier les clauses de propriété intellectuelle avant publication ou usage externe."]
+- id: R-28
+  when: {}
+  then:
+    conditions: ["Rappel : les contenus générés peuvent contenir des erreurs factuelles (hallucinations) — valider l'exactitude avant toute utilisation externe ou décisionnelle."]
+- id: R-29
+  when: {}
+  then:
+    conditions: ["Rappel : les résultats peuvent refléter des biais présents dans les données d'entraînement du modèle — rester vigilant pour les usages à portée décisionnelle."]
+- id: R-30
+  when: {}
+  then:
+    conditions: ["Rappel : s'assurer que la personne utilisatrice a reçu une formation adéquate sur l'usage responsable de cet outil."]
+- id: R-31
+  when: {}
+  then:
+    conditions: ["Rappel : éviter la surconfiance envers l'outil — le jugement professionnel demeure requis (dépendance technologique)."]
+- id: R-32
+  when: {}
+  then:
+    conditions: ["Rappel : valider que tout contenu généré associé à l'UQAM respecte les standards d'image et de qualité institutionnels, essentiels pour la réputation de l'organisation, avant diffusion publique."]

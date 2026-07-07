@@ -193,3 +193,13 @@ def test_r27_does_not_trigger_for_non_classified_data():
     facts = ContractFacts(ip_ownership="unknown")
     out = evaluate_usage(usage, facts, iag_type="publique")
     assert not any("propriété intellectuelle" in c.lower() for c in out.conditions)
+
+
+def test_fixed_advisories_always_present_and_dont_affect_verdict():
+    usage = Usage(data_classification="Non classifié")
+    out = evaluate_usage(usage, ContractFacts(trains_on_input="no"), iag_type="publique")
+    assert out.verdict == "Autoriser"
+    assert out.risk_level == "Faible"
+    joined = " ".join(out.conditions).lower()
+    for keyword in ("hallucination", "biais", "formation", "dépendance", "réputation"):
+        assert keyword in joined
