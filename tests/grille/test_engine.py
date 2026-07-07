@@ -109,3 +109,33 @@ def test_r22_does_not_trigger_when_retention_is_limited():
     facts = ContractFacts(data_retention="limited")
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     assert not any("conservation" in c.lower() for c in out.conditions)
+
+
+def test_r23_no_human_review_with_personal_info():
+    usage = Usage(data_classification="Protégé A", rens_personnels=True)
+    facts = ContractFacts(human_review="no")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    assert out.risk_level == "Élevé"
+    assert any("révision humaine" in c.lower() for c in out.conditions)
+
+
+def test_r23_does_not_trigger_without_personal_info():
+    usage = Usage(data_classification="Protégé A", rens_personnels=False)
+    facts = ContractFacts(human_review="no")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    assert not any("révision humaine" in c.lower() for c in out.conditions)
+
+
+def test_r24_personal_info_hosted_outside_quebec_escalates():
+    usage = Usage(data_classification="Protégé A", rens_personnels=True)
+    facts = ContractFacts(data_residency="us")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    assert out.verdict == "Escalader"
+    assert any("lai/prp" in c.lower() for c in out.conditions)
+
+
+def test_r24_does_not_trigger_when_residency_is_canada():
+    usage = Usage(data_classification="Protégé A", rens_personnels=True)
+    facts = ContractFacts(data_residency="canada")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    assert not any("lai/prp" in c.lower() for c in out.conditions)

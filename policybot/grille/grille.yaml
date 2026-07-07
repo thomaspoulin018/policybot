@@ -39,3 +39,19 @@
     risk_level: "Élevé"
     recommendation: "Autoriser_avec_conditions"
     conditions: ["Confirmer la politique de conservation et de suppression des données auprès du fournisseur."]
+- id: R-23
+  when:
+    human_review: ["no", "unknown"]
+    rens_personnels: ["True"]
+  then:
+    risk_level: "Élevé"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Aucune révision humaine confirmée chez le fournisseur pour des renseignements personnels — prévoir une validation manuelle interne."]
+- id: R-24
+  when:
+    rens_personnels: ["True"]
+    data_residency: ["us", "other", "unknown"]
+  then:
+    risk_level: "Élevé"
+    recommendation: "Escalader"
+    conditions: ["Renseignements personnels traités hors Québec — valider la conformité LAI/PRP avant autorisation."]
