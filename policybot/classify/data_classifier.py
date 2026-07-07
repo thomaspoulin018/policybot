@@ -37,7 +37,10 @@ def _decide(sig: dict) -> tuple[DataClass, bool]:
 
 
 def classify_data(description: str, llm: LLMProvider) -> DataClassification:
-    sig = llm.complete_json(_SYSTEM, description)
+    sig = llm.complete_json(
+        _SYSTEM, description,
+        run_name="classify_data_sensitivity", tags=["data_classification"],
+    )
     level, defaulted = _decide(sig)
     confidence = float(sig.get("confidence", 0.0))
     signals = [k for k, v in sig.items() if v is True]

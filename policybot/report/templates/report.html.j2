@@ -1,0 +1,40 @@
+<article>
+  <h1>Rapport de recommandation — PolicyBot</h1>
+  <section>
+    <h2>1. Fiche de qualification</h2>
+    <p><strong>Numéro :</strong> {{ state.request.numero }}</p>
+    <p><strong>Demandeur :</strong> {{ state.request.demandeur }}</p>
+    <p><strong>Unité :</strong> {{ state.request.unite }}</p>
+    <h3>Outils visés</h3>
+    <ul>
+      {% for t in state.tools %}
+      <li>{{ t.name }} — IAG {{ t.iag_type }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section>
+    <h2>2. Grille — Évaluation par usage (Partie B)</h2>
+    {% for u in state.usages %}
+    <div class="usage">
+      <h3>Usage {{ loop.index }} : {{ u.description }}</h3>
+      <p><strong>Classification :</strong> {{ u.data_classification }}
+         {% if u.needs_officer_confirmation %}⚠ à valider{% endif %}</p>
+      <p><strong>Matrice MCN :</strong> {{ u.matrix_result }}</p>
+      <p><strong>Niveau de risque (proposé) :</strong> {{ u.risk_level }}</p>
+      <p><strong>Recommandation :</strong> {{ u.verdict }}</p>
+      {% if u.efvpr_required %}<p><strong>ÉFVP-R requise.</strong></p>{% endif %}
+      {% if u.conditions %}
+      <p><strong>Conditions :</strong></p>
+      <ul>{% for c in u.conditions %}<li>{{ c }}</li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  <section>
+    <h2>3. Synthèse et décision (Partie C)</h2>
+    <p><strong>Niveau de risque global (proposé) :</strong> {{ state.result_global.risk_level }}</p>
+    <p><strong>Recommandation :</strong> {{ state.result_global.recommendation }}</p>
+    <p><strong>ÉFVP-R requise :</strong> {{ "Oui" if state.result_global.efvpr_required else "Non" }}</p>
+  </section>
+  <footer>Recommandation générée par PolicyBot — requiert validation et autorisation par l'autorité désignée.</footer>
+</article>
