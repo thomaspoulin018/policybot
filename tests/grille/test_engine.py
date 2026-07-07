@@ -170,15 +170,26 @@ def test_r26_does_not_trigger_with_strong_encryption():
 
 
 def test_r27_unclear_ip_ownership_triggers():
-    usage = Usage(data_classification="Non classifié")
-    facts = ContractFacts(ip_ownership="vendor")
-    out = evaluate_usage(usage, facts, iag_type="publique")
+    usage = Usage(data_classification="Protégé A")
+    facts = ContractFacts(ip_ownership="vendor", trains_on_input="no",
+                          data_residency="canada", sub_processors="disclosed",
+                          encryption_standard="strong")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     assert out.risk_level == "Modéré"
     assert any("propriété intellectuelle" in c.lower() for c in out.conditions)
 
 
 def test_r27_does_not_trigger_when_customer_owns_ip():
+    usage = Usage(data_classification="Protégé A")
+    facts = ContractFacts(ip_ownership="customer", trains_on_input="no",
+                          data_residency="canada", sub_processors="disclosed",
+                          encryption_standard="strong")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    assert not any("propriété intellectuelle" in c.lower() for c in out.conditions)
+
+
+def test_r27_does_not_trigger_for_non_classified_data():
     usage = Usage(data_classification="Non classifié")
-    facts = ContractFacts(ip_ownership="customer")
+    facts = ContractFacts(ip_ownership="unknown")
     out = evaluate_usage(usage, facts, iag_type="publique")
     assert not any("propriété intellectuelle" in c.lower() for c in out.conditions)

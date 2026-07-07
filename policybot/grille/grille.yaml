@@ -72,7 +72,8 @@
     conditions: ["Confirmer le niveau de chiffrement des données en transit et au repos auprès du fournisseur."]
 - id: R-27
   when:
-    ip_ownership: ["vendor", "unclear"]
+    ip_ownership: ["vendor", "unclear", "unknown"]
+    data_classification: ["Protégé A", "Protégé B", "Protégé C"]
   then:
     risk_level: "Modéré"
     recommendation: "Autoriser_avec_conditions"
