@@ -6,9 +6,7 @@ _URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 class OpenRouterProvider(LLMProvider):
-    """POC provider. Confirm the exact Gemma model slug on OpenRouter."""
-
-    def __init__(self, api_key: str, model: str = "google/gemma-2-27b-it",
+    def __init__(self, api_key: str, model: str = "google/gemma-4-31b-it",
                  timeout: float = 60.0):
         self._key = api_key
         self._model = model

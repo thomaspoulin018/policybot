@@ -138,8 +138,9 @@ pip install -e ".[dev]"
 pytest -v
 ```
 
-There's no CLI or running API yet (see Status below), but the full pipeline
-works end to end against a fake LLM:
+A FastAPI app (`policybot/api/app.py`) exposes `POST /assess` and `POST /report`
+(see Status below). The full pipeline also works end to end against a fake LLM
+in-process:
 
 ```python
 from policybot.models import RequestInfo
@@ -186,22 +187,33 @@ Run everything with `pytest -v`.
 ## Status against the plan
 
 The plan (`docs/superpowers/plans/2026-07-02-policybot.md`) defines 16
-TDD tasks. As of this branch:
+TDD tasks. **All 16 are complete** on this branch, with 64 passing tests:
 
 | Done | Task |
 |---|---|
 | ✅ | 1–6: scaffolding, domain models, matrix, rule engine, per-usage grille engine, LLM provider (+fake +OpenRouter) |
 | ✅ | 7–9: data classifier, tool-type classifier + registry, terms fetcher |
 | ✅ | 10–12: ARP extractor, SQLite pre-approved store, HTML report renderer (+ optional PDF) |
-| ✅ | 13: interview orchestrator (`Interview.assess`) — full deterministic pipeline, linear (no graph yet) |
-| ⬜ | 14: wrap the orchestrator in a LangGraph state machine (adds resumability) |
-| ⬜ | 15: FastAPI app exposing `POST /assess` and `POST /report` |
-| ⬜ | 16: golden end-to-end acceptance test (UQAM slide-5 scenario) |
+| ✅ | 13: interview orchestrator (`Interview.assess`) — full deterministic pipeline |
+| ✅ | 14: LangGraph state machine wrapping the orchestrator (`policybot/interview/graph.py`) |
+| ✅ | 15: FastAPI app exposing `POST /assess` and `POST /report` (`policybot/api/app.py`) |
+| ✅ | 16: golden end-to-end acceptance test (UQAM slide-5 scenario) |
+
+## To-do before a real run
+
+The backend pipeline is done; two things stand between it and a production
+deployment:
+
+1. **Web UI.** Only the backend (API + pipeline) exists. The interface that
+   renders each `QuestionSpec`, collects answers, and displays the report is
+   not yet built.
+2. **Real `grille.yaml` rules.** Seed the rule engine with the officers' actual
+   rules of thumb; only three starter rules ship today.
 
 **Deferred beyond MVP** (per spec §14): an officer review/back-office
 dashboard, scheduled re-fetching of stale ARPs, and UQAM visual-identity PDF
 theming.
 
-**Still open before a real run:** confirm the exact OpenRouter Gemma model
-slug (a placeholder is set in `OpenRouterProvider`), and seed `grille.yaml`
-with the officers' actual rules of thumb beyond the three starter rules.
+**Known packaging debt:** `grille.yaml` and the report templates are not yet
+included in the built wheel (they work in an editable install) — add
+`package-data`/`include_package_data` to `pyproject.toml`.
