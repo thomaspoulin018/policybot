@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 from policybot.classify.tool_registry import lookup_tool
 from policybot.classify.tool_type import classify_tool_type, tool_type_question
 from policybot.interview.questions import data_description_question, usage_details_question
-from policybot.web.ai_assist import guess_tool_type, suggest_options, IAG_TYPE_LABELS, LABEL_TO_IAG_TYPE
+from policybot.web.ai_assist import guess_mode, guess_tool_type, suggest_options, IAG_TYPE_LABELS, LABEL_TO_IAG_TYPE
 from policybot.web.wizard_state import WizardState, compose_description
 
 _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -99,4 +99,36 @@ async def suggest_donnees(request: Request):
             options = []
     return templates.TemplateResponse(request, "_suggest_fragment.html.j2", {
         "options": options, "field_name": "data_checked",
+    })
+
+
+@router.post("/wizard/mode-guess", response_class=HTMLResponse)
+async def mode_guess(request: Request):
+    form = _group_form(await request.form())
+    description = form.get("usage_description", "") or ""
+    guessed = "prompt"
+    if description:
+        llm = request.app.state.interview.llm
+        try:
+            guessed = guess_mode(description, llm)
+        except Exception:
+            guessed = "prompt"
+    return templates.TemplateResponse(request, "wizard_mode_fragment.html.j2", {
+        "guessed_mode": guessed,
+    })
+
+
+@router.post("/wizard/suggest/usage", response_class=HTMLResponse)
+async def suggest_usage(request: Request):
+    form = _group_form(await request.form())
+    free_text = form.get("result_use_free_text", "") or ""
+    options = []
+    if free_text:
+        llm = request.app.state.interview.llm
+        try:
+            options = suggest_options(usage_details_question(), free_text, llm)
+        except Exception:
+            options = []
+    return templates.TemplateResponse(request, "_suggest_fragment.html.j2", {
+        "options": options, "field_name": "result_use_checked",
     })
