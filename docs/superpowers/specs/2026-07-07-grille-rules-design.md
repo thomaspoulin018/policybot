@@ -117,8 +117,9 @@ pratiques.
 
 **Fichiers modifiés :**
 - `policybot/models.py` — 2 nouveaux champs `ContractFacts`
-- `policybot/contract/arp.py` — prompt étendu + `build_arp()` génère 5 lignes
-  `RiskFactor` Partie A au lieu de 2
+- `policybot/contract/arp.py` — prompt étendu + `build_arp()` génère 7 lignes
+  `RiskFactor` Partie A au lieu de 2 (5 nouvelles : sub_processors,
+  data_retention, human_review, encryption_standard, ip_ownership)
 - `policybot/grille/grille.yaml` — 12 nouvelles règles
 - `policybot/grille/engine.py` — dict `facts` étendu à 9 clés ; dédoublonnage
   dans `synthesize()`
@@ -129,7 +130,7 @@ pratiques.
   rappels fixes (toujours présents, jamais de `risk_level`)
 - `tests/grille/test_engine.py` — les 9 clés arrivent dans `facts` ;
   dédoublonnage vérifié dans `synthesize()`
-- `tests/contract/test_arp.py` — extraction des 2 nouveaux champs + 5 lignes
+- `tests/contract/test_arp.py` — extraction des 2 nouveaux champs + 7 lignes
   Partie A générées par `build_arp()`
 - Test golden UQAM slide-5 (`INTERDIT`/`Refuser`) : ré-exécuté pour confirmer
   l'absence de régression (aucun changement de verdict attendu, les
