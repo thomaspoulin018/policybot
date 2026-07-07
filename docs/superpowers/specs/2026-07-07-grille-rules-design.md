@@ -133,11 +133,14 @@ pratiques.
   dans `synthesize()`
 
 **Tests étendus (aucun nouveau fichier de test) :**
-- `tests/grille/test_rules.py` — un cas de déclenchement + un cas de
-  non-déclenchement par nouvelle règle conditionnelle, plus un test pour les
-  rappels fixes (toujours présents, jamais de `risk_level`)
-- `tests/grille/test_engine.py` — les 11 clés arrivent dans `facts` ;
-  dédoublonnage vérifié dans `synthesize()`
+- `tests/grille/test_engine.py` — un cas de déclenchement + un cas de
+  non-déclenchement par nouvelle règle conditionnelle (contre le vrai
+  `grille.yaml` via `evaluate_usage`/`load_rules()`, pas des `Rule` construits
+  à la main), plus un test pour les rappels fixes (toujours présents, jamais
+  de `risk_level`) ; les 11 clés arrivent dans `facts` ; dédoublonnage vérifié
+  dans `synthesize()`. (Correction post-implémentation : tout a atterri ici
+  plutôt que dans `tests/grille/test_rules.py` comme prévu initialement — ce
+  choix est plus solide, `test_rules.py` reste inchangé.)
 - `tests/contract/test_arp.py` — extraction des 2 nouveaux champs + 7 lignes
   Partie A générées par `build_arp()`
 - Test golden UQAM slide-5 (`INTERDIT`/`Refuser`) : ré-exécuté pour confirmer
