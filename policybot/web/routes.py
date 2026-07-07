@@ -1,12 +1,17 @@
 # policybot/web/routes.py
 from __future__ import annotations
 import os
+import uuid
+from datetime import date
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from policybot.classify.tool_registry import lookup_tool
 from policybot.classify.tool_type import classify_tool_type, tool_type_question
 from policybot.interview.questions import data_description_question, usage_details_question
+from policybot.models import RequestInfo
+from policybot.interview.orchestrator import Interview
+from policybot.report.renderer import render_html
 from policybot.web.ai_assist import guess_mode, guess_tool_type, suggest_options, IAG_TYPE_LABELS, LABEL_TO_IAG_TYPE
 from policybot.web.wizard_state import WizardState, compose_description
 
@@ -131,4 +136,38 @@ async def suggest_usage(request: Request):
             options = []
     return templates.TemplateResponse(request, "_suggest_fragment.html.j2", {
         "options": options, "field_name": "result_use_checked",
+    })
+
+
+@router.post("/wizard/usage", response_class=HTMLResponse)
+async def wizard_usage_submit(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
+    description = compose_description(state.data_checked, state.data_free_text)
+    result_use = list(state.result_use_checked)
+    if state.result_use_free_text:
+        result_use.append(state.result_use_free_text)
+    usage_input = {
+        "description": state.usage_description,
+        "data_description": description,
+        "automated_decisions": state.automated_decisions,
+        "mode": [state.mode] if state.mode else ["prompt"],
+        "result_use": result_use,
+    }
+    itv: Interview = request.app.state.interview
+    numero = f"IAG-{date.today():%Y}-{uuid.uuid4().hex[:6]}"
+    try:
+        result_state = itv.assess(
+            request=RequestInfo(numero=numero),
+            tool_name=state.tool_name,
+            usage_inputs=[usage_input],
+            iag_type_override=state.tool_type_override,
+        )
+    except Exception:
+        return templates.TemplateResponse(request, "error.html.j2", {
+            "active_step": "usage",
+        }, status_code=502)
+    report_html = render_html(result_state)
+    return templates.TemplateResponse(request, "resultat.html.j2", {
+        "active_step": "resultat", "report_html": report_html,
     })

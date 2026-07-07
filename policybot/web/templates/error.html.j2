@@ -1,0 +1,11 @@
+{# policybot/web/templates/error.html.j2 #}
+{% extends "_layout.html.j2" %}
+{% block content %}
+<div class="kicker">Oups</div>
+<h1>Quelque chose a bloqué pendant l'analyse</h1>
+<div class="assist"><img src="/static/thinking.png" alt=""> Probablement une connexion au service d'IA. Rien n'est perdu — reviens en arrière et réessaie.</div>
+<div class="foot">
+  <button class="back" type="button" onclick="history.back()">← Retour</button>
+  <span></span>
+</div>
+{% endblock %}
