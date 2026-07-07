@@ -1,5 +1,6 @@
 # policybot/web/routes.py
 from __future__ import annotations
+import logging
 import os
 import uuid
 from datetime import date
@@ -17,6 +18,7 @@ from policybot.web.wizard_state import WizardState, compose_description
 
 _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
+logger = logging.getLogger(__name__)
 
 KNOWN_TOOLS = ["ChatGPT", "ChatGPT Pro", "Claude.ai", "Perplexity", "Microsoft Copilot Entreprise"]
 
@@ -164,6 +166,7 @@ async def wizard_usage_submit(request: Request):
             iag_type_override=state.tool_type_override,
         )
     except Exception:
+        logger.exception("wizard/usage assess failed for tool_name=%r numero=%s", state.tool_name, numero)
         return templates.TemplateResponse(request, "error.html.j2", {
             "active_step": "usage",
         }, status_code=502)

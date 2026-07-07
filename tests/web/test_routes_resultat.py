@@ -58,3 +58,17 @@ def test_final_submit_renders_error_screen_when_assess_fails(tmp_path):
     })
     assert resp.status_code == 502
     assert "bloqué" in resp.text.lower()
+
+
+def test_final_submit_logs_exception_when_assess_fails(tmp_path, caplog):
+    client = _client(tmp_path, json_responses=[])  # empty queue -> classify_data raises IndexError
+    with caplog.at_level("ERROR", logger="policybot.web.routes"):
+        resp = client.post("/wizard/usage", data={
+            "tool_name": "ChatGPT",
+            "data_checked": "Info déjà publique",
+            "usage_description": "Chercher de l'info publique",
+            "mode": "prompt",
+        })
+    assert resp.status_code == 502
+    assert any("assess failed" in record.message for record in caplog.records)
+    assert any(record.exc_info for record in caplog.records)
