@@ -1,0 +1,16 @@
+{# policybot/web/templates/wizard_donnees.html.j2 #}
+{% extends "_layout.html.j2" %}
+{% block content %}
+<div class="kicker">Étape 2 · Tes données</div>
+<h1>Quel type de données comptes-tu soumettre à l'outil&nbsp;?</h1>
+<div class="assist"><img src="/static/friendly.png" alt=""> Pas besoin de montrer tes données — décris-les avec tes mots.</div>
+<form method="post" action="/wizard/donnees">
+  {% for name, value in hidden_fields %}
+  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
+  <div class="foot">
+    <button class="back" type="button" onclick="history.back()">← Retour</button>
+    <button class="next" type="submit">Continuer →</button>
+  </div>
+</form>
+{% endblock %}

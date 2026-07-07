@@ -1,0 +1,24 @@
+{# policybot/web/templates/wizard_tool_type.html.j2 #}
+{% extends "_layout.html.j2" %}
+{% block content %}
+<div class="kicker">Étape 1 · Type d'outil</div>
+<h1>{{ question.question }}</h1>
+<div class="assist"><img src="/static/thinking.png" alt=""> Je ne connais pas encore « {{ tool_name }} ». Voici ma meilleure estimation — corrige-la si besoin.</div>
+<form method="post" action="/wizard/outil/type">
+  <input type="hidden" name="tool_name" value="{{ tool_name }}">
+  <div class="grid">
+    {% for opt in question.options %}
+    <label class="opt">
+      <div class="top">
+        <input type="radio" name="tool_type" value="{{ opt.label }}" {% if opt.label == guessed_label %}checked{% endif %}>
+      </div>
+      <b>{{ opt.label }}</b><small>{{ opt.description }}</small>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="foot">
+    <button class="back" type="button" onclick="history.back()">← Retour</button>
+    <button class="next" type="submit">Confirmer →</button>
+  </div>
+</form>
+{% endblock %}
