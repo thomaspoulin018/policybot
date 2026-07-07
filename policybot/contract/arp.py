@@ -70,7 +70,7 @@ def build_arp(tool_name: str, iag_type: IagType, facts: ContractFacts) -> ArpRec
         observations=f"human_review={facts.human_review}",
     ))
 
-    encryption_risk = "E" if facts.encryption_standard in ("none", "unknown") else "F"
+    encryption_risk = "E" if facts.encryption_standard in ("none", "partial", "unknown") else "F"
     criteria.append(RiskFactor(
         category="Sécurité de l'information", criterion="Chiffrement des données",
         inherent=encryption_risk, residual=encryption_risk, origin="rule",

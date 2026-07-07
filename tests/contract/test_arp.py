@@ -83,3 +83,11 @@ def test_build_arp_flags_safe_facts_as_low_risk():
     assert by_criterion["Révision humaine par le fournisseur"].inherent == "F"
     assert by_criterion["Chiffrement des données"].inherent == "F"
     assert by_criterion["Propriété intellectuelle du contenu généré"].inherent == "F"
+
+
+def test_build_arp_flags_partial_encryption_as_risky():
+    from policybot.models import ContractFacts
+    facts = ContractFacts(encryption_standard="partial")
+    arp = build_arp("ToolX", "publique", facts)
+    by_criterion = {c.criterion: c for c in arp.criteria}
+    assert by_criterion["Chiffrement des données"].inherent == "E"

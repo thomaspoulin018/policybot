@@ -64,7 +64,7 @@
     conditions: ["Classification à faible confiance ou réponse libre « Autre » — confirmation de l'agent SI requise avant de considérer ce résultat final."]
 - id: R-26
   when:
-    encryption_standard: ["none", "unknown"]
+    encryption_standard: ["none", "partial", "unknown"]
     data_classification: ["Protégé A", "Protégé B", "Protégé C"]
   then:
     risk_level: "Modéré"

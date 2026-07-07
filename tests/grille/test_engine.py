@@ -156,7 +156,8 @@ def test_r25_does_not_trigger_when_confirmation_not_needed():
 
 def test_r26_weak_encryption_with_classified_data():
     usage = Usage(data_classification="Protégé C")
-    facts = ContractFacts(encryption_standard="none", trains_on_input="no", data_retention="limited")
+    facts = ContractFacts(encryption_standard="none", trains_on_input="no",
+                          data_retention="limited", sub_processors="disclosed")
     out = evaluate_usage(usage, facts, iag_type="gouvernementale")
     assert out.risk_level == "Modéré"
     assert any("chiffrement" in c.lower() for c in out.conditions)
@@ -164,9 +165,19 @@ def test_r26_weak_encryption_with_classified_data():
 
 def test_r26_does_not_trigger_with_strong_encryption():
     usage = Usage(data_classification="Protégé C")
-    facts = ContractFacts(encryption_standard="strong", trains_on_input="no", data_retention="limited")
+    facts = ContractFacts(encryption_standard="strong", trains_on_input="no",
+                          data_retention="limited", sub_processors="disclosed")
     out = evaluate_usage(usage, facts, iag_type="gouvernementale")
     assert not any("chiffrement" in c.lower() for c in out.conditions)
+
+
+def test_r26_partial_encryption_triggers():
+    usage = Usage(data_classification="Protégé C")
+    facts = ContractFacts(encryption_standard="partial", trains_on_input="no",
+                          data_retention="limited", sub_processors="disclosed")
+    out = evaluate_usage(usage, facts, iag_type="gouvernementale")
+    assert out.risk_level == "Modéré"
+    assert any("chiffrement" in c.lower() for c in out.conditions)
 
 
 def test_r27_unclear_ip_ownership_triggers():
