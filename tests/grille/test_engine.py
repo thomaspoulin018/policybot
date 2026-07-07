@@ -79,3 +79,33 @@ def test_synthesize_deduplicates_conditions_preserving_order():
                risk_level="Faible", conditions=["Rappel B", "Rappel C"])
     g = synthesize([u1, u2])
     assert g.conditions == ["Rappel A", "Rappel B", "Rappel C"]
+
+
+def test_r21_undisclosed_subprocessors_with_classified_data():
+    usage = Usage(data_classification="Protégé A")
+    facts = ContractFacts(sub_processors="undisclosed", trains_on_input="no")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    assert out.risk_level == "Modéré"
+    assert any("sous-traitants" in c for c in out.conditions)
+
+
+def test_r21_does_not_trigger_when_subprocessors_disclosed():
+    usage = Usage(data_classification="Protégé A")
+    facts = ContractFacts(sub_processors="disclosed")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    assert not any("sous-traitants" in c for c in out.conditions)
+
+
+def test_r22_indefinite_retention_with_protege_b():
+    usage = Usage(data_classification="Protégé B")
+    facts = ContractFacts(data_retention="indefinite")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    assert out.risk_level == "Élevé"
+    assert any("conservation" in c.lower() for c in out.conditions)
+
+
+def test_r22_does_not_trigger_when_retention_is_limited():
+    usage = Usage(data_classification="Protégé B")
+    facts = ContractFacts(data_retention="limited")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    assert not any("conservation" in c.lower() for c in out.conditions)

@@ -23,3 +23,19 @@
     risk_level: "Élevé"
     recommendation: "Escalader"
     conditions: ["Décision automatisée affectant des individus — supervision humaine requise."]
+- id: R-21
+  when:
+    sub_processors: ["undisclosed", "unknown"]
+    data_classification: ["Protégé A", "Protégé B", "Protégé C"]
+  then:
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Demander la liste des sous-traitants au fournisseur avant de soumettre des données classifiées."]
+- id: R-22
+  when:
+    data_retention: ["indefinite", "unknown"]
+    data_classification: ["Protégé B", "Protégé C"]
+  then:
+    risk_level: "Élevé"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Confirmer la politique de conservation et de suppression des données auprès du fournisseur."]
