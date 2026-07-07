@@ -1,16 +1,24 @@
 from __future__ import annotations
+import os
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from policybot.models import InterviewState, RequestInfo
 from policybot.interview.orchestrator import Interview, UnknownToolError
 from policybot.interview.graph import run_graph
 from policybot.classify.tool_type import tool_type_question
 from policybot.report.renderer import render_html
 from policybot.api.deps import default_interview
+from policybot.web.routes import router as web_router
+
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "web", "static")
 
 
 def create_app(itv: Interview) -> FastAPI:
     app = FastAPI(title="PolicyBot")
+    app.state.interview = itv
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+    app.include_router(web_router)
 
     @app.post("/assess", response_model=None)
     def assess(payload: dict) -> InterviewState | JSONResponse:

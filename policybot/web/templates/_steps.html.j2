@@ -1,0 +1,14 @@
+{# policybot/web/templates/_steps.html.j2 #}
+{% set order = ["outil", "donnees", "usage", "resultat"] %}
+{% set labels = {"outil": "Ton outil", "donnees": "Tes données", "usage": "Ton usage", "resultat": "Résultat"} %}
+<nav class="steps">
+{% for key in order %}
+  {% if order.index(active_step) > loop.index0 %}
+    <div class="st done"><span class="n">✓</span> {{ labels[key] }}</div>
+  {% elif key == active_step %}
+    <div class="st active"><span class="n">{{ loop.index }}</span> {{ labels[key] }}</div>
+  {% else %}
+    <div class="st"><span class="n">{{ loop.index }}</span> {{ labels[key] }}</div>
+  {% endif %}
+{% endfor %}
+</nav>

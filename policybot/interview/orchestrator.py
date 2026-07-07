@@ -37,6 +37,10 @@ class Interview:
         self._store = store
         self._http_get = http_get
 
+    @property
+    def llm(self) -> LLMProvider:
+        return self._llm
+
     def _resolve_arp(self, tool_name: str, iag_type) -> ContractFacts:
         cached = self._store.get_arp(tool_name)
         if cached:

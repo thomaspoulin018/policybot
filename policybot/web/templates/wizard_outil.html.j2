@@ -1,0 +1,22 @@
+{# policybot/web/templates/wizard_outil.html.j2 #}
+{% extends "_layout.html.j2" %}
+{% block content %}
+<div class="kicker">Étape 1 · Ton outil</div>
+<h1>Quel outil d'IA générative comptes-tu utiliser&nbsp;?</h1>
+<div class="assist"><img src="/static/friendly.png" alt=""> Choisis un outil connu ou tape son nom.</div>
+<form method="post" action="/wizard/outil">
+  <div class="chips">
+    {% for name in known_tools %}
+    <label class="chip"><input type="radio" name="tool_name" value="{{ name }}"> {{ name }}</label>
+    {% endfor %}
+  </div>
+  <label class="freefield">
+    Autre outil :
+    <input type="text" name="tool_name_other" placeholder="Nom de l'outil">
+  </label>
+  <div class="foot">
+    <span></span>
+    <button class="next" type="submit">Continuer →</button>
+  </div>
+</form>
+{% endblock %}

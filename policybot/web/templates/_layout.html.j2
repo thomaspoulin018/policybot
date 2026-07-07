@@ -1,0 +1,23 @@
+{# policybot/web/templates/_layout.html.j2 #}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PolicyBot</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/htmx.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><img src="/static/friendly.png" alt="PolicyBot"> PolicyBot</div>
+    {% include "_steps.html.j2" %}
+  </aside>
+  <main class="main">
+    {% block content %}{% endblock %}
+    <p class="disclaimer">🤖 PolicyBot <b>recommande</b>, il n'autorise jamais. La décision finale revient à l'agent SI.</p>
+  </main>
+</div>
+</body>
+</html>
