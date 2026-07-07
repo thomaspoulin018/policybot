@@ -226,6 +226,14 @@ New tests under `tests/web/`, using `TestClient` (already used for the JSON API)
 
 ## 13. Deferred (explicitly out of scope here)
 
+- **Per-field inline validation on missing/incomplete submissions.** §11
+  originally described re-rendering the current step with an inline message
+  when a required field is missing. The implementation plan never included
+  this as a task; incomplete submissions currently either fall through to
+  the generic `error.html.j2` (if `Interview.assess` then raises) or proceed
+  without a dedicated warning. Confirmed as an intentional MVP deferral
+  during the final whole-plan review (2026-07-07) — revisit if real usage
+  shows employees getting stuck without feedback.
 - Multiple usages per tool in a single session (`usage_inputs` already accepts a
   list; the wizard only builds a one-item list for now).
 - Landing/accueil screen and any screen beyond the 3 wizard steps + résultat.

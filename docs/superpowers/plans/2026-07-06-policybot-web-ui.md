@@ -17,6 +17,7 @@
 - No server-side session store — all wizard state travels in hidden form fields (spec §9).
 - Every AI-assist call (`guess_tool_type`, `guess_mode`, `suggest_options`) must degrade gracefully on failure — never a 500, per spec §11.
 - French UI copy throughout, tutoiement, mascotte (`friendly.png` = reassuring, `Thinking.png` = guessing/uncertain) — per spec §2.
+- `Jinja2Templates.TemplateResponse` calls use the signature `templates.TemplateResponse(request, "name.html.j2", {context...})` (request as the first positional argument, no `"request"` key inside the context dict) — this project's installed Starlette version requires the newer signature, discovered during Task 3.
 
 ---
 
@@ -657,8 +658,8 @@ def _group_form(form) -> dict:
 
 @router.get("/", response_class=HTMLResponse)
 def wizard_home(request: Request):
-    return templates.TemplateResponse("wizard_outil.html.j2", {
-        "request": request, "active_step": "outil", "known_tools": KNOWN_TOOLS,
+    return templates.TemplateResponse(request, "wizard_outil.html.j2", {
+        "active_step": "outil", "known_tools": KNOWN_TOOLS,
     })
 ```
 
@@ -851,8 +852,8 @@ async def wizard_outil(request: Request):
 
     if classify_tool_type(tool_name) is not None or lookup_tool(tool_name) is not None:
         state = WizardState(tool_name=tool_name)
-        return templates.TemplateResponse("wizard_donnees.html.j2", {
-            "request": request, "active_step": "donnees",
+        return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
+            "active_step": "donnees",
             "hidden_fields": state.to_hidden_fields(),
             "question": data_description_question(),
         })
@@ -863,8 +864,8 @@ async def wizard_outil(request: Request):
     except Exception:
         guessed_type = None
     guessed_label = IAG_TYPE_LABELS.get(guessed_type) if guessed_type else None
-    return templates.TemplateResponse("wizard_tool_type.html.j2", {
-        "request": request, "active_step": "outil",
+    return templates.TemplateResponse(request, "wizard_tool_type.html.j2", {
+        "active_step": "outil",
         "question": tool_type_question(), "tool_name": tool_name,
         "guessed_label": guessed_label,
     })
@@ -877,8 +878,8 @@ async def wizard_outil_type(request: Request):
     tool_type_label = form.get("tool_type", "") or ""
     tool_type_override = LABEL_TO_IAG_TYPE.get(tool_type_label)
     state = WizardState(tool_name=tool_name, tool_type_override=tool_type_override)
-    return templates.TemplateResponse("wizard_donnees.html.j2", {
-        "request": request, "active_step": "donnees",
+    return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
+        "active_step": "donnees",
         "hidden_fields": state.to_hidden_fields(),
         "question": data_description_question(),
     })
@@ -1051,8 +1052,8 @@ Append these routes at the end of `policybot/web/routes.py`:
 async def wizard_donnees(request: Request):
     form = _group_form(await request.form())
     state = WizardState.from_form(form)
-    return templates.TemplateResponse("wizard_usage.html.j2", {
-        "request": request, "active_step": "usage",
+    return templates.TemplateResponse(request, "wizard_usage.html.j2", {
+        "active_step": "usage",
         "hidden_fields": state.to_hidden_fields(),
         "question": usage_details_question(),
     })
@@ -1069,8 +1070,8 @@ async def suggest_donnees(request: Request):
             options = suggest_options(data_description_question(), free_text, llm)
         except Exception:
             options = []
-    return templates.TemplateResponse("_suggest_fragment.html.j2", {
-        "request": request, "options": options, "field_name": "data_checked",
+    return templates.TemplateResponse(request, "_suggest_fragment.html.j2", {
+        "options": options, "field_name": "data_checked",
     })
 ```
 
@@ -1229,8 +1230,8 @@ async def mode_guess(request: Request):
             guessed = guess_mode(description, llm)
         except Exception:
             guessed = "prompt"
-    return templates.TemplateResponse("wizard_mode_fragment.html.j2", {
-        "request": request, "guessed_mode": guessed,
+    return templates.TemplateResponse(request, "wizard_mode_fragment.html.j2", {
+        "guessed_mode": guessed,
     })
 
 
@@ -1245,8 +1246,8 @@ async def suggest_usage(request: Request):
             options = suggest_options(usage_details_question(), free_text, llm)
         except Exception:
             options = []
-    return templates.TemplateResponse("_suggest_fragment.html.j2", {
-        "request": request, "options": options, "field_name": "result_use_checked",
+    return templates.TemplateResponse(request, "_suggest_fragment.html.j2", {
+        "options": options, "field_name": "result_use_checked",
     })
 ```
 
@@ -1418,12 +1419,12 @@ async def wizard_usage_submit(request: Request):
             iag_type_override=state.tool_type_override,
         )
     except Exception:
-        return templates.TemplateResponse("error.html.j2", {
-            "request": request, "active_step": "usage",
+        return templates.TemplateResponse(request, "error.html.j2", {
+            "active_step": "usage",
         }, status_code=502)
     report_html = render_html(result_state)
-    return templates.TemplateResponse("resultat.html.j2", {
-        "request": request, "active_step": "resultat", "report_html": report_html,
+    return templates.TemplateResponse(request, "resultat.html.j2", {
+        "active_step": "resultat", "report_html": report_html,
     })
 ```
 
