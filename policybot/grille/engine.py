@@ -32,6 +32,13 @@ def evaluate_usage(
         "automated_decisions": out.automated_decisions,
         "trains_on_input": contract_facts.trains_on_input,
         "data_residency": contract_facts.data_residency,
+        "sub_processors": contract_facts.sub_processors,
+        "data_retention": contract_facts.data_retention,
+        "human_review": contract_facts.human_review,
+        "encryption_standard": contract_facts.encryption_standard,
+        "ip_ownership": contract_facts.ip_ownership,
+        "rens_personnels": out.rens_personnels,
+        "needs_officer_confirmation": out.needs_officer_confirmation,
     }
     triggered = evaluate_rules(facts, rules if rules is not None else load_rules())
 
@@ -59,5 +66,5 @@ def synthesize(usages: list[Usage]) -> GlobalResult:
         risk_level=highest_risk(levels) if levels else "Faible",
         efvpr_required=any(u.efvpr_required for u in usages),
         recommendation=(max(recs, key=lambda r: _REC_ORDER.get(r, 0)) if recs else "Autoriser"),
-        conditions=conditions,
+        conditions=list(dict.fromkeys(conditions)),
     )

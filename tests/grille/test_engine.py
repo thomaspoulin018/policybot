@@ -43,3 +43,39 @@ def test_synthesize_takes_worst_and_flags_efvpr():
     assert g.risk_level == "Critique"
     assert g.recommendation == "Refuser"
     assert g.efvpr_required is True
+
+
+def test_facts_dict_includes_all_eleven_keys(monkeypatch):
+    captured = {}
+    from policybot.grille import engine as engine_module
+
+    original = engine_module.evaluate_rules
+
+    def spy(facts, rules):
+        captured.update(facts)
+        return original(facts, rules)
+
+    monkeypatch.setattr(engine_module, "evaluate_rules", spy)
+
+    usage = Usage(data_classification="Non classifié", rens_personnels=True,
+                  needs_officer_confirmation=True)
+    facts = ContractFacts(sub_processors="disclosed", data_retention="none",
+                           human_review="yes", encryption_standard="strong",
+                           ip_ownership="customer")
+    evaluate_usage(usage, facts, iag_type="publique")
+
+    assert set(captured.keys()) == {
+        "data_classification", "automated_decisions", "trains_on_input",
+        "data_residency", "sub_processors", "data_retention", "human_review",
+        "encryption_standard", "ip_ownership", "rens_personnels",
+        "needs_officer_confirmation",
+    }
+
+
+def test_synthesize_deduplicates_conditions_preserving_order():
+    u1 = Usage(data_classification="Non classifié", verdict="Autoriser",
+               risk_level="Faible", conditions=["Rappel A", "Rappel B"])
+    u2 = Usage(data_classification="Non classifié", verdict="Autoriser",
+               risk_level="Faible", conditions=["Rappel B", "Rappel C"])
+    g = synthesize([u1, u2])
+    assert g.conditions == ["Rappel A", "Rappel B", "Rappel C"]
