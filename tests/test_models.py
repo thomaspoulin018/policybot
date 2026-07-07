@@ -2,6 +2,7 @@
 from datetime import date
 from policybot.models import (
     QuestionSpec, QuestionOption, RiskFactor, Usage, InterviewState, RequestInfo,
+    ContractFacts,
 )
 
 
@@ -31,3 +32,15 @@ def test_interviewstate_starts_empty():
     assert st.status == "in_progress"
     assert st.usages == []
     assert st.tools == []
+
+
+def test_contractfacts_new_fields_default_to_unknown():
+    facts = ContractFacts()
+    assert facts.encryption_standard == "unknown"
+    assert facts.ip_ownership == "unknown"
+
+
+def test_contractfacts_accepts_explicit_encryption_and_ip_values():
+    facts = ContractFacts(encryption_standard="strong", ip_ownership="customer")
+    assert facts.encryption_standard == "strong"
+    assert facts.ip_ownership == "customer"

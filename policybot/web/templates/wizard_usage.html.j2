@@ -1,0 +1,16 @@
+{# policybot/web/templates/wizard_usage.html.j2 #}
+{% extends "_layout.html.j2" %}
+{% block content %}
+<div class="kicker">Étape 3 · Ton usage</div>
+<h1>Comment vas-tu utiliser cet outil&nbsp;?</h1>
+<div class="assist"><img src="/static/friendly.png" alt=""> Décris ce que tu comptes faire, en tes mots.</div>
+<form method="post" action="/wizard/usage">
+  {% for name, value in hidden_fields %}
+  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
+  <div class="foot">
+    <button class="back" type="button" onclick="history.back()">← Retour</button>
+    <button class="next" type="submit">Voir le résultat →</button>
+  </div>
+</form>
+{% endblock %}

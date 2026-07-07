@@ -33,6 +33,8 @@ class ContractFacts(BaseModel):
     data_residency: Literal["canada", "us", "eu", "other", "unknown"] = "unknown"
     sub_processors: Literal["disclosed", "undisclosed", "unknown"] = "unknown"
     human_review: Literal["yes", "no", "unknown"] = "unknown"
+    encryption_standard: Literal["strong", "partial", "none", "unknown"] = "unknown"
+    ip_ownership: Literal["customer", "vendor", "unclear", "unknown"] = "unknown"
     source_url: Optional[str] = None
     fetched_at: Optional[date] = None
     snapshot_ref: Optional[str] = None

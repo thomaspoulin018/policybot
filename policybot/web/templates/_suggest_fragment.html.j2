@@ -1,0 +1,7 @@
+{# policybot/web/templates/_suggest_fragment.html.j2 #}
+{% for opt in options %}
+<label class="opt">
+  <div class="top"><input type="checkbox" name="{{ field_name }}" value="{{ opt.label }}"></div>
+  <b>{{ opt.label }}</b><small>{{ opt.description }}</small>
+</label>
+{% endfor %}

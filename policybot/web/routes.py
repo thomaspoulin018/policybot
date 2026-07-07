@@ -6,9 +6,9 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from policybot.classify.tool_registry import lookup_tool
 from policybot.classify.tool_type import classify_tool_type, tool_type_question
-from policybot.interview.questions import data_description_question
-from policybot.web.ai_assist import guess_tool_type, IAG_TYPE_LABELS, LABEL_TO_IAG_TYPE
-from policybot.web.wizard_state import WizardState
+from policybot.interview.questions import data_description_question, usage_details_question
+from policybot.web.ai_assist import guess_tool_type, suggest_options, IAG_TYPE_LABELS, LABEL_TO_IAG_TYPE
+from policybot.web.wizard_state import WizardState, compose_description
 
 _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
@@ -72,4 +72,31 @@ async def wizard_outil_type(request: Request):
         "active_step": "donnees",
         "hidden_fields": state.to_hidden_fields(),
         "question": data_description_question(),
+    })
+
+
+@router.post("/wizard/donnees", response_class=HTMLResponse)
+async def wizard_donnees(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
+    return templates.TemplateResponse(request, "wizard_usage.html.j2", {
+        "active_step": "usage",
+        "hidden_fields": state.to_hidden_fields(),
+        "question": usage_details_question(),
+    })
+
+
+@router.post("/wizard/suggest/donnees", response_class=HTMLResponse)
+async def suggest_donnees(request: Request):
+    form = _group_form(await request.form())
+    free_text = form.get("data_free_text", "") or ""
+    options = []
+    if free_text:
+        llm = request.app.state.interview.llm
+        try:
+            options = suggest_options(data_description_question(), free_text, llm)
+        except Exception:
+            options = []
+    return templates.TemplateResponse(request, "_suggest_fragment.html.j2", {
+        "options": options, "field_name": "data_checked",
     })
