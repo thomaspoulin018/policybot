@@ -84,7 +84,15 @@ section C, qui se déclenchent pour chaque usage).
 | R-24 | `rens_personnels` = True ET `data_residency` ∈ {us, other, unknown} | Élevé | Escalader | Renseignements personnels traités hors Québec — valider la conformité LAI/PRP avant autorisation. |
 | R-25 | `needs_officer_confirmation` = True | Modéré | Autoriser_avec_conditions | Classification à faible confiance ou réponse libre « Autre » — confirmation de l'agent SI requise avant de considérer ce résultat final. |
 | R-26 | `encryption_standard` ∈ {none, unknown} ET `data_classification` ∈ {Protégé A, B, C} | Modéré | Autoriser_avec_conditions | Confirmer le niveau de chiffrement des données en transit et au repos auprès du fournisseur. |
-| R-27 | `ip_ownership` ∈ {vendor, unclear, unknown} | Modéré | Autoriser_avec_conditions | Le fournisseur pourrait revendiquer des droits sur le contenu généré — vérifier les clauses de propriété intellectuelle avant publication ou usage externe. |
+| R-27 | `ip_ownership` ∈ {vendor, unclear, unknown} ET `data_classification` ∈ {Protégé A, B, C} | Modéré | Autoriser_avec_conditions | Le fournisseur pourrait revendiquer des droits sur le contenu généré — vérifier les clauses de propriété intellectuelle avant publication ou usage externe. |
+
+> **Correction post-implémentation (Tâche 6) :** R-27 n'avait initialement aucune
+> garde `data_classification`, ce qui la faisait se déclencher même pour des
+> données `Non classifié` (puisque `ip_ownership` vaut `"unknown"` par défaut) et
+> cassait 3 tests existants sur des scénarios de données publiques. Ajout de la
+> garde `data_classification ∈ {Protégé A, B, C}`, cohérente avec R-21/R-26, pour
+> préserver le traitement conservateur de `"unknown"` sans faux positifs sur des
+> données déjà publiques.
 
 ### Rappels fixes (`when: {}` — toujours déclenchés, aucun `risk_level` ni `recommendation`)
 
