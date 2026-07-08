@@ -145,6 +145,17 @@ async def suggest_usage(request: Request):
 async def wizard_usage_submit(request: Request):
     form = _group_form(await request.form())
     state = WizardState.from_form(form)
+    return templates.TemplateResponse(request, "wizard_resultats.html.j2", {
+        "active_step": "resultats",
+        "hidden_fields": state.to_hidden_fields(),
+        "question": usage_details_question(),
+    })
+
+
+@router.post("/wizard/resultats", response_class=HTMLResponse)
+async def wizard_resultats_submit(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
     description = compose_description(state.data_checked, state.data_free_text)
     result_use = list(state.result_use_checked)
     if state.result_use_free_text:
@@ -166,9 +177,9 @@ async def wizard_usage_submit(request: Request):
             iag_type_override=state.tool_type_override,
         )
     except Exception:
-        logger.exception("wizard/usage assess failed for tool_name=%r numero=%s", state.tool_name, numero)
+        logger.exception("wizard/resultats assess failed for tool_name=%r numero=%s", state.tool_name, numero)
         return templates.TemplateResponse(request, "error.html.j2", {
-            "active_step": "usage",
+            "active_step": "resultats",
         }, status_code=502)
     report_html = render_html(result_state)
     return templates.TemplateResponse(request, "resultat.html.j2", {
