@@ -201,6 +201,37 @@ committed. Prompts sent to the LLM are already descriptions/metadata, not the
 sensitive data itself, so traces contain nothing more sensitive than what already
 goes to OpenRouter.
 
+## Traçabilité interne (logs de débogage)
+
+En plus du tracing LangSmith ci-dessus (qui ne couvre que les appels LLM),
+chaque étape du pipeline d'évaluation (`Interview.assess` → classification →
+résolution ARP → appels LLM → évaluation de la grille → synthèse) écrit une
+ligne JSON dans `logs/policybot.jsonl` via `policybot/tracing.py`. Toutes les
+sous-étapes d'une même requête partagent le même `interview_id`, ce qui permet
+de reconstituer le déroulement complet d'un cas en filtrant sur cet identifiant.
+
+**Contrainte non négociable : aucun texte libre en clair.** Les descriptions
+d'usage, le contenu des contrats et les prompts/réponses LLM ne sont jamais
+écrits tels quels — seuls leur longueur et un hash SHA-256 tronqué
+(`mask_text()`) apparaissent dans les logs, pour ne pas créer une fuite de
+renseignements personnels dans un fichier non protégé.
+
+Consulter les traces en direct :
+
+```powershell
+Get-Content logs\policybot.jsonl -Wait   # PowerShell
+```
+
+```bash
+tail -f logs/policybot.jsonl             # bash
+```
+
+Le chemin du fichier est configurable via la variable d'environnement
+`POLICYBOT_LOG_PATH` (utile pour rediriger vers un fichier temporaire, comme le
+fait `tests/conftest.py` pour que la suite de tests n'écrive jamais dans
+`logs/` du dépôt). Le fichier tourne automatiquement (5 Mo × 5 backups) pour
+éviter une croissance illimitée.
+
 ## Testing strategy
 
 - **Grille engine — pure unit tests, priority.** All 16 matrix cells and every

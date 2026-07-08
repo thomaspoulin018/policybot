@@ -148,6 +148,9 @@ activemq-data/
 # SageMath parsed files
 *.sage.py
 
+# PolicyBot internal trace logs (policybot/tracing.py, POLICYBOT_LOG_PATH)
+logs/
+
 # Environments
 .env
 .envrc
