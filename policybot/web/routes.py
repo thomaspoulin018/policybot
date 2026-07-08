@@ -12,6 +12,7 @@ from policybot.classify.tool_type import classify_tool_type, tool_type_question
 from policybot.interview.questions import data_description_question, usage_details_question
 from policybot.models import RequestInfo
 from policybot.interview.orchestrator import Interview
+from policybot.preapproved.known_tools import load_known_tools
 from policybot.report.renderer import render_html
 from policybot.web.ai_assist import guess_mode, guess_tool_type, suggest_options, IAG_TYPE_LABELS, LABEL_TO_IAG_TYPE
 from policybot.web.wizard_state import WizardState, compose_description
@@ -19,8 +20,6 @@ from policybot.web.wizard_state import WizardState, compose_description
 _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 logger = logging.getLogger(__name__)
-
-KNOWN_TOOLS = ["ChatGPT", "ChatGPT Pro", "Claude.ai", "Perplexity", "Microsoft Copilot Entreprise"]
 
 router = APIRouter()
 
@@ -38,7 +37,7 @@ def _group_form(form) -> dict:
 @router.get("/", response_class=HTMLResponse)
 def wizard_home(request: Request):
     return templates.TemplateResponse(request, "wizard_outil.html.j2", {
-        "active_step": "outil", "known_tools": KNOWN_TOOLS,
+        "active_step": "outil", "known_tools": load_known_tools(),
     })
 
 
