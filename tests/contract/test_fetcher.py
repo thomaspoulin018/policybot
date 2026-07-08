@@ -1,4 +1,6 @@
 import os
+import httpx
+import pytest
 from policybot.contract.fetcher import fetch_terms, html_to_text
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures", "openai_terms.html")
@@ -7,6 +9,12 @@ FIX = os.path.join(os.path.dirname(__file__), "fixtures", "openai_terms.html")
 def _fake_get(url):
     with open(FIX, encoding="utf-8") as fh:
         return fh.read()
+
+
+def _blocked_get(url):
+    request = httpx.Request("GET", url)
+    response = httpx.Response(403, request=request)
+    raise httpx.HTTPStatusError("blocked", request=request, response=response)
 
 
 def test_html_to_text_strips_scripts_and_styles():
@@ -25,3 +33,7 @@ def test_fetch_known_tool_returns_terms():
 
 def test_fetch_unknown_tool_returns_none():
     assert fetch_terms("OutilInconnu 9000", http_get=_fake_get) is None
+
+
+def test_fetch_falls_back_to_none_when_vendor_blocks_the_request():
+    assert fetch_terms("ChatGPT", http_get=_blocked_get) is None
