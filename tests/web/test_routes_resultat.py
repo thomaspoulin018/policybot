@@ -20,7 +20,7 @@ def test_final_submit_renders_report_on_success(tmp_path):
          "highly_sensitive_secret": False, "confidence": 0.9},
         {"trains_on_input": "no", "data_residency": "canada", "extraction_confidence": 0.9},
     ])
-    resp = client.post("/wizard/usage", data={
+    resp = client.post("/wizard/resultats", data={
         "tool_name": "ChatGPT",
         "data_checked": "Info déjà publique",
         "usage_description": "Chercher de l'info publique",
@@ -38,7 +38,7 @@ def test_golden_scenario_chatgpt_protege_b_is_refused(tmp_path):
          "highly_sensitive_secret": False, "confidence": 0.9},
         {"trains_on_input": "yes", "data_residency": "us", "extraction_confidence": 0.9},
     ])
-    resp = client.post("/wizard/usage", data={
+    resp = client.post("/wizard/resultats", data={
         "tool_name": "ChatGPT",
         "data_checked": "Données stratégiques / confidentielles",
         "usage_description": "Analyser des chiffres financiers internes",
@@ -50,7 +50,7 @@ def test_golden_scenario_chatgpt_protege_b_is_refused(tmp_path):
 
 def test_final_submit_renders_error_screen_when_assess_fails(tmp_path):
     client = _client(tmp_path, json_responses=[])  # empty queue -> classify_data raises IndexError
-    resp = client.post("/wizard/usage", data={
+    resp = client.post("/wizard/resultats", data={
         "tool_name": "ChatGPT",
         "data_checked": "Info déjà publique",
         "usage_description": "Chercher de l'info publique",
@@ -63,7 +63,7 @@ def test_final_submit_renders_error_screen_when_assess_fails(tmp_path):
 def test_final_submit_logs_exception_when_assess_fails(tmp_path, caplog):
     client = _client(tmp_path, json_responses=[])  # empty queue -> classify_data raises IndexError
     with caplog.at_level("ERROR", logger="policybot.web.routes"):
-        resp = client.post("/wizard/usage", data={
+        resp = client.post("/wizard/resultats", data={
             "tool_name": "ChatGPT",
             "data_checked": "Info déjà publique",
             "usage_description": "Chercher de l'info publique",
