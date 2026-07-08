@@ -12,6 +12,7 @@ from policybot.classify.tool_type import tool_type_question
 from policybot.report.renderer import render_html
 from policybot.api.deps import default_interview
 from policybot.web.routes import router as web_router
+from policybot.tracing import trace_step
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "web", "static")
 
@@ -30,22 +31,26 @@ def create_app(itv: Interview) -> FastAPI:
 
     @app.post("/assess", response_model=None)
     def assess(payload: dict) -> InterviewState | JSONResponse:
-        try:
-            return run_graph(
-                itv,
-                RequestInfo(**payload["request"]),
-                payload["tool_name"],
-                payload["usage_inputs"],
-                payload.get("iag_type_override"),
-            )
-        except UnknownToolError:
-            return JSONResponse(
-                status_code=422,
-                content={
-                    "error": "unknown_tool",
-                    "question": tool_type_question().model_dump(),
-                },
-            )
+        with trace_step(None, "api_assess", tool_name=payload.get("tool_name")) as extra:
+            try:
+                result = run_graph(
+                    itv,
+                    RequestInfo(**payload["request"]),
+                    payload["tool_name"],
+                    payload["usage_inputs"],
+                    payload.get("iag_type_override"),
+                )
+                extra["response"] = "ok"
+                return result
+            except UnknownToolError:
+                extra["response"] = "422_unknown_tool"
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "error": "unknown_tool",
+                        "question": tool_type_question().model_dump(),
+                    },
+                )
 
     @app.post("/report", response_class=HTMLResponse)
     def report(state: InterviewState) -> str:

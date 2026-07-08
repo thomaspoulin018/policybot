@@ -2,6 +2,7 @@ import json
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from policybot.llm.provider import LLMProvider
+from policybot.tracing import trace_step, mask_text
 
 _BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -30,19 +31,22 @@ class OpenRouterProvider(LLMProvider):
 
     def _chat(self, system: str, user: str, json_mode: bool,
               run_name: str | None, tags: list[str] | None) -> str:
-        llm = self._llm
-        if json_mode:
-            llm = llm.bind(response_format={"type": "json_object"})
-        config: dict = {}
-        if run_name:
-            config["run_name"] = run_name
-        if tags:
-            config["tags"] = tags
-        resp = llm.invoke(
-            [SystemMessage(system), HumanMessage(user)],
-            config=config or None,
-        )
-        return resp.content
+        with trace_step(None, "llm_call", model=self._model, json_mode=json_mode,
+                         system=mask_text(system), user=mask_text(user)) as extra:
+            llm = self._llm
+            if json_mode:
+                llm = llm.bind(response_format={"type": "json_object"})
+            config: dict = {}
+            if run_name:
+                config["run_name"] = run_name
+            if tags:
+                config["tags"] = tags
+            resp = llm.invoke(
+                [SystemMessage(system), HumanMessage(user)],
+                config=config or None,
+            )
+            extra["response"] = mask_text(resp.content)
+            return resp.content
 
     def complete_json(self, system: str, user: str, *,
                       run_name: str | None = None,
