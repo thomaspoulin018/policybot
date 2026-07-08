@@ -89,7 +89,6 @@ async def wizard_donnees(request: Request):
     return templates.TemplateResponse(request, "wizard_usage.html.j2", {
         "active_step": "usage",
         "hidden_fields": state.to_hidden_fields(),
-        "question": usage_details_question(),
     })
 
 

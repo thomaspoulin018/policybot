@@ -1,0 +1,36 @@
+{# policybot/web/templates/wizard_resultats.html.j2 #}
+{% extends "_layout.html.j2" %}
+{% block content %}
+<div class="kicker">Étape 4 · Usage des résultats</div>
+<h1>{{ question.question }}</h1>
+<div class="assist"><img src="/static/friendly.png" alt=""> Coche tout ce qui s'applique, ou décris en tes mots.</div>
+<form method="post" action="/wizard/resultats">
+  {% for name, value in hidden_fields %}
+  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
+  <div class="grid" id="usage-options">
+    {% for opt in question.options %}
+    <label class="opt">
+      <div class="top"><input type="checkbox" name="result_use_checked" value="{{ opt.label }}"></div>
+      <b>{{ opt.label }}</b>
+    </label>
+    {% endfor %}
+  </div>
+  <div id="suggested-usage"></div>
+  <label class="freefield">
+    Autre :
+    <input type="text" name="result_use_free_text"
+           hx-post="/wizard/suggest/usage" hx-trigger="changed delay:500ms"
+           hx-target="#suggested-usage" hx-swap="innerHTML">
+  </label>
+  <label class="opt">
+    <div class="top"><input type="checkbox" name="automated_decisions" value="true"></div>
+    <b>Décision automatisée</b>
+    <small>Le résultat va-t-il déclencher une décision automatique sans révision humaine&nbsp;?</small>
+  </label>
+  <div class="foot">
+    <button class="back" type="button" onclick="history.back()">← Retour</button>
+    <button class="next" type="submit">Voir le résultat →</button>
+  </div>
+</form>
+{% endblock %}
