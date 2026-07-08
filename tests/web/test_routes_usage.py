@@ -34,3 +34,18 @@ def test_suggest_usage_returns_fragment_with_new_checkboxes(tmp_path):
     resp = client.post("/wizard/suggest/usage", data={"result_use_free_text": "pour des stats internes"})
     assert resp.status_code == 200
     assert "Analyse statistique interne" in resp.text
+
+
+def test_usage_submit_renders_resultats_step_with_hidden_fields(tmp_path):
+    client = _client(tmp_path)
+    resp = client.post("/wizard/usage", data={
+        "tool_name": "ChatGPT",
+        "usage_description": "Chercher des informations publiques",
+        "mode": "prompt",
+    })
+    assert resp.status_code == 200
+    assert "Usage des résultats" in resp.text
+    assert "Comment comptez-vous utiliser les résultats" in resp.text
+    assert 'name="tool_name" value="ChatGPT"' in resp.text
+    assert 'name="usage_description" value="Chercher des informations publiques"' in resp.text
+    assert 'name="mode" value="prompt"' in resp.text
