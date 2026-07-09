@@ -42,6 +42,9 @@ def test_usage_submit_renders_resultats_step_with_hidden_fields(tmp_path):
         "tool_name": "ChatGPT",
         "usage_description": "Chercher des informations publiques",
         "mode": "prompt",
+        "frequence_utilisation": "quelques fois par semaine",
+        "nb_utilisateurs": "10",
+        "systemes_api_cibles": "",
     })
     assert resp.status_code == 200
     assert "Usage des résultats" in resp.text
@@ -49,3 +52,14 @@ def test_usage_submit_renders_resultats_step_with_hidden_fields(tmp_path):
     assert 'name="tool_name" value="ChatGPT"' in resp.text
     assert 'name="usage_description" value="Chercher des informations publiques"' in resp.text
     assert 'name="mode" value="prompt"' in resp.text
+    assert 'name="frequence_utilisation" value="quelques fois par semaine"' in resp.text
+    assert 'name="nb_utilisateurs" value="10"' in resp.text
+
+
+def test_usage_screen_renders_section3_input_fields(tmp_path):
+    client = _client(tmp_path)
+    resp = client.post("/wizard/donnees", data={"tool_name": "ChatGPT"})
+    assert resp.status_code == 200
+    assert 'name="frequence_utilisation"' in resp.text
+    assert 'name="nb_utilisateurs"' in resp.text
+    assert 'name="systemes_api_cibles"' in resp.text
