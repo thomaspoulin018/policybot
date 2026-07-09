@@ -1,7 +1,7 @@
 {# policybot/web/templates/wizard_usage.html.j2 #}
 {% extends "_layout.html.j2" %}
 {% block content %}
-<div class="kicker">Étape 3 · Ton usage</div>
+<div class="kicker">Étape 4 · Ton usage</div>
 <h1>Comment vas-tu utiliser cet outil&nbsp;?</h1>
 <div class="assist"><img src="/static/friendly.png" alt=""> Décris ce que tu comptes faire, en tes mots.</div>
 <form method="post" action="/wizard/usage">
@@ -18,6 +18,18 @@
     <label><input type="radio" name="mode" value="prompt" checked> Je tape mes questions directement</label>
     <label><input type="radio" name="mode" value="api"> C'est intégré à un autre système (API)</label>
   </div>
+  <label class="freefield">
+    Fréquence d'utilisation prévue :
+    <input type="text" name="frequence_utilisation" placeholder="ex. quelques fois par semaine">
+  </label>
+  <label class="freefield">
+    Nombre d'utilisateurs pour cet usage :
+    <input type="number" name="nb_utilisateurs" min="0">
+  </label>
+  <label class="freefield">
+    Systèmes cibles si intégré par API :
+    <input type="text" name="systemes_api_cibles" placeholder="ex. CRM interne, portail étudiant">
+  </label>
   <div class="foot">
     <button class="back" type="button" onclick="history.back()">← Retour</button>
     <button class="next" type="submit">Continuer →</button>

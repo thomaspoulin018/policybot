@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from policybot.classify.tool_registry import lookup_tool
 from policybot.classify.tool_type import classify_tool_type, tool_type_question
 from policybot.interview.questions import data_description_question, usage_details_question
-from policybot.models import RequestInfo
+from policybot.models import RequestInfo, QualificationProfile
 from policybot.interview.orchestrator import Interview
 from policybot.preapproved.known_tools import load_known_tools
 from policybot.report.renderer import render_html
@@ -45,13 +45,13 @@ def wizard_home(request: Request):
 async def wizard_outil(request: Request):
     form = _group_form(await request.form())
     tool_name = (form.get("tool_name") or form.get("tool_name_other") or "").strip()
+    version_plan_tarifaire = form.get("version_plan_tarifaire", "") or ""
 
     if classify_tool_type(tool_name) is not None or lookup_tool(tool_name) is not None:
-        state = WizardState(tool_name=tool_name)
-        return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
-            "active_step": "donnees",
+        state = WizardState(tool_name=tool_name, version_plan_tarifaire=version_plan_tarifaire)
+        return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
+            "active_step": "profil_utilisateurs",
             "hidden_fields": state.to_hidden_fields(),
-            "question": data_description_question(),
         })
 
     llm = request.app.state.interview.llm
@@ -64,6 +64,7 @@ async def wizard_outil(request: Request):
         "active_step": "outil",
         "question": tool_type_question(), "tool_name": tool_name,
         "guessed_label": guessed_label,
+        "version_plan_tarifaire": version_plan_tarifaire,
     })
 
 
@@ -73,7 +74,19 @@ async def wizard_outil_type(request: Request):
     tool_name = form.get("tool_name", "") or ""
     tool_type_label = form.get("tool_type", "") or ""
     tool_type_override = LABEL_TO_IAG_TYPE.get(tool_type_label)
-    state = WizardState(tool_name=tool_name, tool_type_override=tool_type_override)
+    version_plan_tarifaire = form.get("version_plan_tarifaire", "") or ""
+    state = WizardState(tool_name=tool_name, tool_type_override=tool_type_override,
+                         version_plan_tarifaire=version_plan_tarifaire)
+    return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
+        "active_step": "profil_utilisateurs",
+        "hidden_fields": state.to_hidden_fields(),
+    })
+
+
+@router.post("/wizard/profil-utilisateurs", response_class=HTMLResponse)
+async def wizard_profil_utilisateurs_submit(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
     return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
         "active_step": "donnees",
         "hidden_fields": state.to_hidden_fields(),
@@ -154,6 +167,23 @@ async def wizard_usage_submit(request: Request):
 async def wizard_resultats_submit(request: Request):
     form = _group_form(await request.form())
     state = WizardState.from_form(form)
+    return templates.TemplateResponse(request, "wizard_contexte_affaires.html.j2", {
+        "active_step": "contexte_affaires",
+        "hidden_fields": state.to_hidden_fields(),
+    })
+
+
+def _as_int(value: str) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@router.post("/wizard/contexte-affaires", response_class=HTMLResponse)
+async def wizard_contexte_affaires_submit(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
     description = compose_description(state.data_checked, state.data_free_text)
     result_use = list(state.result_use_checked)
     if state.result_use_free_text:
@@ -164,7 +194,27 @@ async def wizard_resultats_submit(request: Request):
         "automated_decisions": state.automated_decisions,
         "mode": [state.mode] if state.mode else ["prompt"],
         "result_use": result_use,
+        "frequence_utilisation": state.frequence_utilisation,
+        "nb_utilisateurs": _as_int(state.nb_utilisateurs),
+        "systemes_api_cibles": state.systemes_api_cibles,
     }
+    qualification = QualificationProfile(
+        nb_utilisateurs_vises=_as_int(state.nb_utilisateurs_vises),
+        fonctions_roles=state.fonctions_roles,
+        niveau_maitrise_ti=state.niveau_maitrise_ti or None,
+        formation_iag_recue=state.formation_iag_recue or None,
+        acces_protege_a_ou_plus=state.acces_protege_a_ou_plus or None,
+        besoin_affaires=state.besoin_affaires,
+        gains_qualitatifs=state.gains_qualitatifs,
+        gains_quantitatifs=state.gains_quantitatifs,
+        alternatives_considerees=state.alternatives_considerees,
+        urgence_percue=state.urgence_percue or None,
+        cout_annuel_par_utilisateur=state.cout_annuel_par_utilisateur,
+        cout_total_annuel=state.cout_total_annuel,
+        mode_acquisition=state.mode_acquisition or None,
+        duree_contrat=state.duree_contrat,
+        responsable_budgetaire=state.responsable_budgetaire,
+    )
     itv: Interview = request.app.state.interview
     numero = f"IAG-{date.today():%Y}-{uuid.uuid4().hex[:6]}"
     try:
@@ -173,11 +223,13 @@ async def wizard_resultats_submit(request: Request):
             tool_name=state.tool_name,
             usage_inputs=[usage_input],
             iag_type_override=state.tool_type_override,
+            qualification=qualification,
+            tool_version_plan_tarifaire=state.version_plan_tarifaire,
         )
     except Exception:
-        logger.exception("wizard/resultats assess failed for tool_name=%r numero=%s", state.tool_name, numero)
+        logger.exception("wizard/contexte-affaires assess failed for tool_name=%r numero=%s", state.tool_name, numero)
         return templates.TemplateResponse(request, "error.html.j2", {
-            "active_step": "resultats",
+            "active_step": "contexte_affaires",
         }, status_code=502)
     report_html = render_html(result_state)
     return templates.TemplateResponse(request, "resultat.html.j2", {

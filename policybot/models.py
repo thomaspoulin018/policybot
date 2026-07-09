@@ -85,11 +85,37 @@ class RequestInfo(BaseModel):
     date: Optional[date] = None
 
 
+class QualificationProfile(BaseModel):
+    # Section 4 — Profil des utilisateurs
+    nb_utilisateurs_vises: Optional[int] = None
+    fonctions_roles: str = ""
+    niveau_maitrise_ti: Optional[Literal["débutant", "intermédiaire", "avancé"]] = None
+    formation_iag_recue: Optional[Literal["aucune", "partielle", "complète"]] = None
+    acces_protege_a_ou_plus: Optional[Literal["oui", "non", "à vérifier"]] = None
+
+    # Section 6 — Valeur attendue et bénéfices
+    besoin_affaires: str = ""
+    gains_qualitatifs: str = ""
+    gains_quantitatifs: str = ""
+    alternatives_considerees: str = ""
+    urgence_percue: Optional[Literal["faible", "modérée", "élevée"]] = None
+
+    # Section 7 — Informations contractuelles et financières
+    cout_annuel_par_utilisateur: str = ""
+    cout_total_annuel: str = ""
+    mode_acquisition: Optional[Literal[
+        "achat_direct", "seao", "appel_offres", "contrat_existant"
+    ]] = None
+    duree_contrat: str = ""
+    responsable_budgetaire: str = ""
+
+
 class ToolRef(BaseModel):
     name: str
     vendor: Optional[str] = None
     iag_type: Optional[IagType] = None
     arp: Optional[ArpRecord] = None
+    version_plan_tarifaire: str = ""
 
 
 class Usage(BaseModel):
@@ -100,6 +126,9 @@ class Usage(BaseModel):
     rens_personnels: bool = False
     efvpr_required: bool = False
     mode: list[Literal["prompt", "api"]] = Field(default_factory=list)
+    frequence_utilisation: str = ""
+    nb_utilisateurs: Optional[int] = None
+    systemes_api_cibles: str = ""
     result_use: list[str] = Field(default_factory=list)
     automated_decisions: bool = False
     classifier_confidence: float = 0.0
@@ -125,5 +154,6 @@ class InterviewState(BaseModel):
     request: RequestInfo
     tools: list[ToolRef] = Field(default_factory=list)
     usages: list[Usage] = Field(default_factory=list)
+    qualification: QualificationProfile = Field(default_factory=QualificationProfile)
     result_global: GlobalResult = Field(default_factory=GlobalResult)
     audit: dict = Field(default_factory=lambda: {"question_log": [], "timestamps": {}})

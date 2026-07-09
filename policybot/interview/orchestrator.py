@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Callable, Optional
 from policybot.models import (
     InterviewState, RequestInfo, ToolRef, Usage, ContractFacts, IagType,
+    QualificationProfile,
 )
 from policybot.llm.provider import LLMProvider
 from policybot.preapproved.store import PreApprovedStore
@@ -60,8 +61,12 @@ class Interview:
 
     def assess(self, request: RequestInfo, tool_name: str,
                usage_inputs: list[dict],
-               iag_type_override: IagType | None = None) -> InterviewState:
+               iag_type_override: IagType | None = None,
+               qualification: QualificationProfile | None = None,
+               tool_version_plan_tarifaire: str | None = None) -> InterviewState:
         state = InterviewState(interview_id=str(uuid.uuid4()), request=request)
+        if qualification is not None:
+            state.qualification = qualification
         with trace_step(state.interview_id, "assess", tool_name=tool_name):
             entry = lookup_tool(tool_name)
             iag_type = classify_tool_type(tool_name)
@@ -73,6 +78,7 @@ class Interview:
                 name=tool_name,
                 vendor=entry["vendor"] if entry else None,
                 iag_type=iag_type,
+                version_plan_tarifaire=tool_version_plan_tarifaire or "",
             ))
 
             # Classify each usage's data description first, then resolve (and cache)
@@ -103,6 +109,9 @@ class Interview:
                     classifier_confidence=classification.confidence,
                     needs_officer_confirmation=classification.needs_officer_confirmation,
                     mode=item.get("mode", []),
+                    frequence_utilisation=item.get("frequence_utilisation", ""),
+                    nb_utilisateurs=item.get("nb_utilisateurs"),
+                    systemes_api_cibles=item.get("systemes_api_cibles", ""),
                     result_use=item.get("result_use", []),
                     automated_decisions=item.get("automated_decisions", False),
                 )
