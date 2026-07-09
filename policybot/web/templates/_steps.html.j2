@@ -1,6 +1,6 @@
 {# policybot/web/templates/_steps.html.j2 #}
-{% set order = ["outil", "donnees", "usage", "resultats", "resultat"] %}
-{% set labels = {"outil": "Ton outil", "donnees": "Tes données", "usage": "Ton usage", "resultats": "Usage des résultats", "resultat": "Résultat"} %}
+{% set order = ["outil", "profil_utilisateurs", "donnees", "usage", "resultats", "resultat"] %}
+{% set labels = {"outil": "Ton outil", "profil_utilisateurs": "Profil utilisateurs", "donnees": "Tes données", "usage": "Ton usage", "resultats": "Usage des résultats", "resultat": "Résultat"} %}
 <nav class="steps">
 {% for key in order %}
   {% if order.index(active_step) > loop.index0 %}

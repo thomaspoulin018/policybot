@@ -45,13 +45,13 @@ def wizard_home(request: Request):
 async def wizard_outil(request: Request):
     form = _group_form(await request.form())
     tool_name = (form.get("tool_name") or form.get("tool_name_other") or "").strip()
+    version_plan_tarifaire = form.get("version_plan_tarifaire", "") or ""
 
     if classify_tool_type(tool_name) is not None or lookup_tool(tool_name) is not None:
-        state = WizardState(tool_name=tool_name)
-        return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
-            "active_step": "donnees",
+        state = WizardState(tool_name=tool_name, version_plan_tarifaire=version_plan_tarifaire)
+        return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
+            "active_step": "profil_utilisateurs",
             "hidden_fields": state.to_hidden_fields(),
-            "question": data_description_question(),
         })
 
     llm = request.app.state.interview.llm
@@ -64,6 +64,7 @@ async def wizard_outil(request: Request):
         "active_step": "outil",
         "question": tool_type_question(), "tool_name": tool_name,
         "guessed_label": guessed_label,
+        "version_plan_tarifaire": version_plan_tarifaire,
     })
 
 
@@ -73,7 +74,19 @@ async def wizard_outil_type(request: Request):
     tool_name = form.get("tool_name", "") or ""
     tool_type_label = form.get("tool_type", "") or ""
     tool_type_override = LABEL_TO_IAG_TYPE.get(tool_type_label)
-    state = WizardState(tool_name=tool_name, tool_type_override=tool_type_override)
+    version_plan_tarifaire = form.get("version_plan_tarifaire", "") or ""
+    state = WizardState(tool_name=tool_name, tool_type_override=tool_type_override,
+                         version_plan_tarifaire=version_plan_tarifaire)
+    return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
+        "active_step": "profil_utilisateurs",
+        "hidden_fields": state.to_hidden_fields(),
+    })
+
+
+@router.post("/wizard/profil-utilisateurs", response_class=HTMLResponse)
+async def wizard_profil_utilisateurs_submit(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
     return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
         "active_step": "donnees",
         "hidden_fields": state.to_hidden_fields(),
