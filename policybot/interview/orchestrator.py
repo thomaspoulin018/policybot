@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Callable, Optional
 from policybot.models import (
-    InterviewState, RequestInfo, ToolRef, Usage, ContractFacts, IagType,
+    InterviewState, RequestInfo, ToolRef, Usage, ContractFacts, ArpRecord, IagType,
 )
 from policybot.llm.provider import LLMProvider
 from policybot.preapproved.store import PreApprovedStore
@@ -42,21 +42,23 @@ class Interview:
     def llm(self) -> LLMProvider:
         return self._llm
 
-    def _resolve_arp(self, tool_name: str, iag_type) -> ContractFacts:
+    def _resolve_arp(self, tool_name: str, iag_type: IagType) -> ArpRecord:
         with trace_step(None, "resolve_arp", tool_name=tool_name) as extra:
             cached = self._store.get_arp(tool_name)
             if cached:
                 extra["cache"] = "hit"
-                return cached.contract_facts
+                return cached
             extra["cache"] = "miss"
             with trace_step(None, "resolve_arp_fetch", tool_name=tool_name) as fetch_extra:
                 terms = fetch_terms(tool_name, http_get=self._http_get)
                 fetch_extra["found"] = terms is not None
                 if terms is None:
-                    return ContractFacts()  # manual-paste fallback handled by the UI layer
-                facts = extract_contract_facts(terms, self._llm)
-            self._store.save_arp(build_arp(tool_name, iag_type, facts))
-            return facts
+                    facts = ContractFacts()  # manual-paste fallback handled by the UI layer
+                else:
+                    facts = extract_contract_facts(terms, self._llm)
+            arp = build_arp(tool_name, iag_type, facts)
+            self._store.save_arp(arp)
+            return arp
 
     def assess(self, request: RequestInfo, tool_name: str,
                usage_inputs: list[dict],
@@ -92,7 +94,9 @@ class Interview:
                     )
                 classifications.append((item, classification))
 
-            facts = self._resolve_arp(tool_name, iag_type)
+            arp = self._resolve_arp(tool_name, iag_type)
+            state.tools[0].arp = arp
+            facts = arp.contract_facts
 
             for i, (item, classification) in enumerate(classifications):
                 usage = Usage(

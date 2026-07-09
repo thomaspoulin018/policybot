@@ -5,6 +5,8 @@
     trains_on_input: ["yes", "unknown"]
     data_classification: ["Protégé A", "Protégé B", "Protégé C"]
   then:
+    category: "Gestion des données"
+    criterion: "Utilisation de données pour entraînement"
     risk_level: "Élevé"
     recommendation: "Autoriser_avec_conditions"
     conditions: ["Confirmer l'opt-out d'entraînement auprès du fournisseur."]
@@ -20,6 +22,8 @@
   when:
     automated_decisions: ["True"]
   then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Supervision humaine insuffisante"
     risk_level: "Élevé"
     recommendation: "Escalader"
     conditions: ["Décision automatisée affectant des individus — supervision humaine requise."]
@@ -44,6 +48,8 @@
     human_review: ["no", "unknown"]
     rens_personnels: ["True"]
   then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Supervision humaine insuffisante"
     risk_level: "Élevé"
     recommendation: "Autoriser_avec_conditions"
     conditions: ["Aucune révision humaine confirmée chez le fournisseur pour des renseignements personnels — prévoir une validation manuelle interne."]
@@ -52,6 +58,8 @@
     rens_personnels: ["True"]
     data_residency: ["us", "other", "unknown"]
   then:
+    category: "Gestion des données"
+    criterion: "Compatibilité avec la LAI/PRP"
     risk_level: "Élevé"
     recommendation: "Escalader"
     conditions: ["Renseignements personnels traités hors Québec — valider la conformité LAI/PRP avant autorisation."]
@@ -59,6 +67,8 @@
   when:
     needs_officer_confirmation: ["True"]
   then:
+    category: "Gestion des données"
+    criterion: "Mauvaise classification des données"
     risk_level: "Modéré"
     recommendation: "Autoriser_avec_conditions"
     conditions: ["Classification à faible confiance ou réponse libre « Autre » — confirmation de l'agent SI requise avant de considérer ce résultat final."]
@@ -75,26 +85,38 @@
     ip_ownership: ["vendor", "unclear", "unknown"]
     data_classification: ["Protégé A", "Protégé B", "Protégé C"]
   then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Propriété intellectuelle du contenu généré"
     risk_level: "Modéré"
     recommendation: "Autoriser_avec_conditions"
     conditions: ["Le fournisseur pourrait revendiquer des droits sur le contenu généré — vérifier les clauses de propriété intellectuelle avant publication ou usage externe."]
 - id: R-28
   when: {}
   then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Hallucinations et erreurs factuelles"
     conditions: ["Rappel : les contenus générés peuvent contenir des erreurs factuelles (hallucinations) — valider l'exactitude avant toute utilisation externe ou décisionnelle."]
 - id: R-29
   when: {}
   then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Biais algorithmiques"
     conditions: ["Rappel : les résultats peuvent refléter des biais présents dans les données d'entraînement du modèle — rester vigilant pour les usages à portée décisionnelle."]
 - id: R-30
   when: {}
   then:
+    category: "Risques organisationnels"
+    criterion: "Formation insuffisante du personnel"
     conditions: ["Rappel : s'assurer que la personne utilisatrice a reçu une formation adéquate sur l'usage responsable de cet outil."]
 - id: R-31
   when: {}
   then:
+    category: "Risques organisationnels"
+    criterion: "Dépendance technologique"
     conditions: ["Rappel : éviter la surconfiance envers l'outil — le jugement professionnel demeure requis (dépendance technologique)."]
 - id: R-32
   when: {}
   then:
+    category: "Risques organisationnels"
+    criterion: "Image et réputation institutionnelle"
     conditions: ["Rappel : valider que tout contenu généré associé à l'UQAM respecte les standards d'image et de qualité institutionnels, essentiels pour la réputation de l'organisation, avant diffusion publique."]

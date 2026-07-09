@@ -29,6 +29,49 @@ def test_permis_clean_case_authorises():
     assert out.risk_level == "Faible"
 
 
+def test_partie_b_has_eleven_fixed_criteria():
+    from policybot.criteria import USAGE_CRITERIA
+    usage = Usage(data_classification="Non classifié")
+    out = evaluate_usage(usage, ContractFacts(trains_on_input="no"), iag_type="publique")
+    assert len(out.partie_b) == 11
+    assert {c.criterion for c in out.partie_b} == {name for _, name, _ in USAGE_CRITERIA}
+
+
+def test_partie_b_training_criterion_reflects_r07():
+    usage = Usage(data_classification="Protégé B")
+    facts = ContractFacts(trains_on_input="yes")
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+    by_criterion = {c.criterion: c for c in out.partie_b}
+    assert by_criterion["Utilisation de données pour entraînement"].inherent == "E"
+
+
+def test_partie_b_base_risk_scales_with_data_classification():
+    facts = ContractFacts()
+    non_classifie = evaluate_usage(Usage(data_classification="Non classifié"), facts, iag_type="publique")
+    protege_c = evaluate_usage(Usage(data_classification="Protégé C"), facts, iag_type="gouvernementale")
+    by_nc = {c.criterion: c for c in non_classifie.partie_b}
+    by_pc = {c.criterion: c for c in protege_c.partie_b}
+    assert by_nc["Fuite de données confidentielles"].inherent == "F"
+    assert by_pc["Fuite de données confidentielles"].inherent == "E"
+
+
+def test_partie_b_fixed_advisories_always_present_with_moderate_risk():
+    usage = Usage(data_classification="Non classifié")
+    out = evaluate_usage(usage, ContractFacts(trains_on_input="no"), iag_type="publique")
+    by_criterion = {c.criterion: c for c in out.partie_b}
+    for name in ("Hallucinations et erreurs factuelles", "Biais algorithmiques",
+                 "Formation insuffisante du personnel", "Dépendance technologique",
+                 "Image et réputation institutionnelle"):
+        assert by_criterion[name].inherent == "M"
+
+
+def test_partie_b_stays_empty_on_interdit():
+    usage = Usage(data_classification="Protégé B")
+    out = evaluate_usage(usage, ContractFacts(), iag_type="publique")
+    assert out.matrix_result == "INTERDIT"
+    assert out.partie_b == []
+
+
 def test_efvpr_flag_set_when_personal_info():
     usage = Usage(data_classification="Protégé B", rens_personnels=True)
     out = evaluate_usage(usage, ContractFacts(), iag_type="circuit_ferme")

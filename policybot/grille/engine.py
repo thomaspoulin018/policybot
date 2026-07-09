@@ -1,12 +1,48 @@
 # policybot/grille/engine.py
 from __future__ import annotations
 from policybot.models import (
-    Usage, ContractFacts, IagType, GlobalResult, RiskLevel, Recommendation,
+    Usage, ContractFacts, IagType, GlobalResult, RiskFactor,
 )
+from policybot.criteria import USAGE_CRITERIA
 from policybot.grille.matrix import evaluate_matrix
-from policybot.grille.rules import Rule, load_rules, evaluate_rules, highest_risk, RISK_ORDER
+from policybot.grille.rules import Rule, load_rules, evaluate_rules, highest_risk
 
 _REC_ORDER = {"Autoriser": 0, "Autoriser_avec_conditions": 1, "Escalader": 2, "Refuser": 3}
+_LETTER_FROM_LEVEL = {"Faible": "F", "Modéré": "M", "Élevé": "E", "Critique": "C"}
+_LETTER_ORDER = {"F": 0, "M": 1, "E": 2, "C": 3}
+_BASE_RISK_BY_CLASSIFICATION = {
+    "Non classifié": "F",
+    "Protégé A": "F",
+    "Protégé B": "M",
+    "Protégé C": "E",
+}
+
+
+def _build_partie_b(usage: Usage, triggered: list[Rule]) -> list[RiskFactor]:
+    by_criterion: dict[str, list[str]] = {}
+    for rule in triggered:
+        criterion = rule.then.get("criterion")
+        if criterion is None:
+            continue
+        level = rule.then.get("risk_level")
+        letter = _LETTER_FROM_LEVEL[level] if level else "M"
+        by_criterion.setdefault(criterion, []).append(letter)
+
+    rows: list[RiskFactor] = []
+    for category, criterion, _description in USAGE_CRITERIA:
+        if criterion == "Fuite de données confidentielles":
+            letter = _BASE_RISK_BY_CLASSIFICATION[usage.data_classification]
+        else:
+            letters = by_criterion.get(criterion, [])
+            letter = max(letters, key=lambda value: _LETTER_ORDER[value]) if letters else "F"
+        rows.append(RiskFactor(
+            category=category,
+            criterion=criterion,
+            inherent=letter,
+            residual=letter,
+            origin="rule",
+        ))
+    return rows
 
 
 def evaluate_usage(
@@ -53,6 +89,7 @@ def evaluate_usage(
     out.verdict = (
         max(recs, key=lambda rec: _REC_ORDER.get(rec, 0)) if recs else "Autoriser"
     )
+    out.partie_b = _build_partie_b(out, triggered)
     return out
 
 

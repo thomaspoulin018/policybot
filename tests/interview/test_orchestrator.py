@@ -56,6 +56,50 @@ def test_public_data_public_tool_authorised(tmp_path):
     assert state.result_global.recommendation == "Autoriser"
 
 
+def test_assess_attaches_arp_record_to_tool_ref(tmp_path):
+    llm = FakeLLMProvider(json_responses=[
+        {"already_public": True, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": False,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+        {"trains_on_input": "no", "data_retention": "none", "data_residency": "canada",
+         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+    ])
+    store = PreApprovedStore(str(tmp_path / "pb.db"))
+    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    state = itv.assess(
+        request=RequestInfo(numero="IAG-2026-010"),
+        tool_name="ChatGPT",
+        usage_inputs=[{"description": "Chercher de l'info publique",
+                       "data_description": "information publique sur le web",
+                       "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
+    )
+    assert state.tools[0].arp is not None
+    assert len(state.tools[0].arp.criteria) == 8
+
+
+def test_assess_reuses_cached_arp_record_on_second_call(tmp_path):
+    llm = FakeLLMProvider(json_responses=[
+        {"already_public": True, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": False,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+        {"trains_on_input": "no", "data_retention": "none", "data_residency": "canada",
+         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+        {"already_public": True, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": False,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+    ])
+    store = PreApprovedStore(str(tmp_path / "pb.db"))
+    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    usage_inputs = [{"description": "Chercher de l'info publique",
+                     "data_description": "information publique sur le web",
+                     "automated_decisions": False, "mode": ["prompt"], "result_use": []}]
+    itv.assess(request=RequestInfo(numero="IAG-2026-011"), tool_name="ChatGPT",
+               usage_inputs=usage_inputs)
+    state2 = itv.assess(request=RequestInfo(numero="IAG-2026-012"), tool_name="ChatGPT",
+                        usage_inputs=usage_inputs)
+    assert state2.tools[0].arp is not None
+
+
 def test_unregistered_tool_without_override_raises_unknown_tool_error(tmp_path):
     llm = FakeLLMProvider(json_responses=[])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
