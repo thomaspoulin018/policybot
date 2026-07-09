@@ -62,3 +62,101 @@ def test_from_form_defaults_on_missing_keys():
     assert state.data_checked == []
     assert state.mode is None
     assert state.automated_decisions is False
+
+
+def test_to_hidden_fields_emits_new_qualification_and_context_fields_when_set():
+    state = WizardState(
+        version_plan_tarifaire="Plan Plus",
+        nb_utilisateurs_vises="25",
+        fonctions_roles="conseillers",
+        niveau_maitrise_ti="intermédiaire",
+        formation_iag_recue="partielle",
+        acces_protege_a_ou_plus="non",
+        frequence_utilisation="quotidienne",
+        nb_utilisateurs="5",
+        systemes_api_cibles="CRM",
+        besoin_affaires="gagner du temps",
+        gains_qualitatifs="clarté",
+        gains_quantitatifs="2h/semaine",
+        alternatives_considerees="Outil X",
+        urgence_percue="modérée",
+        cout_annuel_par_utilisateur="200$",
+        cout_total_annuel="5000$",
+        mode_acquisition="seao",
+        duree_contrat="1 an",
+        responsable_budgetaire="Direction SI",
+    )
+    fields = state.to_hidden_fields()
+    for name, value in [
+        ("version_plan_tarifaire", "Plan Plus"),
+        ("nb_utilisateurs_vises", "25"),
+        ("fonctions_roles", "conseillers"),
+        ("niveau_maitrise_ti", "intermédiaire"),
+        ("formation_iag_recue", "partielle"),
+        ("acces_protege_a_ou_plus", "non"),
+        ("frequence_utilisation", "quotidienne"),
+        ("nb_utilisateurs", "5"),
+        ("systemes_api_cibles", "CRM"),
+        ("besoin_affaires", "gagner du temps"),
+        ("gains_qualitatifs", "clarté"),
+        ("gains_quantitatifs", "2h/semaine"),
+        ("alternatives_considerees", "Outil X"),
+        ("urgence_percue", "modérée"),
+        ("cout_annuel_par_utilisateur", "200$"),
+        ("cout_total_annuel", "5000$"),
+        ("mode_acquisition", "seao"),
+        ("duree_contrat", "1 an"),
+        ("responsable_budgetaire", "Direction SI"),
+    ]:
+        assert (name, value) in fields
+
+
+def test_from_form_roundtrips_new_qualification_and_context_fields():
+    form = {
+        "version_plan_tarifaire": "Plan Plus",
+        "nb_utilisateurs_vises": "25",
+        "fonctions_roles": "conseillers",
+        "niveau_maitrise_ti": "intermédiaire",
+        "formation_iag_recue": "partielle",
+        "acces_protege_a_ou_plus": "non",
+        "frequence_utilisation": "quotidienne",
+        "nb_utilisateurs": "5",
+        "systemes_api_cibles": "CRM",
+        "besoin_affaires": "gagner du temps",
+        "gains_qualitatifs": "clarté",
+        "gains_quantitatifs": "2h/semaine",
+        "alternatives_considerees": "Outil X",
+        "urgence_percue": "modérée",
+        "cout_annuel_par_utilisateur": "200$",
+        "cout_total_annuel": "5000$",
+        "mode_acquisition": "seao",
+        "duree_contrat": "1 an",
+        "responsable_budgetaire": "Direction SI",
+    }
+    state = WizardState.from_form(form)
+    assert state.version_plan_tarifaire == "Plan Plus"
+    assert state.nb_utilisateurs_vises == "25"
+    assert state.fonctions_roles == "conseillers"
+    assert state.niveau_maitrise_ti == "intermédiaire"
+    assert state.formation_iag_recue == "partielle"
+    assert state.acces_protege_a_ou_plus == "non"
+    assert state.frequence_utilisation == "quotidienne"
+    assert state.nb_utilisateurs == "5"
+    assert state.systemes_api_cibles == "CRM"
+    assert state.besoin_affaires == "gagner du temps"
+    assert state.gains_qualitatifs == "clarté"
+    assert state.gains_quantitatifs == "2h/semaine"
+    assert state.alternatives_considerees == "Outil X"
+    assert state.urgence_percue == "modérée"
+    assert state.cout_annuel_par_utilisateur == "200$"
+    assert state.cout_total_annuel == "5000$"
+    assert state.mode_acquisition == "seao"
+    assert state.duree_contrat == "1 an"
+    assert state.responsable_budgetaire == "Direction SI"
+
+
+def test_from_form_defaults_new_fields_to_empty_string_on_missing_keys():
+    state = WizardState.from_form({})
+    assert state.version_plan_tarifaire == ""
+    assert state.nb_utilisateurs_vises == ""
+    assert state.mode_acquisition == ""
