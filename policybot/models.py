@@ -35,6 +35,10 @@ class ContractFacts(BaseModel):
     human_review: Literal["yes", "no", "unknown"] = "unknown"
     encryption_standard: Literal["strong", "partial", "none", "unknown"] = "unknown"
     ip_ownership: Literal["customer", "vendor", "unclear", "unknown"] = "unknown"
+    applicable_law: Literal["quebec_canada", "foreign", "unknown"] = "unknown"
+    foreign_vendor_dependency: Literal["yes", "no", "unknown"] = "unknown"
+    contract_prohibits_reuse: Literal["yes", "no", "unknown"] = "unknown"
+    reentraining_opt_out: Literal["yes", "no", "unknown"] = "unknown"
     source_url: Optional[str] = None
     fetched_at: Optional[date] = None
     snapshot_ref: Optional[str] = None

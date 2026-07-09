@@ -39,6 +39,10 @@ def test_slide5_chatgpt_protege_b_is_refused_and_report_flags_it(tmp_path):
     assert state.result_global.recommendation == "Refuser"
 
     html = render_html(state)
+    assert "Identification" in html
+    assert "Partie A — Analyse des risques du produit (ARP)" in html
+    assert "Partie B — Évaluation des risques par usage" in html
+    assert "Partie C — Synthèse et décision" in html
     assert "Refuser" in html
     assert "ÉFVP-R requise" in html
     assert "requiert validation et autorisation par l'autorité désignée" in html

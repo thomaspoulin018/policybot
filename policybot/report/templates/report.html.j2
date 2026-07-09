@@ -1,40 +1,100 @@
 <article>
   <h1>Rapport de recommandation — PolicyBot</h1>
+  <p class="disclaimer"><strong>PolicyBot recommande ; il n'autorise pas.</strong>
+     Ce rapport requiert la validation et l'autorisation de l'autorité désignée.</p>
+
   <section>
-    <h2>1. Fiche de qualification</h2>
-    <p><strong>Numéro :</strong> {{ state.request.numero }}</p>
-    <p><strong>Demandeur :</strong> {{ state.request.demandeur }}</p>
-    <p><strong>Unité :</strong> {{ state.request.unite }}</p>
-    <h3>Outils visés</h3>
-    <ul>
-      {% for t in state.tools %}
-      <li>{{ t.name }} — IAG {{ t.iag_type }}</li>
-      {% endfor %}
-    </ul>
+    <h2>Identification</h2>
+    <table>
+      <tr><th>Numéro demande</th><td>{{ state.request.numero }}</td></tr>
+      <tr><th>Numéro grille d'évaluation</th><td></td></tr>
+      <tr><th>Outil évalué</th><td>{% for t in state.tools %}{{ t.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+      <tr><th>Analyste SI</th><td></td></tr>
+      <tr><th>Date</th><td>{{ state.request.date or "" }}</td></tr>
+    </table>
   </section>
+
   <section>
-    <h2>2. Grille — Évaluation par usage (Partie B)</h2>
-    {% for u in state.usages %}
-    <div class="usage">
-      <h3>Usage {{ loop.index }} : {{ u.description }}</h3>
-      <p><strong>Classification :</strong> {{ u.data_classification }}
-         {% if u.needs_officer_confirmation %}⚠ à valider{% endif %}</p>
-      <p><strong>Matrice MCN :</strong> {{ u.matrix_result }}</p>
-      <p><strong>Niveau de risque (proposé) :</strong> {{ u.risk_level }}</p>
-      <p><strong>Recommandation :</strong> {{ u.verdict }}</p>
-      {% if u.efvpr_required %}<p><strong>ÉFVP-R requise.</strong></p>{% endif %}
-      {% if u.conditions %}
-      <p><strong>Conditions :</strong></p>
-      <ul>{% for c in u.conditions %}<li>{{ c }}</li>{% endfor %}</ul>
-      {% endif %}
-    </div>
+    <h2>Partie A — Analyse des risques du produit (ARP)</h2>
+    <p>L'ARP évalue l'outil en tant que produit, indépendamment des usages spécifiques. Elle porte sur la sécurité, la souveraineté et les conditions contractuelles du fournisseur.</p>
+    {% for table in arp_tables %}
+    <h3>Outil : {{ table.tool_name }}</h3>
+    <table class="risk-table">
+      <tr>
+        <th>Critère</th><th>Description / Question d'évaluation</th>
+        <th>Risque inhérent</th><th>Mesures de mitigation</th>
+        <th>Risque résiduel</th><th>Responsable</th><th>Observations / Constats</th>
+      </tr>
+      {% for category, rows in table.groups %}
+      <tr class="category-row"><td colspan="7"><strong>{{ category }}</strong></td></tr>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.criterion }}</td>
+        <td>{{ row.description }}</td>
+        <td>{{ row.inherent or "—" }}</td>
+        <td>{{ row.mitigation }}</td>
+        <td>{{ row.residual or "—" }}</td>
+        <td>{{ row.responsable }}</td>
+        <td>{{ row.observations }}</td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+    </table>
     {% endfor %}
   </section>
+
   <section>
-    <h2>3. Synthèse et décision (Partie C)</h2>
-    <p><strong>Niveau de risque global (proposé) :</strong> {{ state.result_global.risk_level }}</p>
-    <p><strong>Recommandation :</strong> {{ state.result_global.recommendation }}</p>
-    <p><strong>ÉFVP-R requise :</strong> {{ "Oui" if state.result_global.efvpr_required else "Non" }}</p>
+    <h2>Partie B — Évaluation des risques par usage</h2>
+    <p>Une section par usage documenté dans la fiche de qualification. Si des renseignements personnels sont impliqués dans un usage, une ÉFVP-R distincte est requise.</p>
+    {% for table in usage_tables %}
+    <h3>Usage {{ table.index }} : {{ table.usage.description }}</h3>
+    <p>
+      <strong>Classification des données :</strong> {{ table.usage.data_classification }}
+      {% if table.usage.needs_officer_confirmation %}⚠ à valider{% endif %}
+      — <strong>Rens. personnels impliqués :</strong>
+      {{ "Oui → ÉFVP-R requise" if table.usage.rens_personnels else "Non" }}
+    </p>
+    <p><strong>Matrice MCN :</strong> {{ table.usage.matrix_result }}</p>
+    <table class="risk-table">
+      <tr>
+        <th>Critère</th><th>Risque évalué</th>
+        <th>Risque inhérent</th><th>Mesures de mitigation</th>
+        <th>Risque résiduel</th><th>Responsable</th><th>Observations</th>
+      </tr>
+      {% for category, rows in table.groups %}
+      <tr class="category-row"><td colspan="7"><strong>{{ category }}</strong></td></tr>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.criterion }}</td>
+        <td>{{ row.description }}</td>
+        <td>{{ row.inherent or "—" }}</td>
+        <td>{{ row.mitigation }}</td>
+        <td>{{ row.residual or "—" }}</td>
+        <td>{{ row.responsable }}</td>
+        <td>{{ row.observations }}</td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+    </table>
+    {% endfor %}
   </section>
+
+  <section>
+    <h2>Partie C — Synthèse et décision</h2>
+    <table>
+      <tr><th>Niveau de risque global</th><td>{{ state.result_global.risk_level }}</td></tr>
+      <tr><th>ÉFVP-R requise</th><td>{{ "Oui" if state.result_global.efvpr_required else "Non" }}</td></tr>
+      <tr><th>Recommandation préliminaire</th><td>{{ state.result_global.recommendation }}</td></tr>
+      <tr>
+        <th>Conditions / Restrictions proposées</th>
+        <td>
+          {% if state.result_global.conditions %}
+          <ul>{% for c in state.result_global.conditions %}<li>{{ c }}</li>{% endfor %}</ul>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+  </section>
+
   <footer>Recommandation générée par PolicyBot — requiert validation et autorisation par l'autorité désignée.</footer>
 </article>

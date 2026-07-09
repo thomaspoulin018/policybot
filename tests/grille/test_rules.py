@@ -1,6 +1,7 @@
 from policybot.grille.rules import (
     load_rules, evaluate_rules, highest_risk, Rule,
 )
+from policybot.criteria import USAGE_CRITERIA
 
 
 def test_load_rules_returns_nonempty():
@@ -32,3 +33,13 @@ def test_rule_does_not_trigger_when_value_absent():
 def test_highest_risk_picks_worst():
     assert highest_risk(["Faible", "Élevé", "Modéré"]) == "Élevé"
     assert highest_risk([]) == "Faible"
+
+
+def test_rules_tagged_with_usage_criteria_use_exact_names():
+    valid_criteria = {name for _, name, _ in USAGE_CRITERIA}
+    rules = load_rules()
+    tagged = [rule for rule in rules if "criterion" in rule.then]
+    assert tagged
+    for rule in tagged:
+        assert rule.then["criterion"] in valid_criteria
+        assert "category" in rule.then
