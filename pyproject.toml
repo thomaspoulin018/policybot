@@ -15,10 +15,11 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "pyyaml>=6.0",
     "python-multipart>=0.0.9",
+    "tavily-python>=0.5",
 ]
 
 [project.optional-dependencies]
-pdf = ["weasyprint>=60"]
+pdf = ["weasyprint>=60", "reportlab>=4.0"]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [build-system]
@@ -30,3 +31,4 @@ include = ["policybot*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+

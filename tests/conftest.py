@@ -14,3 +14,15 @@ os.environ.setdefault(
     "POLICYBOT_LOG_PATH",
     os.path.join(tempfile.mkdtemp(prefix="policybot-logs-"), "policybot.jsonl"),
 )
+
+# Generated PDFs can contain report details, so tests write them outside the repo.
+os.environ.setdefault(
+    "POLICYBOT_PDF_OUTPUT_DIR",
+    os.path.join(tempfile.mkdtemp(prefix="policybot-output-"), "pdf"),
+)
+
+# Generated Word files can contain report details, so tests write them outside the repo.
+os.environ.setdefault(
+    "POLICYBOT_DOCX_OUTPUT_DIR",
+    os.path.join(tempfile.mkdtemp(prefix="policybot-output-"), "docx"),
+)

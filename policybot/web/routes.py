@@ -2,10 +2,12 @@
 from __future__ import annotations
 import logging
 import os
+import unicodedata
 import uuid
 from datetime import date
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from policybot.classify.tool_registry import lookup_tool
 from policybot.classify.tool_type import classify_tool_type, tool_type_question
@@ -13,9 +15,15 @@ from policybot.interview.questions import data_description_question, usage_detai
 from policybot.models import RequestInfo, QualificationProfile
 from policybot.interview.orchestrator import Interview
 from policybot.preapproved.known_tools import load_known_tools
-from policybot.report.renderer import render_html
+from policybot.report.renderer import (
+    docx_output_dir,
+    pdf_output_dir,
+    render_html,
+    write_docx,
+    write_pdf,
+)
 from policybot.web.ai_assist import guess_mode, guess_tool_type, suggest_options, IAG_TYPE_LABELS, LABEL_TO_IAG_TYPE
-from policybot.web.wizard_state import WizardState, compose_description
+from policybot.web.wizard_state import WizardState, WizardUsageDraft, compose_description, demo_wizard_state
 
 _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
@@ -23,6 +31,41 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+PROFILE_FIELDS = {
+    "nb_utilisateurs_vises", "fonctions_roles", "niveau_maitrise_ti",
+    "formation_iag_recue", "acces_protege_a_ou_plus",
+}
+DATA_FIELDS = {"data_checked", "data_free_text"}
+USAGE_FIELDS = {
+    "usage_description", "mode", "frequence_utilisation",
+    "nb_utilisateurs", "systemes_api_cibles",
+}
+RESULT_FIELDS = {"result_use_checked", "result_use_free_text", "automated_decisions"}
+CONTEXT_FIELDS = {
+    "besoin_affaires", "gains_qualitatifs", "gains_quantitatifs",
+    "alternatives_considerees", "urgence_percue", "cout_annuel_par_utilisateur",
+    "cout_total_annuel", "mode_acquisition", "duree_contrat", "responsable_budgetaire",
+}
+
+
+def _hidden_fields_for(state: WizardState, current_fields: set[str]) -> list[tuple[str, str]]:
+    return [(name, value) for name, value in state.to_hidden_fields() if name not in current_fields]
+
+
+def _iag_type_from_label(label: str) -> str | None:
+    direct = LABEL_TO_IAG_TYPE.get(label)
+    if direct:
+        return direct
+    key = unicodedata.normalize("NFKD", label).encode("ascii", "ignore").decode().lower()
+    if key == "iag publique":
+        return "publique"
+    if key.startswith("iag circuit ferm"):
+        return "circuit_ferme"
+    if key == "iag souveraine":
+        return "souveraine"
+    if key == "iag gouvernementale":
+        return "gouvernementale"
+    return None
 
 def _group_form(form) -> dict:
     grouped: dict[str, object] = {}
@@ -37,7 +80,17 @@ def _group_form(form) -> dict:
 @router.get("/", response_class=HTMLResponse)
 def wizard_home(request: Request):
     return templates.TemplateResponse(request, "wizard_outil.html.j2", {
-        "active_step": "outil", "known_tools": load_known_tools(),
+        "active_step": "outil", "known_tools": load_known_tools(), "state": WizardState(),
+    })
+
+
+@router.post("/wizard/test-prefill", response_class=HTMLResponse)
+def wizard_test_prefill(request: Request):
+    state = demo_wizard_state()
+    return templates.TemplateResponse(request, "wizard_contexte_affaires.html.j2", {
+        "active_step": "contexte_affaires",
+        "hidden_fields": _hidden_fields_for(state, CONTEXT_FIELDS),
+        "state": state,
     })
 
 
@@ -51,7 +104,8 @@ async def wizard_outil(request: Request):
         state = WizardState(tool_name=tool_name, version_plan_tarifaire=version_plan_tarifaire)
         return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
             "active_step": "profil_utilisateurs",
-            "hidden_fields": state.to_hidden_fields(),
+            "hidden_fields": _hidden_fields_for(state, PROFILE_FIELDS),
+            "state": state,
         })
 
     llm = request.app.state.interview.llm
@@ -65,6 +119,7 @@ async def wizard_outil(request: Request):
         "question": tool_type_question(), "tool_name": tool_name,
         "guessed_label": guessed_label,
         "version_plan_tarifaire": version_plan_tarifaire,
+        "state": WizardState(tool_name=tool_name, version_plan_tarifaire=version_plan_tarifaire),
     })
 
 
@@ -73,13 +128,14 @@ async def wizard_outil_type(request: Request):
     form = _group_form(await request.form())
     tool_name = form.get("tool_name", "") or ""
     tool_type_label = form.get("tool_type", "") or ""
-    tool_type_override = LABEL_TO_IAG_TYPE.get(tool_type_label)
+    tool_type_override = _iag_type_from_label(tool_type_label)
     version_plan_tarifaire = form.get("version_plan_tarifaire", "") or ""
     state = WizardState(tool_name=tool_name, tool_type_override=tool_type_override,
                          version_plan_tarifaire=version_plan_tarifaire)
     return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
         "active_step": "profil_utilisateurs",
-        "hidden_fields": state.to_hidden_fields(),
+        "hidden_fields": _hidden_fields_for(state, PROFILE_FIELDS),
+        "state": state,
     })
 
 
@@ -89,7 +145,8 @@ async def wizard_profil_utilisateurs_submit(request: Request):
     state = WizardState.from_form(form)
     return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
         "active_step": "donnees",
-        "hidden_fields": state.to_hidden_fields(),
+        "hidden_fields": _hidden_fields_for(state, DATA_FIELDS),
+        "state": state,
         "question": data_description_question(),
     })
 
@@ -100,7 +157,9 @@ async def wizard_donnees(request: Request):
     state = WizardState.from_form(form)
     return templates.TemplateResponse(request, "wizard_usage.html.j2", {
         "active_step": "usage",
-        "hidden_fields": state.to_hidden_fields(),
+        "hidden_fields": _hidden_fields_for(state, USAGE_FIELDS),
+        "state": state,
+        "usage_number": len(state.saved_usages) + 1,
     })
 
 
@@ -158,8 +217,10 @@ async def wizard_usage_submit(request: Request):
     state = WizardState.from_form(form)
     return templates.TemplateResponse(request, "wizard_resultats.html.j2", {
         "active_step": "resultats",
-        "hidden_fields": state.to_hidden_fields(),
+        "hidden_fields": _hidden_fields_for(state, RESULT_FIELDS),
+        "state": state,
         "question": usage_details_question(),
+        "usage_number": len(state.saved_usages) + 1,
     })
 
 
@@ -167,9 +228,19 @@ async def wizard_usage_submit(request: Request):
 async def wizard_resultats_submit(request: Request):
     form = _group_form(await request.form())
     state = WizardState.from_form(form)
+    if form.get("usage_action") == "add_usage":
+        state = state.with_current_usage_saved().cleared_current_usage()
+        return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
+            "active_step": "donnees",
+            "hidden_fields": _hidden_fields_for(state, DATA_FIELDS),
+            "state": state,
+            "question": data_description_question(),
+            "usage_number": len(state.saved_usages) + 1,
+        })
     return templates.TemplateResponse(request, "wizard_contexte_affaires.html.j2", {
         "active_step": "contexte_affaires",
-        "hidden_fields": state.to_hidden_fields(),
+        "hidden_fields": _hidden_fields_for(state, CONTEXT_FIELDS),
+        "state": state,
     })
 
 
@@ -180,24 +251,33 @@ def _as_int(value: str) -> int | None:
         return None
 
 
+def _usage_input_from_draft(draft: WizardUsageDraft) -> dict:
+    result_use = list(draft.result_use_checked)
+    if draft.result_use_free_text:
+        result_use.append(draft.result_use_free_text)
+    return {
+        "description": draft.usage_description,
+        "data_description": compose_description(draft.data_checked, draft.data_free_text),
+        "automated_decisions": draft.automated_decisions,
+        "mode": [draft.mode] if draft.mode else ["prompt"],
+        "result_use": result_use,
+        "frequence_utilisation": draft.frequence_utilisation,
+        "nb_utilisateurs": _as_int(draft.nb_utilisateurs),
+        "systemes_api_cibles": draft.systemes_api_cibles,
+    }
+
+
+def _usage_inputs_from_state(state: WizardState) -> list[dict]:
+    usage_inputs = [_usage_input_from_draft(draft) for draft in state.saved_usages]
+    if state.has_current_usage():
+        usage_inputs.append(_usage_input_from_draft(state.current_usage_draft()))
+    return usage_inputs
+
 @router.post("/wizard/contexte-affaires", response_class=HTMLResponse)
 async def wizard_contexte_affaires_submit(request: Request):
     form = _group_form(await request.form())
     state = WizardState.from_form(form)
-    description = compose_description(state.data_checked, state.data_free_text)
-    result_use = list(state.result_use_checked)
-    if state.result_use_free_text:
-        result_use.append(state.result_use_free_text)
-    usage_input = {
-        "description": state.usage_description,
-        "data_description": description,
-        "automated_decisions": state.automated_decisions,
-        "mode": [state.mode] if state.mode else ["prompt"],
-        "result_use": result_use,
-        "frequence_utilisation": state.frequence_utilisation,
-        "nb_utilisateurs": _as_int(state.nb_utilisateurs),
-        "systemes_api_cibles": state.systemes_api_cibles,
-    }
+    usage_inputs = _usage_inputs_from_state(state)
     qualification = QualificationProfile(
         nb_utilisateurs_vises=_as_int(state.nb_utilisateurs_vises),
         fonctions_roles=state.fonctions_roles,
@@ -221,7 +301,7 @@ async def wizard_contexte_affaires_submit(request: Request):
         result_state = itv.assess(
             request=RequestInfo(numero=numero),
             tool_name=state.tool_name,
-            usage_inputs=[usage_input],
+            usage_inputs=usage_inputs,
             iag_type_override=state.tool_type_override,
             qualification=qualification,
             tool_version_plan_tarifaire=state.version_plan_tarifaire,
@@ -232,6 +312,58 @@ async def wizard_contexte_affaires_submit(request: Request):
             "active_step": "contexte_affaires",
         }, status_code=502)
     report_html = render_html(result_state)
+    pdf_path = None
+    pdf_error = None
+    docx_path = None
+    docx_error = None
+    try:
+        pdf_path = write_pdf(result_state)
+    except Exception as exc:
+        logger.warning("PDF export failed for numero=%s", numero, exc_info=True)
+        pdf_error = str(exc)
+    try:
+        docx_path = write_docx(result_state)
+    except Exception as exc:
+        logger.warning("DOCX export failed for numero=%s", numero, exc_info=True)
+        docx_error = str(exc)
     return templates.TemplateResponse(request, "resultat.html.j2", {
-        "active_step": "resultat", "report_html": report_html,
+        "active_step": "resultat",
+        "report_html": report_html,
+        "pdf_filename": pdf_path.name if pdf_path else None,
+        "pdf_error": pdf_error,
+        "docx_filename": docx_path.name if docx_path else None,
+        "docx_error": docx_error,
     })
+
+
+@router.get("/output/pdf/{filename}")
+def download_result_pdf(filename: str):
+    if Path(filename).name != filename or not filename.endswith(".pdf"):
+        raise HTTPException(status_code=404)
+    directory = pdf_output_dir().resolve()
+    path = (directory / filename).resolve()
+    try:
+        path.relative_to(directory)
+    except ValueError:
+        raise HTTPException(status_code=404) from None
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(path, media_type="application/pdf", filename=filename)
+
+@router.get("/output/docx/{filename}")
+def download_result_docx(filename: str):
+    if Path(filename).name != filename or not filename.endswith(".docx"):
+        raise HTTPException(status_code=404)
+    directory = docx_output_dir().resolve()
+    path = (directory / filename).resolve()
+    try:
+        path.relative_to(directory)
+    except ValueError:
+        raise HTTPException(status_code=404) from None
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(
+        path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=filename,
+    )

@@ -1,6 +1,12 @@
 import pytest
+from pydantic import BaseModel
+
 from policybot.llm.fake import FakeLLMProvider
 from policybot.llm.provider import LLMProvider
+
+
+class StructuredAnswer(BaseModel):
+    a: int
 
 
 def test_fake_is_a_provider():
@@ -12,6 +18,12 @@ def test_fake_returns_queued_json_and_records_calls():
     assert fake.complete_json("sys", "u1") == {"a": 1}
     assert fake.complete_json("sys", "u2") == {"b": 2}
     assert fake.calls == [("sys", "u1"), ("sys", "u2")]
+
+
+def test_fake_complete_structured_validates_model_and_records_call():
+    fake = FakeLLMProvider(json_responses=[{"a": 1}])
+    assert fake.complete_structured("sys", "u1", StructuredAnswer) == StructuredAnswer(a=1)
+    assert fake.calls == [("sys", "u1")]
 
 
 def test_fake_json_exhausted_raises():

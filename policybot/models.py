@@ -39,6 +39,15 @@ class ContractFacts(BaseModel):
     foreign_vendor_dependency: Literal["yes", "no", "unknown"] = "unknown"
     contract_prohibits_reuse: Literal["yes", "no", "unknown"] = "unknown"
     reentraining_opt_out: Literal["yes", "no", "unknown"] = "unknown"
+    authentication_support: Literal["sso_mfa", "partial", "none", "unknown"] = "unknown"
+    audit_logging: Literal[
+        "prompt_output_accessible", "access_logs_only", "none", "unknown"
+    ] = "unknown"
+    institutional_terms: Literal["acceptable", "problematic", "unknown"] = "unknown"
+    quebec_higher_ed_license: Literal["yes", "no", "unknown"] = "unknown"
+    incident_response: Literal[
+        "documented_with_notice", "documented_no_notice", "none", "unknown"
+    ] = "unknown"
     source_url: Optional[str] = None
     fetched_at: Optional[date] = None
     snapshot_ref: Optional[str] = None
@@ -62,6 +71,7 @@ class ArpRecord(BaseModel):
     iag_type: IagType
     contract_facts: ContractFacts
     criteria: list[RiskFactor] = Field(default_factory=list)
+    schema_version: int = 1
     terms_snapshot: Optional[str] = None
     fetched_at: Optional[date] = None
     expires_at: Optional[date] = None

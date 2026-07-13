@@ -1,5 +1,5 @@
 import pytest
-from policybot.models import RequestInfo, QualificationProfile
+from policybot.models import ArpRecord, ContractFacts, RequestInfo, QualificationProfile
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
@@ -99,6 +99,36 @@ def test_assess_reuses_cached_arp_record_on_second_call(tmp_path):
                         usage_inputs=usage_inputs)
     assert state2.tools[0].arp is not None
 
+
+def test_assess_refreshes_stale_cached_arp_record(tmp_path):
+    llm = FakeLLMProvider(json_responses=[
+        {"already_public": True, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": False,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+        {"trains_on_input": "no", "data_retention": "none", "data_residency": "canada",
+         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+    ])
+    store = PreApprovedStore(str(tmp_path / "pb.db"))
+    store.save_arp(ArpRecord(
+        tool_name="ChatGPT",
+        iag_type="publique",
+        contract_facts=ContractFacts(trains_on_input="yes"),
+        schema_version=1,
+    ))
+    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+
+    state = itv.assess(
+        request=RequestInfo(numero="IAG-2026-STALE"),
+        tool_name="ChatGPT",
+        usage_inputs=[{"description": "Chercher de l'info publique",
+                       "data_description": "information publique sur le web",
+                       "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
+    )
+
+    assert state.tools[0].arp is not None
+    assert state.tools[0].arp.schema_version == 2
+    assert state.tools[0].arp.contract_facts.trains_on_input == "no"
+    assert store.get_arp("ChatGPT").schema_version == 2
 
 def test_unregistered_tool_without_override_raises_unknown_tool_error(tmp_path):
     llm = FakeLLMProvider(json_responses=[])

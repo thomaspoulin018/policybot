@@ -1,7 +1,21 @@
 from __future__ import annotations
+import json
 from typing import Literal
 from pydantic import BaseModel, Field
 from policybot.models import IagType
+
+
+class WizardUsageDraft(BaseModel):
+    data_checked: list[str] = Field(default_factory=list)
+    data_free_text: str = ""
+    usage_description: str = ""
+    mode: Literal["prompt", "api"] | None = None
+    frequence_utilisation: str = ""
+    nb_utilisateurs: str = ""
+    systemes_api_cibles: str = ""
+    result_use_checked: list[str] = Field(default_factory=list)
+    result_use_free_text: str = ""
+    automated_decisions: bool = False
 
 
 class WizardState(BaseModel):
@@ -33,6 +47,7 @@ class WizardState(BaseModel):
     mode_acquisition: str = ""
     duree_contrat: str = ""
     responsable_budgetaire: str = ""
+    saved_usages: list[WizardUsageDraft] = Field(default_factory=list)
 
     def to_hidden_fields(self) -> list[tuple[str, str]]:
         fields: list[tuple[str, str]] = []
@@ -92,6 +107,11 @@ class WizardState(BaseModel):
             fields.append(("duree_contrat", self.duree_contrat))
         if self.responsable_budgetaire:
             fields.append(("responsable_budgetaire", self.responsable_budgetaire))
+        if self.saved_usages:
+            fields.append((
+                "saved_usages_json",
+                json.dumps([usage.model_dump() for usage in self.saved_usages], ensure_ascii=False),
+            ))
         return fields
 
     @classmethod
@@ -101,6 +121,16 @@ class WizardState(BaseModel):
             if isinstance(value, list):
                 return value
             return [value] if value else []
+
+        saved_usages = []
+        saved_usages_json = form.get("saved_usages_json", "") or ""
+        if saved_usages_json:
+            try:
+                parsed = json.loads(saved_usages_json)
+                if isinstance(parsed, list):
+                    saved_usages = [WizardUsageDraft(**item) for item in parsed if isinstance(item, dict)]
+            except (TypeError, ValueError):
+                saved_usages = []
 
         return cls(
             tool_name=form.get("tool_name", "") or "",
@@ -131,9 +161,94 @@ class WizardState(BaseModel):
             mode_acquisition=form.get("mode_acquisition", "") or "",
             duree_contrat=form.get("duree_contrat", "") or "",
             responsable_budgetaire=form.get("responsable_budgetaire", "") or "",
+            saved_usages=saved_usages,
         )
+
+    def current_usage_draft(self) -> WizardUsageDraft:
+        return WizardUsageDraft(
+            data_checked=list(self.data_checked),
+            data_free_text=self.data_free_text,
+            usage_description=self.usage_description,
+            mode=self.mode,
+            frequence_utilisation=self.frequence_utilisation,
+            nb_utilisateurs=self.nb_utilisateurs,
+            systemes_api_cibles=self.systemes_api_cibles,
+            result_use_checked=list(self.result_use_checked),
+            result_use_free_text=self.result_use_free_text,
+            automated_decisions=self.automated_decisions,
+        )
+
+    def has_current_usage(self) -> bool:
+        current = self.current_usage_draft()
+        return any((
+            current.data_checked,
+            current.data_free_text,
+            current.usage_description,
+            current.mode,
+            current.frequence_utilisation,
+            current.nb_utilisateurs,
+            current.systemes_api_cibles,
+            current.result_use_checked,
+            current.result_use_free_text,
+            current.automated_decisions,
+        ))
+
+    def with_current_usage_saved(self) -> "WizardState":
+        if not self.has_current_usage():
+            return self
+        state = self.model_copy(deep=True)
+        state.saved_usages.append(self.current_usage_draft())
+        return state
+
+    def cleared_current_usage(self) -> "WizardState":
+        state = self.model_copy(deep=True)
+        state.data_checked = []
+        state.data_free_text = ""
+        state.usage_description = ""
+        state.mode = None
+        state.frequence_utilisation = ""
+        state.nb_utilisateurs = ""
+        state.systemes_api_cibles = ""
+        state.result_use_checked = []
+        state.result_use_free_text = ""
+        state.automated_decisions = False
+        return state
 
 
 def compose_description(checked_labels: list[str], free_text: str) -> str:
     parts = list(checked_labels) + ([free_text] if free_text else [])
     return "; ".join(parts)
+
+def demo_wizard_state() -> WizardState:
+    return WizardState(
+        tool_name="ChatGPT",
+        version_plan_tarifaire="Plan Plus",
+        nb_utilisateurs_vises="25",
+        fonctions_roles="conseillers pédagogiques et agents administratifs",
+        niveau_maitrise_ti="intermédiaire",
+        formation_iag_recue="partielle",
+        acces_protege_a_ou_plus="non",
+        data_checked=["Information déjà publique", "Documents internes de travail"],
+        data_free_text="articles publics, notes de travail non sensibles",
+        usage_description="Résumer des documents publics et préparer des brouillons de réponses internes.",
+        mode="prompt",
+        frequence_utilisation="quelques fois par semaine",
+        nb_utilisateurs="8",
+        systemes_api_cibles="aucun système cible pour ce test",
+        result_use_checked=["Aide à la rédaction / diffusion interne"],
+        result_use_free_text="validation humaine avant toute diffusion",
+        automated_decisions=False,
+        besoin_affaires="réduire le temps de préparation des réponses récurrentes",
+        gains_qualitatifs="meilleure cohérence des brouillons et démarrage plus rapide",
+        gains_quantitatifs="environ 3 heures économisées par semaine",
+        alternatives_considerees="gabarits Word existants et recherche manuelle",
+        urgence_percue="modérée",
+        cout_annuel_par_utilisateur="300 $",
+        cout_total_annuel="2400 $",
+        mode_acquisition="achat_direct",
+        duree_contrat="12 mois",
+        responsable_budgetaire="Direction des services administratifs",
+    )
+
+
+

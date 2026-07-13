@@ -160,3 +160,22 @@ def test_from_form_defaults_new_fields_to_empty_string_on_missing_keys():
     assert state.version_plan_tarifaire == ""
     assert state.nb_utilisateurs_vises == ""
     assert state.mode_acquisition == ""
+
+
+def test_saved_usages_roundtrip_through_hidden_json():
+    state = WizardState(
+        tool_name="ChatGPT",
+        data_checked=["Info publique"],
+        usage_description="Premier usage",
+        mode="prompt",
+        result_use_checked=["Publication"],
+    ).with_current_usage_saved().cleared_current_usage()
+
+    fields = state.to_hidden_fields()
+    saved_json = next(value for name, value in fields if name == "saved_usages_json")
+    restored = WizardState.from_form({"saved_usages_json": saved_json})
+
+    assert len(restored.saved_usages) == 1
+    assert restored.saved_usages[0].usage_description == "Premier usage"
+    assert restored.saved_usages[0].data_checked == ["Info publique"]
+    assert restored.usage_description == ""

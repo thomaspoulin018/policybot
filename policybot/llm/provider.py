@@ -1,4 +1,10 @@
 from abc import ABC, abstractmethod
+from typing import TypeVar
+
+from pydantic import BaseModel
+
+
+StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 
 
 class LLMProvider(ABC):
@@ -11,6 +17,13 @@ class LLMProvider(ABC):
         `run_name` and `tags` are optional LangSmith trace annotations; providers
         that don't trace ignore them.
         """
+
+    @abstractmethod
+    def complete_structured(self, system: str, user: str,
+                            schema: type[StructuredModel], *,
+                            run_name: str | None = None,
+                            tags: list[str] | None = None) -> StructuredModel:
+        """Return a pydantic model produced through structured output."""
 
     @abstractmethod
     def draft_text(self, system: str, user: str, *,

@@ -1,4 +1,5 @@
 from datetime import date
+import pytest
 from policybot.llm.fake import FakeLLMProvider
 from policybot.contract.fetcher import FetchedTerms
 from policybot.contract.arp import extract_contract_facts, build_arp
@@ -21,6 +22,49 @@ def test_extract_maps_llm_output_to_contractfacts():
     assert facts.extraction_confidence == 0.8
 
 
+
+def test_extract_rejects_empty_llm_output():
+    llm = FakeLLMProvider(json_responses=[{}])
+
+    with pytest.raises(ValueError, match="no contract fact fields"):
+        extract_contract_facts(_terms(), llm)
+
+
+def test_extract_prompt_lists_required_contract_fields():
+    llm = FakeLLMProvider(json_responses=[{"trains_on_input": "yes"}])
+
+    extract_contract_facts(_terms(), llm)
+
+    _, user_prompt = llm.calls[0]
+    assert "Required JSON keys" in user_prompt
+    assert "trains_on_input: yes | no | opt_out_available | unknown" in user_prompt
+    assert "reentraining_opt_out: yes | no | unknown" in user_prompt
+    assert "authentication_support: sso_mfa | partial | none | unknown" in user_prompt
+    assert "audit_logging: prompt_output_accessible | access_logs_only | none | unknown" in user_prompt
+    assert "quebec_higher_ed_license: yes | no | unknown" in user_prompt
+    assert "incident_response: documented_with_notice | documented_no_notice | none | unknown" in user_prompt
+
+
+def test_extract_prompt_includes_relevant_late_evidence():
+    late_terms = FetchedTerms(
+        text=(
+            "Source extraite Tavily\nURL: https://example.test/first\n"
+            + "navigation only " * 1200
+            + "\n\n---\n\n"
+            + "Source extraite Tavily\nURL: https://example.test/terms\n"
+            + "The governing law is the laws of California."
+        ),
+        source_url="https://example.test/first",
+        fetched_at=date.today(),
+    )
+    llm = FakeLLMProvider(json_responses=[{"applicable_law": "foreign"}])
+
+    extract_contract_facts(late_terms, llm)
+
+    _, user_prompt = llm.calls[0]
+    assert "governing law is the laws of California" in user_prompt
+
+
 def test_build_arp_flags_training_as_high_risk():
     from policybot.models import ContractFacts
     arp = build_arp("ChatGPT", "publique", ContractFacts(trains_on_input="yes"))
@@ -28,6 +72,7 @@ def test_build_arp_flags_training_as_high_risk():
     assert training and training[0].inherent == "E"
     assert all(c.origin == "rule" for c in arp.criteria)
     assert arp.iag_type == "publique"
+    assert arp.schema_version == 2
 
 
 def test_extract_maps_encryption_and_ip_fields():
@@ -54,6 +99,24 @@ def test_extract_maps_new_sovereignty_and_security_fields():
     assert facts.contract_prohibits_reuse == "no"
     assert facts.reentraining_opt_out == "no"
 
+
+def test_extract_maps_institutional_security_fields():
+    llm = FakeLLMProvider(json_responses=[{
+        "authentication_support": "sso_mfa",
+        "audit_logging": "prompt_output_accessible",
+        "institutional_terms": "acceptable",
+        "quebec_higher_ed_license": "yes",
+        "incident_response": "documented_with_notice",
+        "extraction_confidence": 0.75,
+    }])
+
+    facts = extract_contract_facts(_terms(), llm)
+
+    assert facts.authentication_support == "sso_mfa"
+    assert facts.audit_logging == "prompt_output_accessible"
+    assert facts.institutional_terms == "acceptable"
+    assert facts.quebec_higher_ed_license == "yes"
+    assert facts.incident_response == "documented_with_notice"
 
 def test_build_arp_generates_eight_criteria_rows():
     from policybot.models import ContractFacts

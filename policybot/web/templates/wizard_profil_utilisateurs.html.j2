@@ -1,39 +1,112 @@
 {# policybot/web/templates/wizard_profil_utilisateurs.html.j2 #}
 {% extends "_layout.html.j2" %}
 {% block content %}
-<div class="kicker">Étape 2 · Profil utilisateurs</div>
-<h1>Qui va utiliser cet outil&nbsp;?</h1>
-<div class="assist"><img src="/static/friendly.png" alt=""> Ces informations aident à évaluer les risques liés aux personnes qui utiliseront l'outil.</div>
-<form method="post" action="/wizard/profil-utilisateurs">
+<div class="kicker">&Eacute;tape 2 &middot; Profil utilisateurs</div>
+<h1>Qui utilisera cet outil&nbsp;?</h1>
+<div class="assist"><img src="/static/friendly.png" alt=""> On pr&eacute;cise ici &agrave; qui l'outil s'adresse pour mieux estimer le niveau d'accompagnement requis.</div>
+<form class="profile-form" method="post" action="/wizard/profil-utilisateurs">
   {% for name, value in hidden_fields %}
-  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  <input type="hidden" name="{{ name }}" value="{{ value|e }}">
   {% endfor %}
-  <label class="freefield">
-    Nombre d'utilisateurs visés :
-    <input type="number" name="nb_utilisateurs_vises" min="0">
-  </label>
-  <label class="freefield">
-    Fonctions / rôles concernés :
-    <input type="text" name="fonctions_roles" placeholder="ex. agents de bureau, conseillers pédagogiques">
-  </label>
-  <div class="grid">
-    <label class="opt"><div class="top"><input type="radio" name="niveau_maitrise_ti" value="débutant"></div><b>Débutant</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="niveau_maitrise_ti" value="intermédiaire"></div><b>Intermédiaire</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="niveau_maitrise_ti" value="avancé"></div><b>Avancé</b></label>
-  </div>
-  <div class="grid">
-    <label class="opt"><div class="top"><input type="radio" name="formation_iag_recue" value="aucune"></div><b>Aucune formation IAG reçue</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="formation_iag_recue" value="partielle"></div><b>Formation partielle</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="formation_iag_recue" value="complète"></div><b>Formation complète (MCN)</b></label>
-  </div>
-  <div class="grid">
-    <label class="opt"><div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="oui"></div><b>Accès à Protégé A+ : Oui</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="non"></div><b>Accès à Protégé A+ : Non</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="à vérifier"></div><b>À vérifier</b></label>
-  </div>
+
+  <section class="section-card intro-panel">
+    <p class="section-copy">Renseigne d'abord le groupe vis&eacute;, puis choisis l'option qui ressemble le plus &agrave; la r&eacute;alit&eacute; de l'&eacute;quipe.</p>
+    <div class="field-row">
+      <label class="freefield">
+        Nombre d'utilisateurs vis&eacute;s
+        <input type="number" name="nb_utilisateurs_vises" min="0" placeholder="ex. 25">
+      </label>
+      <label class="freefield">
+        Fonctions / r&ocirc;les concern&eacute;s
+        <input type="text" name="fonctions_roles" placeholder="ex. agents de bureau, conseillers p&eacute;dagogiques">
+      </label>
+    </div>
+  </section>
+
+  <section class="section-card">
+    <div class="section-head">
+      <span class="section-step">1</span>
+      <div>
+        <h2>Niveau de ma&icirc;trise num&eacute;rique</h2>
+        <p>&Eacute;value le niveau technique habituel des personnes qui utiliseront l'outil.</p>
+      </div>
+    </div>
+    <div class="option-grid option-grid-3">
+      <label class="opt">
+        <div class="top"><input type="radio" name="niveau_maitrise_ti" value="débutant"></div>
+        <strong>D&eacute;butant</strong>
+        <small>Peu &agrave; l'aise avec les outils num&eacute;riques ou besoin d'un guidage serr&eacute;.</small>
+      </label>
+      <label class="opt">
+        <div class="top"><input type="radio" name="niveau_maitrise_ti" value="intermédiaire"></div>
+        <strong>Interm&eacute;diaire</strong>
+        <small>Utilise d&eacute;j&agrave; des outils num&eacute;riques au quotidien avec une autonomie correcte.</small>
+      </label>
+      <label class="opt">
+        <div class="top"><input type="radio" name="niveau_maitrise_ti" value="avancé"></div>
+        <strong>Avanc&eacute;</strong>
+        <small>&Agrave; l'aise avec les outils complexes, les param&eacute;trages et les usages plus pouss&eacute;s.</small>
+      </label>
+    </div>
+  </section>
+
+  <section class="section-card">
+    <div class="section-head">
+      <span class="section-step">2</span>
+      <div>
+        <h2>Formation en IAG re&ccedil;ue</h2>
+        <p>Pr&eacute;cise le niveau de sensibilisation ou de formation d&eacute;j&agrave; re&ccedil;u sur l'IA g&eacute;n&eacute;rative.</p>
+      </div>
+    </div>
+    <div class="option-grid option-grid-3">
+      <label class="opt">
+        <div class="top"><input type="radio" name="formation_iag_recue" value="aucune"></div>
+        <strong>Aucune</strong>
+        <small>Aucune formation formelle ou rappel sur les bonnes pratiques.</small>
+      </label>
+      <label class="opt">
+        <div class="top"><input type="radio" name="formation_iag_recue" value="partielle"></div>
+        <strong>Partielle</strong>
+        <small>Quelques notions vues, mais pas encore un parcours complet.</small>
+      </label>
+      <label class="opt">
+        <div class="top"><input type="radio" name="formation_iag_recue" value="complète"></div>
+        <strong>Compl&egrave;te (MCN)</strong>
+        <small>Le groupe a d&eacute;j&agrave; suivi la formation compl&egrave;te pr&eacute;vue par l'organisation.</small>
+      </label>
+    </div>
+  </section>
+
+  <section class="section-card">
+    <div class="section-head">
+      <span class="section-step">3</span>
+      <div>
+        <h2>Acc&egrave;s &agrave; de l'information Prot&eacute;g&eacute; A ou plus</h2>
+        <p>Indique si les personnes vis&eacute;es manipulent habituellement des informations sensibles.</p>
+      </div>
+    </div>
+    <div class="option-grid option-grid-3">
+      <label class="opt">
+        <div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="oui"></div>
+        <strong>Oui</strong>
+        <small>Le groupe a acc&egrave;s &agrave; de l'information Prot&eacute;g&eacute; A, B ou plus.</small>
+      </label>
+      <label class="opt">
+        <div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="non"></div>
+        <strong>Non</strong>
+        <small>Le groupe ne manipule pas ce niveau d'information dans son travail courant.</small>
+      </label>
+      <label class="opt">
+        <div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="à vérifier"></div>
+        <strong>&Agrave; v&eacute;rifier</strong>
+        <small>L'information n'est pas confirm&eacute;e pour l'instant.</small>
+      </label>
+    </div>
+  </section>
+
   <div class="foot">
-    <button class="back" type="button" onclick="history.back()">← Retour</button>
-    <button class="next" type="submit">Continuer →</button>
+    <button class="back" type="button" onclick="history.back()">&larr; Retour</button>
+    <button class="next" type="submit">Continuer &rarr;</button>
   </div>
 </form>
 {% endblock %}

@@ -92,8 +92,9 @@ For one tool + one or more usages, the pipeline (`Interview.assess`) runs:
    `Autoriser_avec_conditions`; otherwise `Autoriser`).
 7. **Render the report.** An HTML template mirrors the two official forms
    (Fiche de qualification, then Grille Partie A/B/C), with the
-   "recommendation, not authorization" disclaimer on every page. An optional
-   WeasyPrint wrapper turns that HTML into a PDF.
+   "recommendation, not authorization" disclaimer on every page. With the
+   `pdf` extra installed, the app writes a styled PDF copy to `output/pdf/`.
+   It also fills the official Word qualification fiche and saves it to `output/docx/`.
 
 ### The MCN permission matrix (hard gate)
 
@@ -126,7 +127,7 @@ policybot/
   interview/      questions.py (QuestionSpec builders), orchestrator.py
                   (Interview.assess — the pipeline above)
   report/         templates/report.html.j2 + renderer.py (render_html,
-                  optional html_to_pdf via WeasyPrint)
+                  PDF export to output/pdf and filled Word fiche to output/docx)
 tests/            mirrors the package layout; fixtures under tests/*/fixtures
 docs/superpowers/ design spec + implementation plan (source of truth for intent)
 ```
@@ -255,7 +256,7 @@ TDD tasks. **All 16 are complete** on this branch, with 64 passing tests:
 |---|---|
 | ✅ | 1–6: scaffolding, domain models, matrix, rule engine, per-usage grille engine, LLM provider (+fake +OpenRouter) |
 | ✅ | 7–9: data classifier, tool-type classifier + registry, terms fetcher |
-| ✅ | 10–12: ARP extractor, SQLite pre-approved store, HTML report renderer (+ optional PDF) |
+| ✅ | 10–12: ARP extractor, SQLite pre-approved store, HTML report renderer (+ optional PDF + filled Word fiche) |
 | ✅ | 13: interview orchestrator (`Interview.assess`) — full deterministic pipeline |
 | ✅ | 14: LangGraph state machine wrapping the orchestrator (`policybot/interview/graph.py`) |
 | ✅ | 15: FastAPI app exposing `POST /assess` and `POST /report` (`policybot/api/app.py`) |

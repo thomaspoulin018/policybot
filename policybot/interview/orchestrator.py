@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from typing import Callable, Optional
 from policybot.models import (
     InterviewState, RequestInfo, ToolRef, Usage, ContractFacts, IagType,
@@ -9,8 +10,8 @@ from policybot.preapproved.store import PreApprovedStore
 from policybot.classify.data_classifier import classify_data
 from policybot.classify.tool_type import classify_tool_type
 from policybot.classify.tool_registry import lookup_tool
-from policybot.contract.fetcher import fetch_terms
-from policybot.contract.arp import extract_contract_facts, build_arp
+from policybot.contract.fetcher import FetchedTerms, fetch_terms
+from policybot.contract.arp import CURRENT_ARP_SCHEMA_VERSION, extract_contract_facts, build_arp
 from policybot.grille.engine import evaluate_usage, synthesize
 from policybot.tracing import trace_step, mask_text
 import uuid
@@ -34,10 +35,12 @@ class UnknownToolError(ValueError):
 
 class Interview:
     def __init__(self, llm: LLMProvider, store: PreApprovedStore,
-                 http_get: Optional[Callable[[str], str]] = None):
+                 http_get: Optional[Callable[[str], str]] = None,
+                 tavily_search: Optional[Callable[[str], FetchedTerms | None]] = None):
         self._llm = llm
         self._store = store
         self._http_get = http_get
+        self._tavily_search = tavily_search
 
     @property
     def llm(self) -> LLMProvider:
@@ -46,12 +49,27 @@ class Interview:
     def _resolve_arp(self, tool_name: str, iag_type: IagType) -> ArpRecord:
         with trace_step(None, "resolve_arp", tool_name=tool_name) as extra:
             cached = self._store.get_arp(tool_name)
-            if cached:
+            if cached and cached.schema_version >= CURRENT_ARP_SCHEMA_VERSION:
                 extra["cache"] = "hit"
                 return cached
-            extra["cache"] = "miss"
+            if cached:
+                extra["cache"] = "stale"
+                extra["cached_schema_version"] = cached.schema_version
+            else:
+                extra["cache"] = "miss"
             with trace_step(None, "resolve_arp_fetch", tool_name=tool_name) as fetch_extra:
-                terms = fetch_terms(tool_name, http_get=self._http_get)
+                terms = None
+                if self._tavily_search is not None:
+                    terms = self._tavily_search(tool_name)
+                    fetch_extra["source"] = "tavily"
+                elif os.environ.get("POLICYBOT_CONTRACT_SEARCH", "").strip().lower() == "tavily":
+                    from policybot.contract.tavily import search_contract_terms_with_tavily
+
+                    terms = search_contract_terms_with_tavily(tool_name)
+                    fetch_extra["source"] = "tavily" if terms is not None else "tavily_miss"
+                if terms is None:
+                    terms = fetch_terms(tool_name, http_get=self._http_get)
+                    fetch_extra.setdefault("source", "direct_terms")
                 fetch_extra["found"] = terms is not None
                 if terms is None:
                     facts = ContractFacts()  # manual-paste fallback handled by the UI layer
@@ -84,7 +102,7 @@ class Interview:
             ))
 
             # Classify each usage's data description first, then resolve (and cache)
-            # the tool's contract facts once — this fixes the LLM call order to
+            # the tool's contract facts once - this fixes the LLM call order to
             # (1) data classifier signals per usage, (2) ARP contract facts.
             classifications = []
             for i, item in enumerate(usage_inputs):
@@ -108,6 +126,7 @@ class Interview:
                 usage = Usage(
                     description=item.get("description", ""),
                     tool_ref=tool_name,
+                    raw_answers={"data_description": item.get("data_description", "")},
                     data_classification=classification.data_classification,
                     rens_personnels=classification.rens_personnels,
                     classifier_confidence=classification.confidence,

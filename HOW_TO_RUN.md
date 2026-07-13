@@ -15,11 +15,13 @@ et l'architecture, voir [`README.md`](README.md).
 pip install -e ".[dev]"
 ```
 
-Ajoute l'extra `pdf` si tu as besoin de générer des PDF (WeasyPrint) :
+Ajoute l'extra `pdf` pour que chaque resultat genere aussi un PDF dans `output/pdf/` :
 
 ```bash
 pip install -e ".[dev,pdf]"
 ```
+
+Les dossiers `output/pdf/` et `output/docx/` sont crees automatiquement. Tu peux changer leurs destinations avec `POLICYBOT_PDF_OUTPUT_DIR` et `POLICYBOT_DOCX_OUTPUT_DIR`.
 
 ## 2. Configurer les variables d'environnement (optionnel)
 
@@ -34,6 +36,29 @@ Sans `OPENROUTER_API_KEY`, PolicyBot utilise automatiquement le
 `FakeLLMProvider` (pas d'appel réseau). Le `.env` est chargé automatiquement au
 démarrage et n'est jamais lu sous `pytest`.
 
+
+### Recherche contractuelle Tavily
+
+Pour utiliser Tavily comme source de recherche des faits contractuels ARP, ajoute ces variables dans `.env` :
+
+```bash
+TAVILY_API_KEY=<ta cle Tavily>
+POLICYBOT_CONTRACT_SEARCH=tavily
+```
+
+Au premier passage d'un outil, PolicyBot genere automatiquement `configs/tavily_contracts/<outil>.yaml`. Ce YAML contient une requete Tavily Search par champ `ContractFacts`, puis les URLs trouvees sont envoyees a Tavily Extract pour recuperer le contenu complet avant la normalisation LLM : `trains_on_input`, `data_retention`, `data_residency`, `sub_processors`, `human_review`, `encryption_standard`, `ip_ownership`, `applicable_law`, `foreign_vendor_dependency`, `contract_prohibits_reuse` et `reentraining_opt_out`. Tavily Extract accepte au maximum 20 URLs par appel; ajuste `extract_defaults.max_urls` dans le YAML pour reduire ce nombre au besoin.
+
+Tester Tavily sans lancer le serveur web :
+
+```bash
+python -m policybot.contract.tavily_probe "ChatGPT" --show-config --evidence-out output/tavily-chatgpt.md
+```
+
+Pour aller jusqu'aux `ContractFacts`, ajoute `--facts` avec `OPENROUTER_API_KEY` defini. Pour construire aussi l'ARP Partie A :
+
+```bash
+python -m policybot.contract.tavily_probe "ChatGPT" --facts --arp --iag-type publique --evidence-out output/tavily-chatgpt.md
+```
 ## 3. Lancer le serveur web
 
 ```bash

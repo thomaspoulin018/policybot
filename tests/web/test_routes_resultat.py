@@ -1,4 +1,5 @@
 # tests/web/test_routes_resultat.py
+from html import unescape
 from fastapi.testclient import TestClient
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
@@ -95,3 +96,107 @@ def test_final_submit_passes_qualification_fields_into_assess(tmp_path):
     })
     assert resp.status_code == 200
     assert "Rapport de recommandation" in resp.text
+
+
+
+def test_final_submit_writes_pdf_and_exposes_download(tmp_path, monkeypatch):
+    output_dir = tmp_path / "output" / "pdf"
+
+    def fake_write_pdf(state):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        path = output_dir / "policybot-test.pdf"
+        path.write_bytes(b"%PDF-1.4 fake policybot pdf")
+        return path
+
+    monkeypatch.setenv("POLICYBOT_PDF_OUTPUT_DIR", str(output_dir))
+    monkeypatch.setattr("policybot.web.routes.write_pdf", fake_write_pdf)
+    client = _client(tmp_path, json_responses=[
+        {"already_public": True, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": False,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+        {"trains_on_input": "no", "data_residency": "canada", "extraction_confidence": 0.9},
+    ])
+
+    resp = client.post("/wizard/contexte-affaires", data={
+        "tool_name": "ChatGPT",
+        "data_checked": "Info deja publique",
+        "usage_description": "Chercher de l'info publique",
+        "mode": "prompt",
+    })
+
+    assert resp.status_code == 200
+    assert "Telecharger le PDF" in resp.text
+    assert "output/pdf/policybot-test.pdf" in resp.text
+    download = client.get("/output/pdf/policybot-test.pdf")
+    assert download.status_code == 200
+    assert download.content.startswith(b"%PDF")
+
+def test_final_submit_writes_docx_and_exposes_download(tmp_path, monkeypatch):
+    output_dir = tmp_path / "output" / "docx"
+
+    def fake_write_docx(state):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        path = output_dir / "policybot-test-fiche.docx"
+        path.write_bytes(b"PK fake policybot docx")
+        return path
+
+    monkeypatch.setenv("POLICYBOT_DOCX_OUTPUT_DIR", str(output_dir))
+    monkeypatch.setattr("policybot.web.routes.write_docx", fake_write_docx)
+    client = _client(tmp_path, json_responses=[
+        {"already_public": True, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": False,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+        {"trains_on_input": "no", "data_residency": "canada", "extraction_confidence": 0.9},
+    ])
+
+    resp = client.post("/wizard/contexte-affaires", data={
+        "tool_name": "ChatGPT",
+        "data_checked": "Info deja publique",
+        "usage_description": "Chercher de l'info publique",
+        "mode": "prompt",
+    })
+
+    assert resp.status_code == 200
+    assert "Telecharger la fiche Word" in resp.text
+    assert "output/docx/policybot-test-fiche.docx" in resp.text
+    download = client.get("/output/docx/policybot-test-fiche.docx")
+    assert download.status_code == 200
+    assert download.content.startswith(b"PK")
+
+
+
+def test_final_submit_accepts_saved_and_current_usages(tmp_path):
+    client = _client(tmp_path, json_responses=[
+        {"already_public": True, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": False,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+        {"already_public": False, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": True,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+        {"trains_on_input": "no", "data_residency": "canada", "extraction_confidence": 0.9},
+    ])
+    first = client.post("/wizard/resultats", data={
+        "tool_name": "ChatGPT",
+        "data_checked": "Info deja publique",
+        "usage_description": "Chercher de l'info publique",
+        "mode": "prompt",
+        "result_use_checked": "Publication",
+        "usage_action": "add_usage",
+    })
+    saved_json = unescape(first.text.split('name="saved_usages_json" value="', 1)[1].split('"', 1)[0])
+
+    resp = client.post("/wizard/contexte-affaires", data={
+        "tool_name": "ChatGPT",
+        "saved_usages_json": saved_json,
+        "data_checked": "Documents internes",
+        "usage_description": "Resumer des notes internes",
+        "mode": "prompt",
+        "result_use_checked": "Aide a la redaction",
+    })
+
+    assert resp.status_code == 200
+    assert "Usage 1" in resp.text
+    assert "Usage 2" in resp.text
+    rendered = unescape(resp.text)
+    assert "Chercher de l'info publique" in rendered
+    assert "Resumer des notes internes" in rendered

@@ -3,13 +3,13 @@ import os
 import sys
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from policybot.models import InterviewState, RequestInfo
 from policybot.interview.orchestrator import Interview, UnknownToolError
 from policybot.interview.graph import run_graph
 from policybot.classify.tool_type import tool_type_question
-from policybot.report.renderer import render_html
+from policybot.report.renderer import render_html, write_docx, write_pdf
 from policybot.api.deps import default_interview
 from policybot.web.routes import router as web_router
 from policybot.tracing import trace_step
@@ -55,6 +55,26 @@ def create_app(itv: Interview) -> FastAPI:
     @app.post("/report", response_class=HTMLResponse)
     def report(state: InterviewState) -> str:
         return render_html(state)
+
+    @app.post("/report/pdf", response_model=None)
+    def report_pdf(state: InterviewState) -> FileResponse | JSONResponse:
+        try:
+            path = write_pdf(state)
+        except Exception as exc:
+            return JSONResponse(status_code=503, content={"error": "pdf_export_failed", "detail": str(exc)})
+        return FileResponse(path, media_type="application/pdf", filename=path.name)
+
+    @app.post("/report/docx", response_model=None)
+    def report_docx(state: InterviewState) -> FileResponse | JSONResponse:
+        try:
+            path = write_docx(state)
+        except Exception as exc:
+            return JSONResponse(status_code=503, content={"error": "docx_export_failed", "detail": str(exc)})
+        return FileResponse(
+            path,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=path.name,
+        )
 
     return app
 

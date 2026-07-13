@@ -1,8 +1,28 @@
 {# policybot/web/templates/resultat.html.j2 #}
 {% extends "_layout.html.j2" %}
 {% block content %}
-<div class="kicker">Résultat</div>
-<div class="assist"><img src="/static/friendly.png" alt=""> Voici ce que je recommande — l'agent SI aura le dernier mot.</div>
+<div class="kicker">Resultat</div>
+<div class="assist"><img src="/static/friendly.png" alt=""> Voici ce que je recommande - l'agent SI aura le dernier mot.</div>
+{% if pdf_filename %}
+<div class="export-panel">
+  <a class="download" href="/output/pdf/{{ pdf_filename }}" download>Telecharger le PDF</a>
+  <span>Enregistre dans <code>output/pdf/{{ pdf_filename }}</code></span>
+</div>
+{% elif pdf_error %}
+<div class="export-panel warning">
+  <span>Le rapport est affiche ci-dessous. L'export PDF sera disponible apres installation de l'extra <code>pdf</code>.</span>
+</div>
+{% endif %}
+{% if docx_filename %}
+<div class="export-panel">
+  <a class="download" href="/output/docx/{{ docx_filename }}" download>Telecharger la fiche Word</a>
+  <span>Enregistree dans <code>output/docx/{{ docx_filename }}</code></span>
+</div>
+{% elif docx_error %}
+<div class="export-panel warning">
+  <span>Le rapport est affiche ci-dessous. L'export Word a echoue: {{ docx_error }}</span>
+</div>
+{% endif %}
 <div class="report">
 {{ report_html | safe }}
 </div>

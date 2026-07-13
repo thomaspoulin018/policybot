@@ -7,8 +7,42 @@
 <title>PolicyBot</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/htmx.min.js"></script>
+<script>
+function resetLoadingOverlay() {
+  document.body.classList.remove("is-loading");
+  document.querySelectorAll("form[data-loading-overlay] button[type=submit]").forEach(function (button) {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  });
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  resetLoadingOverlay();
+  document.querySelectorAll("form[data-loading-overlay]").forEach(function (form) {
+    form.addEventListener("submit", function () {
+      if (!form.checkValidity()) {
+        return;
+      }
+      document.body.classList.add("is-loading");
+      form.querySelectorAll("button[type=submit]").forEach(function (button) {
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+      });
+    });
+  });
+});
+
+window.addEventListener("pageshow", resetLoadingOverlay);
+</script>
 </head>
 <body>
+<div class="loading-overlay" role="status" aria-live="polite" aria-label="G&eacute;n&eacute;ration du r&eacute;sultat en cours">
+  <div class="loading-box">
+    <img src="/static/friendly.png" alt="" class="loading-logo">
+    <strong>G&eacute;n&eacute;ration du r&eacute;sultat</strong>
+    <span>PolicyBot pr&eacute;pare la recommandation...</span>
+  </div>
+</div>
 <div class="app">
   <aside class="rail">
     <div class="brand"><img src="/static/friendly.png" alt="PolicyBot"> PolicyBot</div>

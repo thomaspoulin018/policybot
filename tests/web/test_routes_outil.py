@@ -59,3 +59,23 @@ def test_confirming_tool_type_carries_override_to_profil_utilisateurs_step(tmp_p
     assert resp.status_code == 200
     assert 'value="circuit_ferme"' in resp.text
     assert "profil" in resp.text.lower()
+
+def test_home_page_renders_test_prefill_button(tmp_path):
+    client = _client(tmp_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert 'action="/wizard/test-prefill"' in resp.text
+    assert "Remplir un scénario test" in resp.text
+
+
+def test_test_prefill_renders_context_step_with_demo_values(tmp_path):
+    client = _client(tmp_path)
+    resp = client.post("/wizard/test-prefill")
+    assert resp.status_code == 200
+    assert "Contexte d'affaires" in resp.text
+    assert 'name="tool_name" value="ChatGPT"' in resp.text
+    assert 'name="usage_description" value="Résumer des documents publics' in resp.text
+    assert 'name="besoin_affaires" value="réduire le temps' in resp.text
+    assert 'name="mode_acquisition" value="achat_direct" checked' in resp.text
+    assert resp.text.count('name="besoin_affaires"') == 1
+

@@ -4,52 +4,52 @@
 <div class="kicker">Étape 6 · Contexte d'affaires</div>
 <h1>Quelques dernières questions sur ce projet</h1>
 <div class="assist"><img src="/static/friendly.png" alt=""> Ça nous aide à documenter la valeur attendue et le cadre contractuel.</div>
-<form method="post" action="/wizard/contexte-affaires">
+<form method="post" action="/wizard/contexte-affaires" data-loading-overlay>
   {% for name, value in hidden_fields %}
-  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  <input type="hidden" name="{{ name }}" value="{{ value|e }}">
   {% endfor %}
   <label class="freefield">
     Besoin ou problème d'affaires adressé :
-    <input type="text" name="besoin_affaires">
+    <input type="text" name="besoin_affaires" value="{{ state.besoin_affaires }}">
   </label>
   <label class="freefield">
     Gains anticipés (qualitatifs) :
-    <input type="text" name="gains_qualitatifs">
+    <input type="text" name="gains_qualitatifs" value="{{ state.gains_qualitatifs }}">
   </label>
   <label class="freefield">
     Gains anticipés (quantitatifs) :
-    <input type="text" name="gains_quantitatifs" placeholder="ex. heures économisées, coût évité">
+    <input type="text" name="gains_quantitatifs" value="{{ state.gains_quantitatifs }}" placeholder="ex. heures économisées, coût évité">
   </label>
   <label class="freefield">
     Alternatives considérées (outils déjà disponibles à l'UQAM) :
-    <input type="text" name="alternatives_considerees">
+    <input type="text" name="alternatives_considerees" value="{{ state.alternatives_considerees }}">
   </label>
   <div class="grid">
-    <label class="opt"><div class="top"><input type="radio" name="urgence_percue" value="faible"></div><b>Urgence faible</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="urgence_percue" value="modérée"></div><b>Urgence modérée</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="urgence_percue" value="élevée"></div><b>Urgence élevée</b></label>
+    <label class="opt"><div class="top"><input type="radio" name="urgence_percue" value="faible" {% if state.urgence_percue == "faible" %}checked{% endif %}></div><b>Urgence faible</b></label>
+    <label class="opt"><div class="top"><input type="radio" name="urgence_percue" value="modérée" {% if state.urgence_percue == "modérée" %}checked{% endif %}></div><b>Urgence modérée</b></label>
+    <label class="opt"><div class="top"><input type="radio" name="urgence_percue" value="élevée" {% if state.urgence_percue == "élevée" %}checked{% endif %}></div><b>Urgence élevée</b></label>
   </div>
   <label class="freefield">
     Coût estimé (annuel par utilisateur) :
-    <input type="text" name="cout_annuel_par_utilisateur">
+    <input type="text" name="cout_annuel_par_utilisateur" value="{{ state.cout_annuel_par_utilisateur }}">
   </label>
   <label class="freefield">
     Coût total estimé (annuel) :
-    <input type="text" name="cout_total_annuel">
+    <input type="text" name="cout_total_annuel" value="{{ state.cout_total_annuel }}">
   </label>
   <div class="grid">
-    <label class="opt"><div class="top"><input type="radio" name="mode_acquisition" value="achat_direct"></div><b>Achat direct</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="mode_acquisition" value="seao"></div><b>Via SEAO</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="mode_acquisition" value="appel_offres"></div><b>Via appel d'offres</b></label>
-    <label class="opt"><div class="top"><input type="radio" name="mode_acquisition" value="contrat_existant"></div><b>Contrat existant</b></label>
+    <label class="opt"><div class="top"><input type="radio" name="mode_acquisition" value="achat_direct" {% if state.mode_acquisition == "achat_direct" %}checked{% endif %}></div><b>Achat direct</b></label>
+    <label class="opt"><div class="top"><input type="radio" name="mode_acquisition" value="seao" {% if state.mode_acquisition == "seao" %}checked{% endif %}></div><b>Via SEAO</b></label>
+    <label class="opt"><div class="top"><input type="radio" name="mode_acquisition" value="appel_offres" {% if state.mode_acquisition == "appel_offres" %}checked{% endif %}></div><b>Via appel d'offres</b></label>
+    <label class="opt"><div class="top"><input type="radio" name="mode_acquisition" value="contrat_existant" {% if state.mode_acquisition == "contrat_existant" %}checked{% endif %}></div><b>Contrat existant</b></label>
   </div>
   <label class="freefield">
     Durée du contrat envisagée :
-    <input type="text" name="duree_contrat">
+    <input type="text" name="duree_contrat" value="{{ state.duree_contrat }}">
   </label>
   <label class="freefield">
     Responsable budgétaire :
-    <input type="text" name="responsable_budgetaire">
+    <input type="text" name="responsable_budgetaire" value="{{ state.responsable_budgetaire }}">
   </label>
   <div class="foot">
     <button class="back" type="button" onclick="history.back()">← Retour</button>
@@ -57,3 +57,4 @@
   </div>
 </form>
 {% endblock %}
+

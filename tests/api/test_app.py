@@ -56,3 +56,44 @@ def test_assess_endpoint_unknown_tool_returns_422_with_question(tmp_path):
     body = resp.json()
     assert body["error"] == "unknown_tool"
     assert "question" in body
+
+
+
+def test_report_pdf_endpoint_writes_and_returns_pdf(tmp_path, monkeypatch):
+    def fake_write_pdf(state):
+        path = tmp_path / "policybot-api.pdf"
+        path.write_bytes(b"%PDF-1.4 fake policybot pdf")
+        return path
+
+    monkeypatch.setattr("policybot.api.app.write_pdf", fake_write_pdf)
+    client = _client(tmp_path)
+    state = client.post("/assess", json={
+        "request": {"numero": "IAG-2026-006"},
+        "tool_name": "ChatGPT",
+        "usage_inputs": [{"description": "info publique", "data_description": "info publique",
+                          "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
+    }).json()
+    resp = client.post("/report/pdf", json=state)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content.startswith(b"%PDF")
+
+def test_report_docx_endpoint_writes_and_returns_docx(tmp_path, monkeypatch):
+    def fake_write_docx(state):
+        path = tmp_path / "policybot-api.docx"
+        path.write_bytes(b"PK fake policybot docx")
+        return path
+
+    monkeypatch.setattr("policybot.api.app.write_docx", fake_write_docx)
+    client = _client(tmp_path)
+    state = client.post("/assess", json={
+        "request": {"numero": "IAG-2026-008"},
+        "tool_name": "ChatGPT",
+        "usage_inputs": [{"description": "info publique", "data_description": "info publique",
+                          "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
+    }).json()
+    resp = client.post("/report/docx", json=state)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert resp.content.startswith(b"PK")
+
