@@ -1,27 +1,32 @@
-{# policybot/web/templates/wizard_outil.html.j2 #}
+﻿{# policybot/web/templates/wizard_outil.html.j2 #}
 {% extends "_layout.html.j2" %}
 {% block content %}
 <div class="kicker">Étape 1 · Ton outil</div>
 <h1>Quel outil d'IA générative comptes-tu utiliser&nbsp;?</h1>
 <div class="assist"><img src="/static/friendly.png" alt=""> Choisis un outil connu ou tape son nom.</div>
 <form method="post" action="/wizard/outil">
+  {% if errors %}<div class="form-errors" role="alert">Corrigez les champs indiques ci-dessous.</div>{% endif %}
   <div class="chips">
     {% for name in known_tools %}
-    <label class="chip"><input type="radio" name="tool_name" value="{{ name }}"> {{ name }}</label>
+    <label class="chip"><input type="radio" name="tool_name" value="{{ name }}" {% if state.tool_name == name %}checked{% endif %}> {{ name }}</label>
     {% endfor %}
   </div>
-  <label class="freefield">
-    Autre outil :
-    <input type="text" name="tool_name_other" placeholder="Nom de l'outil">
+  <label class="freefield">Autre outil :
+    <input type="text" name="tool_name_other" value="{% if state.tool_name not in known_tools %}{{ state.tool_name }}{% endif %}" placeholder="Nom de l'outil" aria-describedby="tool_name-error">
   </label>
-  <label class="freefield">
-    Version / plan tarifaire (optionnel) :
+  {% if errors.tool_name %}<p class="field-error" id="tool_name-error">{{ errors.tool_name }}</p>{% endif %}
+  <label class="freefield">Nom du demandeur :
+    <input type="text" name="demandeur" value="{{ state.demandeur }}" required aria-describedby="demandeur-error" oninvalid="this.setCustomValidity('Indiquez le nom du demandeur.')" oninput="this.setCustomValidity('')">
+  </label>
+  {% if errors.demandeur %}<p class="field-error" id="demandeur-error">{{ errors.demandeur }}</p>{% endif %}
+  <label class="freefield">Unite administrative :
+    <input type="text" name="unite" value="{{ state.unite }}" required aria-describedby="unite-error" oninvalid="this.setCustomValidity('Indiquez l'unite administrative du demandeur.')" oninput="this.setCustomValidity('')">
+  </label>
+  {% if errors.unite %}<p class="field-error" id="unite-error">{{ errors.unite }}</p>{% endif %}
+  <label class="freefield">Version / plan tarifaire (optionnel) :
     <input type="text" name="version_plan_tarifaire" value="{{ state.version_plan_tarifaire }}" placeholder="ex. Plan Plus, Entreprise">
   </label>
-  <div class="foot">
-    <span></span>
-    <button class="next" type="submit">Continuer →</button>
-  </div>
+  <div class="foot"><span></span><button class="next" type="submit">Continuer &rarr;</button></div>
 </form>
 <form method="post" action="/wizard/test-prefill" class="test-prefill-form">
   <button class="test-prefill" type="submit">Remplir un scénario test</button>

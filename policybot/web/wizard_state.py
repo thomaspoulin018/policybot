@@ -20,6 +20,8 @@ class WizardUsageDraft(BaseModel):
 
 class WizardState(BaseModel):
     tool_name: str = ""
+    demandeur: str = ""
+    unite: str = ""
     tool_type_override: IagType | None = None
     version_plan_tarifaire: str = ""
     nb_utilisateurs_vises: str = ""
@@ -53,6 +55,10 @@ class WizardState(BaseModel):
         fields: list[tuple[str, str]] = []
         if self.tool_name:
             fields.append(("tool_name", self.tool_name))
+        if self.demandeur:
+            fields.append(("demandeur", self.demandeur))
+        if self.unite:
+            fields.append(("unite", self.unite))
         if self.tool_type_override:
             fields.append(("tool_type_override", self.tool_type_override))
         if self.version_plan_tarifaire:
@@ -134,6 +140,8 @@ class WizardState(BaseModel):
 
         return cls(
             tool_name=form.get("tool_name", "") or "",
+            demandeur=form.get("demandeur", "") or "",
+            unite=form.get("unite", "") or "",
             tool_type_override=form.get("tool_type_override") or None,
             version_plan_tarifaire=form.get("version_plan_tarifaire", "") or "",
             nb_utilisateurs_vises=form.get("nb_utilisateurs_vises", "") or "",

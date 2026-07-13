@@ -1,4 +1,4 @@
-# policybot/web/routes.py
+﻿# policybot/web/routes.py
 from __future__ import annotations
 import logging
 import os
@@ -77,11 +77,22 @@ def _group_form(form) -> dict:
     return grouped
 
 
+def _required_text(value: object, message: str) -> str | None:
+    return message if not str(value or "").strip() else None
+
+
+def _render_outil(request: Request, state: WizardState, errors: dict[str, str] | None = None):
+    return templates.TemplateResponse(request, "wizard_outil.html.j2", {
+        "active_step": "outil",
+        "known_tools": load_known_tools(),
+        "state": state,
+        "errors": errors or {},
+    }, status_code=422 if errors else 200)
+
+
 @router.get("/", response_class=HTMLResponse)
 def wizard_home(request: Request):
-    return templates.TemplateResponse(request, "wizard_outil.html.j2", {
-        "active_step": "outil", "known_tools": load_known_tools(), "state": WizardState(),
-    })
+    return _render_outil(request, WizardState())
 
 
 @router.post("/wizard/test-prefill", response_class=HTMLResponse)
@@ -97,29 +108,34 @@ def wizard_test_prefill(request: Request):
 @router.post("/wizard/outil", response_class=HTMLResponse)
 async def wizard_outil(request: Request):
     form = _group_form(await request.form())
-    tool_name = (form.get("tool_name") or form.get("tool_name_other") or "").strip()
-    version_plan_tarifaire = form.get("version_plan_tarifaire", "") or ""
-
+    tool_name = str(form.get("tool_name") or form.get("tool_name_other") or "").strip()
+    demandeur = str(form.get("demandeur", "") or "").strip()
+    unite = str(form.get("unite", "") or "").strip()
+    version_plan_tarifaire = str(form.get("version_plan_tarifaire", "") or "").strip()
+    state = WizardState(tool_name=tool_name, demandeur=demandeur, unite=unite,
+                        version_plan_tarifaire=version_plan_tarifaire)
+    errors = {
+        name: error for name, error in {
+            "tool_name": _required_text(tool_name, "Indiquez le nom de l'outil d'IA generative."),
+            "demandeur": _required_text(demandeur, "Indiquez le nom du demandeur."),
+            "unite": _required_text(unite, "Indiquez l'unite administrative du demandeur."),
+        }.items() if error
+    }
+    if errors:
+        return _render_outil(request, state, errors)
     if classify_tool_type(tool_name) is not None or lookup_tool(tool_name) is not None:
-        state = WizardState(tool_name=tool_name, version_plan_tarifaire=version_plan_tarifaire)
         return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
-            "active_step": "profil_utilisateurs",
-            "hidden_fields": _hidden_fields_for(state, PROFILE_FIELDS),
-            "state": state,
+            "active_step": "profil_utilisateurs", "hidden_fields": _hidden_fields_for(state, PROFILE_FIELDS), "state": state,
         })
-
     llm = request.app.state.interview.llm
     try:
         guessed_type = guess_tool_type(tool_name, llm)
     except Exception:
         guessed_type = None
-    guessed_label = IAG_TYPE_LABELS.get(guessed_type) if guessed_type else None
     return templates.TemplateResponse(request, "wizard_tool_type.html.j2", {
-        "active_step": "outil",
-        "question": tool_type_question(), "tool_name": tool_name,
-        "guessed_label": guessed_label,
-        "version_plan_tarifaire": version_plan_tarifaire,
-        "state": WizardState(tool_name=tool_name, version_plan_tarifaire=version_plan_tarifaire),
+        "active_step": "outil", "question": tool_type_question(), "tool_name": tool_name,
+        "guessed_label": IAG_TYPE_LABELS.get(guessed_type) if guessed_type else None,
+        "version_plan_tarifaire": version_plan_tarifaire, "state": state,
     })
 
 
@@ -127,10 +143,13 @@ async def wizard_outil(request: Request):
 async def wizard_outil_type(request: Request):
     form = _group_form(await request.form())
     tool_name = form.get("tool_name", "") or ""
+    demandeur = form.get("demandeur", "") or ""
+    unite = form.get("unite", "") or ""
     tool_type_label = form.get("tool_type", "") or ""
     tool_type_override = _iag_type_from_label(tool_type_label)
     version_plan_tarifaire = form.get("version_plan_tarifaire", "") or ""
-    state = WizardState(tool_name=tool_name, tool_type_override=tool_type_override,
+    state = WizardState(tool_name=tool_name, demandeur=demandeur, unite=unite,
+                         tool_type_override=tool_type_override,
                          version_plan_tarifaire=version_plan_tarifaire)
     return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
         "active_step": "profil_utilisateurs",
@@ -299,7 +318,7 @@ async def wizard_contexte_affaires_submit(request: Request):
     numero = f"IAG-{date.today():%Y}-{uuid.uuid4().hex[:6]}"
     try:
         result_state = itv.assess(
-            request=RequestInfo(numero=numero),
+            request=RequestInfo(numero=numero, demandeur=state.demandeur, unite=state.unite),
             tool_name=state.tool_name,
             usage_inputs=usage_inputs,
             iag_type_override=state.tool_type_override,

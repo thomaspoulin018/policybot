@@ -1,4 +1,4 @@
-from fastapi.testclient import TestClient
+﻿from fastapi.testclient import TestClient
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview
@@ -31,7 +31,7 @@ def test_static_files_are_served(tmp_path):
 def test_known_tool_skips_straight_to_profil_utilisateurs_step(tmp_path):
     client = _client(tmp_path)
     resp = client.post("/wizard/outil", data={
-        "tool_name": "ChatGPT", "tool_name_other": "", "version_plan_tarifaire": "Plan Plus",
+        "tool_name": "ChatGPT", "tool_name_other": "", "demandeur": "Marie Tremblay", "unite": "Direction TI", "version_plan_tarifaire": "Plan Plus",
     })
     assert resp.status_code == 200
     assert "profil" in resp.text.lower()
@@ -39,10 +39,19 @@ def test_known_tool_skips_straight_to_profil_utilisateurs_step(tmp_path):
     assert 'name="version_plan_tarifaire" value="Plan Plus"' in resp.text
 
 
+def test_outil_requires_demandeur_and_unite_with_field_errors(tmp_path):
+    client = _client(tmp_path)
+    resp = client.post("/wizard/outil", data={"tool_name": "ChatGPT"})
+
+    assert resp.status_code == 422
+    assert "Indiquez le nom du demandeur." in resp.text
+    assert "Indiquez l'unite administrative du demandeur." in resp.text
+
+
 def test_unknown_tool_renders_guided_fallback_with_llm_guess_precheck(tmp_path):
     client = _client(tmp_path, json_responses=[{"iag_type_guess": "publique", "confidence": 0.7}])
     resp = client.post("/wizard/outil", data={
-        "tool_name": "", "tool_name_other": "Notion AI", "version_plan_tarifaire": "Free",
+        "tool_name": "", "tool_name_other": "Notion AI", "demandeur": "Marie Tremblay", "unite": "Direction TI", "version_plan_tarifaire": "Free",
     })
     assert resp.status_code == 200
     assert "type d" in resp.text.lower()

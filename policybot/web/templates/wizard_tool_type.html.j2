@@ -6,6 +6,8 @@
 <div class="assist"><img src="/static/thinking.png" alt=""> Je ne connais pas encore « {{ tool_name }} ». Voici ma meilleure estimation — corrige-la si besoin.</div>
 <form method="post" action="/wizard/outil/type">
   <input type="hidden" name="tool_name" value="{{ tool_name }}">
+  <input type="hidden" name="demandeur" value="{{ state.demandeur|e }}">
+  <input type="hidden" name="unite" value="{{ state.unite|e }}">
   <input type="hidden" name="version_plan_tarifaire" value="{{ version_plan_tarifaire }}">
   <div class="grid">
     {% for opt in question.options %}
