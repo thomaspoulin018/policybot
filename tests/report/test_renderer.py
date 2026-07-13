@@ -1,3 +1,4 @@
+import re
 from html import unescape
 from io import BytesIO
 import zipfile
@@ -6,6 +7,8 @@ from policybot.models import InterviewState, RequestInfo, Usage, ToolRef, Global
 from policybot.contract.arp import build_arp
 from policybot.grille.engine import evaluate_usage
 from policybot.report.renderer import docx_filename, render_docx, pdf_filename, render_html, write_docx, write_pdf
+
+_TIMESTAMP = r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}"
 
 
 def _state():
@@ -102,10 +105,10 @@ def test_render_contains_partie_c_conditions():
 
 
 
-def test_pdf_filename_is_stable_and_safe():
+def test_pdf_filename_is_timestamped():
     state = _state()
     state.request.numero = "IAG/2026 001"
-    assert pdf_filename(state) == "policybot-IAG-2026-001.pdf"
+    assert re.fullmatch(rf"policybot-{_TIMESTAMP}\.pdf", pdf_filename(state))
 
 
 def test_write_pdf_creates_output_file(tmp_path, monkeypatch):
@@ -114,13 +117,13 @@ def test_write_pdf_creates_output_file(tmp_path, monkeypatch):
         lambda state: b"%PDF-1.4 fake policybot pdf",
     )
     path = write_pdf(_state(), output_dir=tmp_path)
-    assert path.name == "policybot-IAG-2026-001.pdf"
+    assert re.fullmatch(rf"policybot-{_TIMESTAMP}\.pdf", path.name)
     assert path.read_bytes().startswith(b"%PDF")
 
-def test_docx_filename_is_stable_and_safe():
+def test_docx_filename_is_timestamped():
     state = _state()
     state.request.numero = "IAG/2026 001"
-    assert docx_filename(state) == "policybot-IAG-2026-001-fiche.docx"
+    assert re.fullmatch(rf"policybot-{_TIMESTAMP}-fiche\.docx", docx_filename(state))
 
 
 def test_render_docx_fills_fiche_template():
@@ -145,5 +148,5 @@ def test_render_docx_fills_fiche_template():
 
 def test_write_docx_creates_output_file(tmp_path):
     path = write_docx(_state(), output_dir=tmp_path)
-    assert path.name == "policybot-IAG-2026-001-fiche.docx"
+    assert re.fullmatch(rf"policybot-{_TIMESTAMP}-fiche\.docx", path.name)
     assert path.read_bytes().startswith(b"PK")
