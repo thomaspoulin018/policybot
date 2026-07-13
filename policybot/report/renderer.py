@@ -1,8 +1,8 @@
 from __future__ import annotations
 import os
-import re
 import zipfile
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from io import BytesIO
 from itertools import groupby
 from pathlib import Path
@@ -18,7 +18,7 @@ _DEFAULT_FICHE_TEMPLATE = (
     / "documents_reference"
     / "SI_-_Fiche_de_qualification.docx"
 )
-_SAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9_.-]+")
+_FILENAME_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
 _WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
 ET.register_namespace("w", _WORD_NS)
@@ -239,9 +239,7 @@ def pdf_output_dir() -> Path:
 
 
 def pdf_filename(state: InterviewState) -> str:
-    source = state.request.numero or state.interview_id or "rapport"
-    slug = _SAFE_FILENAME_CHARS.sub("-", source).strip("._-")
-    return f"policybot-{slug or 'rapport'}.pdf"
+    return f"policybot-{datetime.now().strftime(_FILENAME_TIMESTAMP_FORMAT)}.pdf"
 
 
 def docx_output_dir() -> Path:
@@ -253,9 +251,7 @@ def fiche_template_path() -> Path:
 
 
 def docx_filename(state: InterviewState) -> str:
-    source = state.request.numero or state.interview_id or "fiche"
-    slug = _SAFE_FILENAME_CHARS.sub("-", source).strip("._-")
-    return f"policybot-{slug or 'fiche'}-fiche.docx"
+    return f"policybot-{datetime.now().strftime(_FILENAME_TIMESTAMP_FORMAT)}-fiche.docx"
 
 
 def _w(tag: str) -> str:
