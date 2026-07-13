@@ -68,7 +68,7 @@ Web UI (renders QuestionSpec)
 Interview Orchestrator  ── holds InterviewState, drives the pipeline below
         │
   ┌─────┼───────────┬──────────────┬───────────┬────────────┐
-  LLM   Classifiers  Pre-approved   Contract     Grille        → Report (PDF)
+  LLM   Classifiers  Pre-approved   Contract     Grille        → Report (PDF/DOCX)
   layer (data, tool  DB (SQLite)    analyzer     engine
   (swap) type)       ArpRecord +    (fetch terms (matrix gate
                      PreApproved    → extract    + grille.yaml
@@ -86,9 +86,12 @@ or presents facts. For one tool + one or more usages:
    `UnknownToolError` and the web wizard surfaces as an extra step.
 2. **Resolve the tool's contract facts (Partie A / ARP), once per tool.**
    Check the SQLite `PreApprovedStore` for a cached `ArpRecord` first. Otherwise
-   fetch terms of use (`TermsFetcher`), have the LLM extract normalized
-   `ContractFacts` (trains on input? retention? residency? sub-processors?
-   human review?), and cache the result.
+   fetch terms of use — via `TermsFetcher` (registry URL → HTML → text) or, if
+   `POLICYBOT_CONTRACT_SEARCH=tavily` is set (or a `tavily_search` callable is
+   injected), via `policybot/contract/tavily.py` (Tavily Search + Extract,
+   config auto-generated per tool under `configs/tavily_contracts/`) — then
+   have the LLM extract normalized `ContractFacts` (trains on input? retention?
+   residency? sub-processors? human review? …), and cache the result.
 3. **For each usage, classify the data.** The employee describes data in plain
    language (never the data itself); the LLM returns structured signals; a
    deterministic decision tree maps those to Non classifié / Protégé A/B/C
@@ -108,7 +111,12 @@ or presents facts. For one tool + one or more usages:
    `Autoriser_avec_conditions`; else `Autoriser`).
 7. **Render the report** — an HTML template mirroring the two official forms,
    with the "recommendation, not authorization" disclaimer on every page.
-   Optional WeasyPrint wrapper turns HTML into PDF.
+   With the `pdf` extra installed, `write_pdf`/`render_pdf` (ReportLab, lazily
+   imported) writes a styled PDF to `output/pdf/`, and `write_docx`/
+   `render_docx` fills the official Word qualification fiche template and
+   saves it to `output/docx/`. (`renderer.py` also has a WeasyPrint-based
+   `html_to_pdf`, but it's not wired into the API/web routes — those call
+   `write_pdf`/`write_docx`.)
 
 `policybot/interview/graph.py` wraps this same orchestrator in a LangGraph
 state machine (`run_graph`) — that's what the FastAPI `/assess` endpoint calls,
@@ -121,31 +129,50 @@ calls `Interview.assess` directly per step instead of going through the graph.
 policybot/
   models.py       Pydantic v2 domain models: QuestionSpec, ContractFacts,
                   RiskFactor, ArpRecord, PreApprovedRecord, Usage, InterviewState
+  criteria.py     Fixed (category, criterion, description) tables — ARP_CRITERIA
+                  and USAGE_CRITERIA — mirroring the reference Grille docx in
+                  document order; the report renderer relies on this order.
+  tracing.py      Internal step-by-step traceability, see below — separate
+                  from LangSmith LLM tracing.
   llm/            LLMProvider ABC (complete_json / draft_text) +
                   FakeLLMProvider (tests, queued canned responses) +
                   OpenRouterProvider (langchain ChatOpenAI → OpenRouter, POC)
   classify/       data_classifier.py (LLM signals → decision tree),
                   tool_type.py + tool_registry.py (known-tool lookup)
-  contract/       fetcher.py (terms URL → text), arp.py (LLM extraction →
-                  ContractFacts + Partie A RiskFactors)
+  contract/       fetcher.py (terms URL → text via TermsFetcher), arp.py (LLM
+                  extraction → ContractFacts + Partie A RiskFactors),
+                  tavily.py (Tavily Search + Extract alternative source, one
+                  auto-generated query config per tool under
+                  `configs/tavily_contracts/`), tavily_probe.py (manual CLI:
+                  `python -m policybot.contract.tavily_probe "<tool>"`)
   grille/         matrix.py (hard gate), rules.py + grille.yaml (rule engine,
-                  data not code), engine.py (per-usage verdict + synthesis)
+                  data not code, ~15 rules), engine.py (per-usage verdict +
+                  synthesis)
   preapproved/    store.py — SQLite cache of ArpRecord/PreApprovedRecord, each
-                  with an expiry so stale approvals force re-review
+                  with an expiry so stale approvals force re-review;
+                  known_tools.py + known_tools.yaml — separate list of known
+                  tool names (distinct from the store's cache and from
+                  classify/tool_registry.py's vendor/IAG-type metadata)
   interview/      questions.py (QuestionSpec builders), orchestrator.py
                   (Interview.assess — the pipeline above), graph.py (LangGraph
                   wrapper used by the API)
   api/            app.py (FastAPI: POST /assess, POST /report, mounts the web
                   router + static files), deps.py (wires OpenRouter vs Fake
                   provider based on OPENROUTER_API_KEY)
-  web/            routes.py (multi-step HTMX-style wizard: outil → donnees →
-                  usage → resultat), wizard_state.py (WizardState — carries
-                  answers across steps via hidden form fields, no server
-                  session), ai_assist.py (LLM-backed suggestion endpoints:
-                  guess tool type/mode, suggest checkbox options from free
-                  text), templates/, static/
-  report/         templates/report.html.j2 + renderer.py (render_html, optional
-                  html_to_pdf via WeasyPrint)
+  web/            routes.py — multi-step wizard driven by Interview.assess per
+                  step: outil → outil/type (only if the tool is unrecognized)
+                  → profil-utilisateurs → donnees (+ suggest/donnees) →
+                  mode-guess → usage (+ suggest/usage) → contexte-affaires →
+                  resultats, plus download routes output/pdf/{filename} and
+                  output/docx/{filename}; wizard_state.py (WizardState —
+                  carries answers across steps via hidden form fields, no
+                  server session); ai_assist.py (LLM-backed suggestion
+                  endpoints: guess tool type/mode, suggest checkbox options
+                  from free text), templates/, static/
+  report/         templates/report.html.j2 + renderer.py (render_html;
+                  write_pdf/render_pdf via ReportLab for output/pdf/;
+                  write_docx/render_docx fills the official Word fiche
+                  template for output/docx/; uses criteria.py for row order)
 tests/            mirrors the package layout 1:1; fixtures under tests/*/fixtures
 docs/superpowers/ design specs + implementation plans (source of truth for intent)
 ```
@@ -186,13 +213,35 @@ docs/superpowers/ design specs + implementation plans (source of truth for inten
   pytest regardless of `.env` contents (see `tests/conftest.py`). Never commit
   `.env` — it's gitignored; use `.env.example` as the template.
 
+## Internal traceability (`logs/policybot.jsonl`)
+
+Separate from LangSmith (which only covers LLM calls): every step of
+`Interview.assess` (classification, ARP resolution, LLM calls, grille
+evaluation, synthesis) writes a JSON line via `policybot/tracing.py`. All
+sub-steps of one request share an `interview_id`, so a full case can be
+reconstructed by filtering on it.
+
+**Non-negotiable constraint: never log free text in the clear.** Usage
+descriptions, contract content, and LLM prompts/responses are never written
+verbatim — only their length and a truncated SHA-256 hash (`mask_text()`)
+appear, to avoid leaking personal information into an unprotected file. Any
+change to `tracing.py` or its call sites must preserve this. The log path is
+configurable via `POLICYBOT_LOG_PATH` (`tests/conftest.py` redirects it so the
+test suite never writes into the repo's `logs/`); the file rotates
+automatically (5 MB × 5 backups).
+
 ## Known gaps / in-flight work
 
-- `grille.yaml` ships with only starter rules — seeding it with the officers'
-  actual rules of thumb is an open task (see
-  `docs/superpowers/plans/2026-07-07-grille-rules.md`).
+- `grille.yaml` now has ~15 rules (past the original 3 starter rules from
+  `docs/superpowers/plans/2026-07-07-grille-rules.md`), refined further in
+  `docs/superpowers/plans/2026-07-09-grille-report-alignment.md` — check
+  those specs/plans before assuming the rule set is either final or complete.
 - **Packaging debt:** `grille.yaml` and report/web templates are not yet
   declared as package data in `pyproject.toml` — they work in an editable
   install (`pip install -e`) but would be missing from a built wheel.
-- Deferred beyond MVP: an officer review/back-office dashboard, scheduled
-  re-fetching of stale ARPs, UQAM visual-identity PDF theming.
+- `README.md`'s "16 tasks / 64 tests" status table is stale (the suite has
+  grown well past that — 192 tests collected as of this writing); treat the
+  README's process narrative as historical, not a live dashboard.
+- Deferred beyond MVP (last confirmed against the design spec): an officer
+  review/back-office dashboard, scheduled re-fetching of stale ARPs, UQAM
+  visual-identity PDF theming.
