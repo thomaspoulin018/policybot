@@ -103,8 +103,13 @@ verbatim pour un champ, il renvoie `unknown`. Une valeur sans preuve n'entre pas
    doit remplir que ses 2 à 4 champs, chacun avec valeur + URL + citation.
 6. **Fusion** des cinq résultats en un `ContractFacts` unique (valeurs + `evidence`).
 
-`_select_evidence_text` et ses 14 regex sont supprimés : l'évidence d'une famille tient
-dans la fenêtre de contexte sans découpage.
+`_select_evidence_text` n'est pas supprimé mais **redistribué** : ses 14 regex de
+mots-clés deviennent la propriété des familles (chaque famille porte les siennes), et le
+découpage ne s'applique qu'à une famille dont l'évidence dépasse le budget. Avec Tavily
+c'est rare (l'évidence d'une famille est déjà ciblée) ; sur le chemin de repli
+`fetch_terms`, qui rend une page de CGU entière, le découpage reste indispensable — et
+devient meilleur, puisqu'il ne conserve que les extraits pertinents *pour la famille en
+cours d'extraction* au lieu d'un mélange des 16 sujets.
 
 ## Gestion d'erreur : dégradation par famille
 
