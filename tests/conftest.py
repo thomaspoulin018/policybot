@@ -1,12 +1,34 @@
 import os
 import tempfile
 
+import pytest
+
 # Keep the test suite offline and deterministic: LangSmith tracing must never be
 # active during pytest, even if the developer exported the toggle in their shell
 # or it leaks in via a loaded .env. Runs at conftest import, before any test
 # module (and thus policybot.api.app) is collected.
-for _var in ("LANGCHAIN_TRACING_V2", "LANGSMITH_TRACING"):
+#
+# POLICYBOT_CONTRACT_SEARCH / TAVILY_API_KEY are cleared per-test rather than
+# once at import: policybot.contract.tavily_probe.main() calls load_dotenv(), so
+# tests exercising the probe pull the developer's real .env into os.environ
+# mid-session. Left set, every later test that resolves an ARP would hit the live
+# Tavily API instead of its injected http_get stub.
+_OFFLINE_VARS = (
+    "LANGCHAIN_TRACING_V2",
+    "LANGSMITH_TRACING",
+    "POLICYBOT_CONTRACT_SEARCH",
+    "TAVILY_API_KEY",
+)
+
+for _var in _OFFLINE_VARS:
     os.environ.pop(_var, None)
+
+
+@pytest.fixture(autouse=True)
+def _keep_suite_offline():
+    for var in _OFFLINE_VARS:
+        os.environ.pop(var, None)
+    yield
 
 # Redirect the internal trace log (policybot.tracing) to a throwaway temp file so
 # running the suite never writes into the repo's logs/ directory.

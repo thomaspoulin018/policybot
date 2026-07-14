@@ -226,3 +226,6 @@ __marimo__/
 
 # Office lock/temp files
 ~$*
+
+
+configs/*
