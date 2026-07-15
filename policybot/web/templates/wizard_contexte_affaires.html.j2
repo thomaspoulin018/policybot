@@ -4,7 +4,7 @@
 <div class="kicker">Étape 6 · Contexte d'affaires</div>
 <h1>Quelques dernières questions sur ce projet</h1>
 <div class="assist"><img src="/static/friendly.png" alt=""> Ça nous aide à documenter la valeur attendue et le cadre contractuel.</div>
-<form method="post" action="/wizard/contexte-affaires" data-loading-overlay>
+<form method="post" action="/wizard/contexte-affaires" data-loading-overlay id="wizard-form">
   {% for name, value in hidden_fields %}
   <input type="hidden" name="{{ name }}" value="{{ value|e }}">
   {% endfor %}

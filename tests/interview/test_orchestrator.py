@@ -117,7 +117,6 @@ def test_assess_refreshes_stale_cached_arp_record(tmp_path):
         *arp_extraction_responses(
             trains_on_input="no", data_retention="none", data_residency="canada",
             sub_processors="disclosed", human_review="yes",
-            evidence="We may use your content to train our models.",
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))

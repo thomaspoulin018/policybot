@@ -4,7 +4,7 @@
 <div class="kicker">Étape 1 · Type d'outil</div>
 <h1>{{ question.question }}</h1>
 <div class="assist"><img src="/static/thinking.png" alt=""> Je ne connais pas encore « {{ tool_name }} ». Voici ma meilleure estimation — corrige-la si besoin.</div>
-<form method="post" action="/wizard/outil/type">
+<form method="post" action="/wizard/outil/type" id="wizard-form">
   <input type="hidden" name="tool_name" value="{{ tool_name }}">
   <input type="hidden" name="demandeur" value="{{ state.demandeur|e }}">
   <input type="hidden" name="unite" value="{{ state.unite|e }}">

@@ -28,7 +28,6 @@ def test_family_extraction_model_declares_only_its_own_fields():
 def test_one_llm_call_per_family_each_prompt_scoped_to_its_fields():
     llm = FakeLLMProvider(json_responses=arp_extraction_responses(
         trains_on_input="no", data_residency="canada", encryption_standard="strong",
-        evidence="Preuve contractuelle.",
     ))
 
     facts = extract_contract_facts(_evidence(), llm)
@@ -44,17 +43,14 @@ def test_one_llm_call_per_family_each_prompt_scoped_to_its_fields():
 
 
 def test_each_fact_carries_its_url_and_verbatim_quote():
-    evidence_text = "Preuve contractuelle pour trains_on_input, citée verbatim ici."
-    llm = FakeLLMProvider(json_responses=arp_extraction_responses(
-        trains_on_input="yes", evidence=evidence_text,
-    ))
+    llm = FakeLLMProvider(json_responses=arp_extraction_responses(trains_on_input="yes"))
 
-    facts = extract_contract_facts(_evidence(evidence_text), llm)
+    facts = extract_contract_facts(_evidence(), llm)
 
     proof = facts.evidence["trains_on_input"]
     assert proof.value == "yes"
     assert proof.source_url == "https://example.test/evidence"
-    assert proof.quote == evidence_text
+    assert proof.quote == "Extrait de preuve pour trains_on_input."
     assert proof.confidence == 0.9
 
 
@@ -122,7 +118,7 @@ def test_a_failed_family_leaves_its_fields_unknown_and_annotated():
     evidence = _evidence()
     del evidence.by_family["entrainement_reutilisation"]
     evidence.failed_families = ("entrainement_reutilisation",)
-    responses = arp_extraction_responses(data_residency="canada", evidence="Preuve contractuelle.")[1:]
+    responses = arp_extraction_responses(data_residency="canada")[1:]
 
     facts = extract_contract_facts(evidence, FakeLLMProvider(json_responses=responses))
 
@@ -136,7 +132,7 @@ def test_a_family_absent_without_being_marked_failed_is_annotated_no_evidence_co
     del evidence.by_family["entrainement_reutilisation"]
     # Contrairement au test précédent, `failed_families` reste vide : cette
     # famille est simplement absente de l'évidence collectée.
-    responses = arp_extraction_responses(data_residency="canada", evidence="Preuve contractuelle.")[1:]
+    responses = arp_extraction_responses(data_residency="canada")[1:]
 
     facts = extract_contract_facts(evidence, FakeLLMProvider(json_responses=responses))
 
@@ -152,9 +148,7 @@ def test_a_family_llm_failure_degrades_only_that_family():
                 raise RuntimeError("le modèle a renvoyé du JSON invalide")
             return super().complete_structured(system, user, schema, **kwargs)
 
-    llm = HalfBrokenLLM(json_responses=arp_extraction_responses(
-        data_residency="canada", evidence="Preuve contractuelle.",
-    )[1:])
+    llm = HalfBrokenLLM(json_responses=arp_extraction_responses(data_residency="canada")[1:])
 
     facts = extract_contract_facts(_evidence(), llm)
 
@@ -231,41 +225,3 @@ def test_empty_evidence_yields_all_unknown_without_calling_the_llm():
     assert llm.calls == []
     assert facts.trains_on_input == "unknown"
     assert facts.extraction_confidence == 0.0
-
-
-def test_a_plausible_quote_absent_from_the_evidence_is_rejected():
-    # Cœur de la vérification d'ancrage : le LLM co-hallucine une valeur ET une
-    # citation plausible, avec une URL — mais la phrase n'est nulle part dans la
-    # preuve. Le fait ne doit pas être affirmé.
-    evidence = _evidence(
-        "The service processes customer prompts to operate the product."
-    )
-    responses = arp_extraction_responses(trains_on_input="no")
-    responses[0]["trains_on_input"]["quote"] = (
-        "We never use your business data to train our models."  # absent de la preuve
-    )
-    responses[0]["trains_on_input"]["source_url"] = "https://example.test/cgu"
-
-    facts = extract_contract_facts(evidence, FakeLLMProvider(json_responses=responses))
-
-    assert facts.trains_on_input == "unknown"
-    assert facts.evidence["trains_on_input"].note == "citation introuvable dans la preuve"
-
-
-def test_a_quote_anchored_despite_markdown_and_whitespace_is_accepted():
-    # Une citation honnête que le LLM a délestée de son markdown et de ses
-    # retours à la ligne reste reconnue comme un extrait de la preuve.
-    evidence = _evidence(
-        "Customer data is **encrypted** in transit\nand at rest at all times."
-    )
-    responses = arp_extraction_responses(encryption_standard="strong")
-    # securite_technique est la 3e famille (indice 2) dans FACT_FAMILIES.
-    responses[2]["encryption_standard"]["quote"] = (
-        "Customer data is encrypted in transit and at rest at all times"
-    )
-    responses[2]["encryption_standard"]["source_url"] = "https://example.test/cgu"
-
-    facts = extract_contract_facts(evidence, FakeLLMProvider(json_responses=responses))
-
-    assert facts.encryption_standard == "strong"
-    assert facts.evidence["encryption_standard"].note is None
