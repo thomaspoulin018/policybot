@@ -27,6 +27,19 @@ class QuestionSpec(BaseModel):
     allow_other: bool = True
 
 
+class FactEvidence(BaseModel):
+    """La preuve d'un fait contractuel : sa valeur, sa source, sa citation.
+
+    `note` explique une valeur `unknown` non concluante (collecte échouée,
+    citation manquante) — c'est ce que l'officier lit dans le rapport.
+    """
+    value: str = "unknown"
+    source_url: Optional[str] = None
+    quote: Optional[str] = None
+    confidence: float = 0.0
+    note: Optional[str] = None
+
+
 class ContractFacts(BaseModel):
     trains_on_input: Literal["yes", "no", "opt_out_available", "unknown"] = "unknown"
     data_retention: Literal["none", "limited", "indefinite", "unknown"] = "unknown"
@@ -52,6 +65,7 @@ class ContractFacts(BaseModel):
     fetched_at: Optional[date] = None
     snapshot_ref: Optional[str] = None
     extraction_confidence: float = 0.0
+    evidence: dict[str, FactEvidence] = Field(default_factory=dict)
 
 
 class RiskFactor(BaseModel):

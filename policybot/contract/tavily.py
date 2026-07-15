@@ -10,91 +10,14 @@ from urllib.parse import urlparse
 import yaml
 
 from policybot.classify.tool_registry import lookup_tool
+from policybot.contract.evidence import ContractEvidence
+from policybot.contract.families import FACT_FAMILIES
 from policybot.contract.fetcher import FetchedTerms
+from policybot.tracing import trace_step
 
 DEFAULT_CONFIG_DIR = Path("configs") / "tavily_contracts"
 
-FACT_FIELDS: tuple[dict, ...] = (
-    {
-        "name": "trains_on_input",
-        "allowed_values": ["yes", "no", "opt_out_available", "unknown"],
-        "query": "{tool} {vendor} terms use customer content prompts to train models opt out",
-    },
-    {
-        "name": "data_retention",
-        "allowed_values": ["none", "limited", "indefinite", "unknown"],
-        "query": "{tool} {vendor} privacy data retention deletion policy customer data",
-    },
-    {
-        "name": "data_residency",
-        "allowed_values": ["canada", "us", "eu", "other", "unknown"],
-        "query": "{tool} {vendor} data residency hosting location region subprocessors terms",
-    },
-    {
-        "name": "sub_processors",
-        "allowed_values": ["disclosed", "undisclosed", "unknown"],
-        "query": "{tool} {vendor} subprocessors sub-processors list privacy terms",
-    },
-    {
-        "name": "human_review",
-        "allowed_values": ["yes", "no", "unknown"],
-        "query": "{tool} {vendor} human review abuse monitoring customer prompts terms",
-    },
-    {
-        "name": "encryption_standard",
-        "allowed_values": ["strong", "partial", "none", "unknown"],
-        "query": "{tool} {vendor} encryption in transit at rest security documentation",
-    },
-    {
-        "name": "ip_ownership",
-        "allowed_values": ["customer", "vendor", "unclear", "unknown"],
-        "query": "{tool} {vendor} ownership output generated content intellectual property terms",
-    },
-    {
-        "name": "applicable_law",
-        "allowed_values": ["quebec_canada", "foreign", "unknown"],
-        "query": "{tool} {vendor} governing law jurisdiction terms of service",
-    },
-    {
-        "name": "foreign_vendor_dependency",
-        "allowed_values": ["yes", "no", "unknown"],
-        "query": "{tool} {vendor} company headquarters cloud provider data hosting country",
-    },
-    {
-        "name": "contract_prohibits_reuse",
-        "allowed_values": ["yes", "no", "unknown"],
-        "query": "{tool} {vendor} contract prohibits reuse customer data confidentiality terms",
-    },
-    {
-        "name": "reentraining_opt_out",
-        "allowed_values": ["yes", "no", "unknown"],
-        "query": "{tool} {vendor} opt out model training customer data prompts outputs",
-    },
-    {
-        "name": "authentication_support",
-        "allowed_values": ["sso_mfa", "partial", "none", "unknown"],
-        "query": "{tool} {vendor} SSO SAML OIDC MFA enterprise admin identity provider security documentation",
-    },
-    {
-        "name": "audit_logging",
-        "allowed_values": ["prompt_output_accessible", "access_logs_only", "none", "unknown"],
-        "query": "{tool} {vendor} audit logs access logs prompt output logs organization admin console trust center",
-    },
-    {
-        "name": "institutional_terms",
-        "allowed_values": ["acceptable", "problematic", "unknown"],
-        "query": "{tool} {vendor} terms enterprise institutional use education acceptable use DPA privacy terms",
-    },
-    {
-        "name": "quebec_higher_ed_license",
-        "allowed_values": ["yes", "no", "unknown"],
-        "query": "{tool} {vendor} license education higher education institution public sector government terms",
-    },
-    {
-        "name": "incident_response",
-        "allowed_values": ["documented_with_notice", "documented_no_notice", "none", "unknown"],
-        "query": "{tool} {vendor} incident response breach notification security incident SLA trust center security policy",
-    },)
+CONFIG_SCHEMA_VERSION = 2
 
 SEARCH_KEYS = {
     "search_depth",
@@ -146,15 +69,11 @@ def build_contract_search_config(tool_name: str) -> dict:
     vendor = entry.get("vendor") or ""
     terms_url = entry.get("terms_url") or ""
     domain = _domain_from_url(terms_url)
-    include_domains = [domain] if domain else []
     context = {"tool": tool_name, "vendor": vendor or tool_name}
 
     return {
-        "tool": {
-            "name": tool_name,
-            "vendor": vendor,
-            "terms_url": terms_url,
-        },
+        "schema_version": CONFIG_SCHEMA_VERSION,
+        "tool": {"name": tool_name, "vendor": vendor, "terms_url": terms_url},
         "search_defaults": {
             "search_depth": "advanced",
             "max_results": 5,
@@ -165,7 +84,7 @@ def build_contract_search_config(tool_name: str) -> dict:
             "include_favicon": False,
             "country": "canada",
             "safe_search": False,
-            "include_domains": include_domains,
+            "include_domains": [domain] if domain else [],
         },
         "extract_defaults": {
             "extract_depth": "advanced",
@@ -175,15 +94,29 @@ def build_contract_search_config(tool_name: str) -> dict:
             "timeout": 30,
             "max_urls": 20,
         },
-        "fields": [
+        "families": [
             {
-                "name": field["name"],
-                "allowed_values": field["allowed_values"],
-                "query": field["query"].format(**context),
+                "name": family.name,
+                "query": family.query.format(**context),
+                "fields": [
+                    {"name": field.name, "allowed_values": list(field.allowed_values)}
+                    for field in family.fields
+                ],
             }
-            for field in FACT_FIELDS
+            for family in FACT_FAMILIES
         ],
     }
+
+
+def _is_stale(path: Path) -> bool:
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            existing = yaml.safe_load(fh) or {}
+    except (OSError, yaml.YAMLError):
+        return True
+    if not isinstance(existing, dict):
+        return True
+    return int(existing.get("schema_version", 0)) < CONFIG_SCHEMA_VERSION
 
 
 def ensure_contract_search_config(
@@ -193,10 +126,13 @@ def ensure_contract_search_config(
     directory = Path(config_dir)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{_slugify(tool_name)}.yaml"
-    if not path.exists():
-        config = build_contract_search_config(tool_name)
+    if not path.exists() or _is_stale(path):
         path.write_text(
-            yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
+            yaml.safe_dump(
+                build_contract_search_config(tool_name),
+                allow_unicode=True,
+                sort_keys=False,
+            ),
             encoding="utf-8",
         )
     return path
@@ -207,19 +143,9 @@ def load_contract_search_config(path: Path | str) -> dict:
         config = yaml.safe_load(fh) or {}
     if not isinstance(config, dict):
         raise ValueError("Tavily contract config must be a YAML object.")
-    if "fields" not in config or not isinstance(config["fields"], list):
-        raise ValueError("Tavily contract config must define a fields list.")
+    if not isinstance(config.get("families"), list):
+        raise ValueError("Tavily contract config must define a families list.")
     return config
-
-
-def _search_kwargs(config: dict, field: dict) -> dict:
-    merged = dict(config.get("search_defaults") or {})
-    merged.update(field.get("search") or {})
-    return {
-        key: value
-        for key, value in merged.items()
-        if key in SEARCH_KEYS and value not in (None, "")
-    }
 
 
 def _extract_kwargs(config: dict) -> dict:
@@ -231,32 +157,15 @@ def _extract_kwargs(config: dict) -> dict:
     }
 
 
-def _extract_max_urls(config: dict) -> int:
-    defaults = dict(config.get("extract_defaults") or {})
-    try:
-        configured = int(defaults.get("max_urls", 20))
-    except (TypeError, ValueError):
-        configured = 20
-    return max(1, min(configured, 20))
-
-
 def _response_results(response: object) -> list[dict]:
     if not isinstance(response, dict):
         return []
     results = response.get("results", [])
-    return results if isinstance(results, list) else []
-
-
-def _unique_urls(results: list[dict]) -> list[str]:
-    seen = set()
-    urls: list[str] = []
-    for result in results:
-        url = result.get("url") or ""
-        if not url or url in seen:
-            continue
-        seen.add(url)
-        urls.append(url)
-    return urls
+    if not isinstance(results, list):
+        return []
+    # Ne garder que les éléments dict : un résultat mal formé (chaîne, None)
+    # ferait autrement lever `.get()` jusqu'à Interview.assess.
+    return [result for result in results if isinstance(result, dict)]
 
 
 def _extract_result_content(result: dict) -> str:
@@ -268,64 +177,138 @@ def _extract_result_content(result: dict) -> str:
     )
 
 
-def _fallback_search_chunks(results: list[dict]) -> list[str]:
-    chunks: list[str] = []
-    for result in results:
-        url = result.get("url") or ""
-        title = result.get("title") or url or "Resultat Tavily"
-        content = result.get("raw_content") or result.get("content") or ""
-        if not content:
-            continue
-        chunks.append(
-            f"Source recherche Tavily\n"
-            f"Titre: {title}\n"
-            f"URL: {url}\n"
-            f"{content}"
-        )
-    return chunks
+TAVILY_EXTRACT_HARD_LIMIT = 20
 
 
-def collect_terms_from_tavily(config: dict, search_func, extract_func=None) -> FetchedTerms | None:
-    search_results: list[dict] = []
-    tool_name = (config.get("tool") or {}).get("name") or "outil"
+def _family_search_kwargs(config: dict, family: dict) -> dict:
+    merged = dict(config.get("search_defaults") or {})
+    merged.update(family.get("search") or {})
+    return {
+        key: value
+        for key, value in merged.items()
+        if key in SEARCH_KEYS and value not in (None, "")
+    }
 
-    for field in config["fields"]:
-        query = field.get("query")
+
+def _round_robin_urls(urls_by_family: dict[str, list[str]], budget: int) -> list[str]:
+    """Un quota égal par famille, servi en alternance, plafonné à la limite Tavily.
+
+    Sert la première URL de chaque famille, puis la deuxième, etc. — sans quoi
+    les familles interrogées en premier mangeraient tout le budget.
+    """
+    per_family = max(1, budget // max(1, len(urls_by_family)))
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for rank in range(per_family):
+        for urls in urls_by_family.values():
+            if rank >= len(urls):
+                continue
+            url = urls[rank]
+            if url in seen:
+                continue
+            seen.add(url)
+            ordered.append(url)
+            if len(ordered) >= budget:
+                return ordered
+    return ordered
+
+
+def _extract_budget(config: dict) -> int:
+    defaults = dict(config.get("extract_defaults") or {})
+    try:
+        configured = int(defaults.get("max_urls", TAVILY_EXTRACT_HARD_LIMIT))
+    except (TypeError, ValueError):
+        configured = TAVILY_EXTRACT_HARD_LIMIT
+    return max(1, min(configured, TAVILY_EXTRACT_HARD_LIMIT))
+
+
+def _family_chunk(url: str, content: str, extracted: bool) -> str:
+    origin = "Source extraite Tavily" if extracted else "Source recherche Tavily"
+    return f"{origin}\nURL: {url}\n{content}"
+
+
+def _error_kind(exc: Exception) -> str:
+    """« Ta clé est épuisée » et « la page ne répond pas » n'appellent pas la même réaction."""
+    name = type(exc).__name__
+    message = str(exc)
+    if "APIKey" in name or "401" in message or "403" in message:
+        return "auth"
+    if "UsageLimit" in name or "429" in message or "quota" in message.lower():
+        return "quota"
+    return "network"
+
+
+def collect_evidence_from_tavily(
+    config: dict, search_func, extract_func=None,
+) -> ContractEvidence:
+    families = config["families"]
+    urls_by_family: dict[str, list[str]] = {}
+    search_hits: dict[str, dict[str, dict]] = {}  # famille → url → résultat de recherche
+    failed: list[str] = []
+
+    for family in families:
+        query = family.get("query")
         if not query:
             continue
-        response = search_func(query=query, **_search_kwargs(config, field))
-        for result in _response_results(response):
-            result = dict(result)
-            result["field"] = field["name"]
-            search_results.append(result)
-
-    urls = _unique_urls(search_results)[:_extract_max_urls(config)]
-    chunks: list[str] = []
-    if urls and extract_func is not None:
-        extracted = extract_func(urls, **_extract_kwargs(config))
-        for result in _response_results(extracted):
-            url = result.get("url") or ""
-            content = _extract_result_content(result)
-            if not content:
+        name = family["name"]
+        with trace_step(None, "tavily_family_search", family=name) as extra:
+            try:
+                response = search_func(query=query, **_family_search_kwargs(config, family))
+            except Exception as exc:  # noqa: BLE001 — une famille perdue ne doit pas tuer l'entrevue
+                failed.append(name)
+                extra["outcome"] = "failed"
+                extra["error_kind"] = _error_kind(exc)
+                extra["error"] = type(exc).__name__
                 continue
-            chunks.append(
-                f"Source extraite Tavily\n"
-                f"URL: {url}\n"
-                f"{content}"
+            hits: dict[str, dict] = {}
+            for result in _response_results(response):
+                url = result.get("url") or ""
+                if url and url not in hits:
+                    hits[url] = result
+            extra["outcome"] = "ok"
+            extra["hits"] = len(hits)
+        if hits:
+            urls_by_family[name] = list(hits)
+            search_hits[name] = hits
+
+    selected = _round_robin_urls(urls_by_family, _extract_budget(config))
+    extracted_by_url: dict[str, str] = {}
+    if selected and extract_func is not None:
+        with trace_step(None, "tavily_extract", urls=len(selected)) as extra:
+            try:
+                response = extract_func(selected, **_extract_kwargs(config))
+            except Exception as exc:  # noqa: BLE001 — repli sur le contenu de recherche
+                response = {}
+                extra["outcome"] = "failed"
+                extra["error_kind"] = _error_kind(exc)
+                extra["error"] = type(exc).__name__
+            else:
+                extra["outcome"] = "ok"
+            for result in _response_results(response):
+                url = result.get("url") or ""
+                content = _extract_result_content(result)
+                if url and content:
+                    extracted_by_url[url] = content
+            extra["extracted"] = len(extracted_by_url)
+
+    by_family: dict[str, FetchedTerms] = {}
+    for name, hits in search_hits.items():
+        chunks: list[str] = []
+        for url, result in hits.items():
+            if url in extracted_by_url:
+                chunks.append(_family_chunk(url, extracted_by_url[url], extracted=True))
+                continue
+            content = result.get("raw_content") or result.get("content") or ""
+            if content:
+                chunks.append(_family_chunk(url, content, extracted=False))
+        if chunks:
+            by_family[name] = FetchedTerms(
+                text="\n\n---\n\n".join(chunks),
+                source_url=next(iter(hits)),
+                fetched_at=date.today(),
             )
 
-    if not chunks:
-        chunks = _fallback_search_chunks(search_results)
-
-    if not chunks:
-        return None
-
-    source_url = urls[0] if urls else f"tavily://search/{_slugify(tool_name)}"
-    return FetchedTerms(
-        text="\n\n---\n\n".join(chunks),
-        source_url=source_url,
-        fetched_at=date.today(),
-    )
+    return ContractEvidence(by_family=by_family, failed_families=tuple(failed))
 
 
 def search_contract_terms_with_tavily(
@@ -334,7 +317,7 @@ def search_contract_terms_with_tavily(
     api_key: str | None = None,
     config_dir: Path | str = DEFAULT_CONFIG_DIR,
     client=None,
-) -> FetchedTerms | None:
+) -> ContractEvidence | None:
     path = ensure_contract_search_config(tool_name, config_dir=config_dir)
     config = load_contract_search_config(path)
 
@@ -344,17 +327,28 @@ def search_contract_terms_with_tavily(
         key = api_key or os.getenv("TAVILY_API_KEY")
         if not key:
             return None
-        from tavily import TavilyClient
+        try:
+            from tavily import TavilyClient
 
-        tavily_client = TavilyClient(api_key=key)
+            tavily_client = TavilyClient(api_key=key)
+        except Exception as exc:  # noqa: BLE001 — clé invalide ou paquet absent
+            with trace_step(None, "tavily_client_init") as extra:
+                extra["outcome"] = "failed"
+                extra["error_kind"] = _error_kind(exc)
+            return None
         should_close = True
 
     try:
-        return collect_terms_from_tavily(
-            config,
-            tavily_client.search,
-            tavily_client.extract,
+        evidence = collect_evidence_from_tavily(
+            config, tavily_client.search, tavily_client.extract,
         )
     finally:
         if should_close and hasattr(tavily_client, "close"):
-            tavily_client.close()
+            try:
+                tavily_client.close()
+            except Exception as exc:  # noqa: BLE001 — une fermeture ratée ne doit pas tuer l'entrevue
+                with trace_step(None, "tavily_client_close") as extra:
+                    extra["outcome"] = "failed"
+                    extra["error_kind"] = _error_kind(exc)
+
+    return None if evidence.is_empty() else evidence

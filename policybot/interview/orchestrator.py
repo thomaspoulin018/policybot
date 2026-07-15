@@ -11,6 +11,7 @@ from policybot.classify.data_classifier import classify_data
 from policybot.classify.tool_type import classify_tool_type
 from policybot.classify.tool_registry import lookup_tool
 from policybot.contract.fetcher import FetchedTerms, fetch_terms
+from policybot.contract.evidence import ContractEvidence
 from policybot.contract.arp import CURRENT_ARP_SCHEMA_VERSION, extract_contract_facts, build_arp
 from policybot.grille.engine import evaluate_usage, synthesize
 from policybot.tracing import trace_step, mask_text
@@ -36,7 +37,7 @@ class UnknownToolError(ValueError):
 class Interview:
     def __init__(self, llm: LLMProvider, store: PreApprovedStore,
                  http_get: Optional[Callable[[str], str]] = None,
-                 tavily_search: Optional[Callable[[str], FetchedTerms | None]] = None):
+                 tavily_search: Optional[Callable[[str], "ContractEvidence | None"]] = None):
         self._llm = llm
         self._store = store
         self._http_get = http_get
@@ -58,23 +59,27 @@ class Interview:
             else:
                 extra["cache"] = "miss"
             with trace_step(None, "resolve_arp_fetch", tool_name=tool_name) as fetch_extra:
-                terms = None
+                evidence = None
                 if self._tavily_search is not None:
-                    terms = self._tavily_search(tool_name)
-                    fetch_extra["source"] = "tavily"
+                    evidence = self._tavily_search(tool_name)
+                    fetch_extra["source"] = "tavily" if evidence is not None else "tavily_miss"
                 elif os.environ.get("POLICYBOT_CONTRACT_SEARCH", "").strip().lower() == "tavily":
                     from policybot.contract.tavily import search_contract_terms_with_tavily
 
-                    terms = search_contract_terms_with_tavily(tool_name)
-                    fetch_extra["source"] = "tavily" if terms is not None else "tavily_miss"
-                if terms is None:
+                    evidence = search_contract_terms_with_tavily(tool_name)
+                    fetch_extra["source"] = "tavily" if evidence is not None else "tavily_miss"
+                if evidence is None:
                     terms = fetch_terms(tool_name, http_get=self._http_get)
                     fetch_extra.setdefault("source", "direct_terms")
-                fetch_extra["found"] = terms is not None
-                if terms is None:
+                    evidence = (
+                        ContractEvidence.from_single(terms) if terms is not None else None
+                    )
+                fetch_extra["found"] = evidence is not None
+                if evidence is None:
                     facts = ContractFacts()  # manual-paste fallback handled by the UI layer
                 else:
-                    facts = extract_contract_facts(terms, self._llm)
+                    fetch_extra["families"] = len(evidence.by_family)
+                    facts = extract_contract_facts(evidence, self._llm)
             arp = build_arp(tool_name, iag_type, facts)
             self._store.save_arp(arp)
             return arp
