@@ -90,6 +90,51 @@ def _render_outil(request: Request, state: WizardState, errors: dict[str, str] |
     }, status_code=422 if errors else 200)
 
 
+def _render_profil_utilisateurs(request: Request, state: WizardState):
+    return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
+        "active_step": "profil_utilisateurs",
+        "hidden_fields": _hidden_fields_for(state, PROFILE_FIELDS),
+        "state": state,
+    })
+
+
+def _render_donnees(request: Request, state: WizardState):
+    return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
+        "active_step": "donnees",
+        "hidden_fields": _hidden_fields_for(state, DATA_FIELDS),
+        "state": state,
+        "question": data_description_question(),
+        "usage_number": len(state.saved_usages) + 1,
+    })
+
+
+def _render_usage(request: Request, state: WizardState):
+    return templates.TemplateResponse(request, "wizard_usage.html.j2", {
+        "active_step": "usage",
+        "hidden_fields": _hidden_fields_for(state, USAGE_FIELDS),
+        "state": state,
+        "usage_number": len(state.saved_usages) + 1,
+    })
+
+
+def _render_resultats(request: Request, state: WizardState):
+    return templates.TemplateResponse(request, "wizard_resultats.html.j2", {
+        "active_step": "resultats",
+        "hidden_fields": _hidden_fields_for(state, RESULT_FIELDS),
+        "state": state,
+        "question": usage_details_question(),
+        "usage_number": len(state.saved_usages) + 1,
+    })
+
+
+def _render_contexte_affaires(request: Request, state: WizardState):
+    return templates.TemplateResponse(request, "wizard_contexte_affaires.html.j2", {
+        "active_step": "contexte_affaires",
+        "hidden_fields": _hidden_fields_for(state, CONTEXT_FIELDS),
+        "state": state,
+    })
+
+
 @router.get("/", response_class=HTMLResponse)
 def wizard_home(request: Request):
     return _render_outil(request, WizardState())
@@ -98,11 +143,7 @@ def wizard_home(request: Request):
 @router.post("/wizard/test-prefill", response_class=HTMLResponse)
 def wizard_test_prefill(request: Request):
     state = demo_wizard_state()
-    return templates.TemplateResponse(request, "wizard_contexte_affaires.html.j2", {
-        "active_step": "contexte_affaires",
-        "hidden_fields": _hidden_fields_for(state, CONTEXT_FIELDS),
-        "state": state,
-    })
+    return _render_contexte_affaires(request, state)
 
 
 @router.post("/wizard/outil", response_class=HTMLResponse)
@@ -124,9 +165,7 @@ async def wizard_outil(request: Request):
     if errors:
         return _render_outil(request, state, errors)
     if classify_tool_type(tool_name) is not None or lookup_tool(tool_name) is not None:
-        return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
-            "active_step": "profil_utilisateurs", "hidden_fields": _hidden_fields_for(state, PROFILE_FIELDS), "state": state,
-        })
+        return _render_profil_utilisateurs(request, state)
     llm = request.app.state.interview.llm
     try:
         guessed_type = guess_tool_type(tool_name, llm)
@@ -151,35 +190,21 @@ async def wizard_outil_type(request: Request):
     state = WizardState(tool_name=tool_name, demandeur=demandeur, unite=unite,
                          tool_type_override=tool_type_override,
                          version_plan_tarifaire=version_plan_tarifaire)
-    return templates.TemplateResponse(request, "wizard_profil_utilisateurs.html.j2", {
-        "active_step": "profil_utilisateurs",
-        "hidden_fields": _hidden_fields_for(state, PROFILE_FIELDS),
-        "state": state,
-    })
+    return _render_profil_utilisateurs(request, state)
 
 
 @router.post("/wizard/profil-utilisateurs", response_class=HTMLResponse)
 async def wizard_profil_utilisateurs_submit(request: Request):
     form = _group_form(await request.form())
     state = WizardState.from_form(form)
-    return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
-        "active_step": "donnees",
-        "hidden_fields": _hidden_fields_for(state, DATA_FIELDS),
-        "state": state,
-        "question": data_description_question(),
-    })
+    return _render_donnees(request, state)
 
 
 @router.post("/wizard/donnees", response_class=HTMLResponse)
 async def wizard_donnees(request: Request):
     form = _group_form(await request.form())
     state = WizardState.from_form(form)
-    return templates.TemplateResponse(request, "wizard_usage.html.j2", {
-        "active_step": "usage",
-        "hidden_fields": _hidden_fields_for(state, USAGE_FIELDS),
-        "state": state,
-        "usage_number": len(state.saved_usages) + 1,
-    })
+    return _render_usage(request, state)
 
 
 @router.post("/wizard/suggest/donnees", response_class=HTMLResponse)
@@ -234,13 +259,7 @@ async def suggest_usage(request: Request):
 async def wizard_usage_submit(request: Request):
     form = _group_form(await request.form())
     state = WizardState.from_form(form)
-    return templates.TemplateResponse(request, "wizard_resultats.html.j2", {
-        "active_step": "resultats",
-        "hidden_fields": _hidden_fields_for(state, RESULT_FIELDS),
-        "state": state,
-        "question": usage_details_question(),
-        "usage_number": len(state.saved_usages) + 1,
-    })
+    return _render_resultats(request, state)
 
 
 @router.post("/wizard/resultats", response_class=HTMLResponse)
@@ -249,18 +268,8 @@ async def wizard_resultats_submit(request: Request):
     state = WizardState.from_form(form)
     if form.get("usage_action") == "add_usage":
         state = state.with_current_usage_saved().cleared_current_usage()
-        return templates.TemplateResponse(request, "wizard_donnees.html.j2", {
-            "active_step": "donnees",
-            "hidden_fields": _hidden_fields_for(state, DATA_FIELDS),
-            "state": state,
-            "question": data_description_question(),
-            "usage_number": len(state.saved_usages) + 1,
-        })
-    return templates.TemplateResponse(request, "wizard_contexte_affaires.html.j2", {
-        "active_step": "contexte_affaires",
-        "hidden_fields": _hidden_fields_for(state, CONTEXT_FIELDS),
-        "state": state,
-    })
+        return _render_donnees(request, state)
+    return _render_contexte_affaires(request, state)
 
 
 def _as_int(value: str) -> int | None:
