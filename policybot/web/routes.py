@@ -193,6 +193,13 @@ async def wizard_outil_type(request: Request):
     return _render_profil_utilisateurs(request, state)
 
 
+@router.post("/wizard/goto/profil-utilisateurs", response_class=HTMLResponse)
+async def wizard_goto_profil_utilisateurs(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
+    return _render_profil_utilisateurs(request, state)
+
+
 @router.post("/wizard/profil-utilisateurs", response_class=HTMLResponse)
 async def wizard_profil_utilisateurs_submit(request: Request):
     form = _group_form(await request.form())

@@ -14,11 +14,11 @@
     <div class="field-row">
       <label class="freefield">
         Nombre d'utilisateurs vis&eacute;s
-        <input type="number" name="nb_utilisateurs_vises" min="0" placeholder="ex. 25">
+        <input type="number" name="nb_utilisateurs_vises" value="{{ state.nb_utilisateurs_vises }}" min="0" placeholder="ex. 25">
       </label>
       <label class="freefield">
         Fonctions / r&ocirc;les concern&eacute;s
-        <input type="text" name="fonctions_roles" placeholder="ex. agents de bureau, conseillers p&eacute;dagogiques">
+        <input type="text" name="fonctions_roles" value="{{ state.fonctions_roles|e }}" placeholder="ex. agents de bureau, conseillers p&eacute;dagogiques">
       </label>
     </div>
   </section>
@@ -33,17 +33,17 @@
     </div>
     <div class="option-grid option-grid-3">
       <label class="opt">
-        <div class="top"><input type="radio" name="niveau_maitrise_ti" value="débutant"></div>
+        <div class="top"><input type="radio" name="niveau_maitrise_ti" value="débutant" {% if state.niveau_maitrise_ti == "débutant" %}checked{% endif %}></div>
         <strong>D&eacute;butant</strong>
         <small>Peu &agrave; l'aise avec les outils num&eacute;riques ou besoin d'un guidage serr&eacute;.</small>
       </label>
       <label class="opt">
-        <div class="top"><input type="radio" name="niveau_maitrise_ti" value="intermédiaire"></div>
+        <div class="top"><input type="radio" name="niveau_maitrise_ti" value="intermédiaire" {% if state.niveau_maitrise_ti == "intermédiaire" %}checked{% endif %}></div>
         <strong>Interm&eacute;diaire</strong>
         <small>Utilise d&eacute;j&agrave; des outils num&eacute;riques au quotidien avec une autonomie correcte.</small>
       </label>
       <label class="opt">
-        <div class="top"><input type="radio" name="niveau_maitrise_ti" value="avancé"></div>
+        <div class="top"><input type="radio" name="niveau_maitrise_ti" value="avancé" {% if state.niveau_maitrise_ti == "avancé" %}checked{% endif %}></div>
         <strong>Avanc&eacute;</strong>
         <small>&Agrave; l'aise avec les outils complexes, les param&eacute;trages et les usages plus pouss&eacute;s.</small>
       </label>
@@ -60,17 +60,17 @@
     </div>
     <div class="option-grid option-grid-3">
       <label class="opt">
-        <div class="top"><input type="radio" name="formation_iag_recue" value="aucune"></div>
+        <div class="top"><input type="radio" name="formation_iag_recue" value="aucune" {% if state.formation_iag_recue == "aucune" %}checked{% endif %}></div>
         <strong>Aucune</strong>
         <small>Aucune formation formelle ou rappel sur les bonnes pratiques.</small>
       </label>
       <label class="opt">
-        <div class="top"><input type="radio" name="formation_iag_recue" value="partielle"></div>
+        <div class="top"><input type="radio" name="formation_iag_recue" value="partielle" {% if state.formation_iag_recue == "partielle" %}checked{% endif %}></div>
         <strong>Partielle</strong>
         <small>Quelques notions vues, mais pas encore un parcours complet.</small>
       </label>
       <label class="opt">
-        <div class="top"><input type="radio" name="formation_iag_recue" value="complète"></div>
+        <div class="top"><input type="radio" name="formation_iag_recue" value="complète" {% if state.formation_iag_recue == "complète" %}checked{% endif %}></div>
         <strong>Compl&egrave;te (MCN)</strong>
         <small>Le groupe a d&eacute;j&agrave; suivi la formation compl&egrave;te pr&eacute;vue par l'organisation.</small>
       </label>
@@ -87,17 +87,17 @@
     </div>
     <div class="option-grid option-grid-3">
       <label class="opt">
-        <div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="oui"></div>
+        <div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="oui" {% if state.acces_protege_a_ou_plus == "oui" %}checked{% endif %}></div>
         <strong>Oui</strong>
         <small>Le groupe a acc&egrave;s &agrave; de l'information Prot&eacute;g&eacute; A, B ou plus.</small>
       </label>
       <label class="opt">
-        <div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="non"></div>
+        <div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="non" {% if state.acces_protege_a_ou_plus == "non" %}checked{% endif %}></div>
         <strong>Non</strong>
         <small>Le groupe ne manipule pas ce niveau d'information dans son travail courant.</small>
       </label>
       <label class="opt">
-        <div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="à vérifier"></div>
+        <div class="top"><input type="radio" name="acces_protege_a_ou_plus" value="à vérifier" {% if state.acces_protege_a_ou_plus == "à vérifier" %}checked{% endif %}></div>
         <strong>&Agrave; v&eacute;rifier</strong>
         <small>L'information n'est pas confirm&eacute;e pour l'instant.</small>
       </label>
