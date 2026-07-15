@@ -207,6 +207,13 @@ async def wizard_profil_utilisateurs_submit(request: Request):
     return _render_donnees(request, state)
 
 
+@router.post("/wizard/goto/donnees", response_class=HTMLResponse)
+async def wizard_goto_donnees(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
+    return _render_donnees(request, state)
+
+
 @router.post("/wizard/donnees", response_class=HTMLResponse)
 async def wizard_donnees(request: Request):
     form = _group_form(await request.form())

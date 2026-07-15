@@ -11,7 +11,7 @@
   <div class="grid" id="data-options">
     {% for opt in question.options %}
     <label class="opt">
-      <div class="top"><input type="checkbox" name="data_checked" value="{{ opt.label }}"></div>
+      <div class="top"><input type="checkbox" name="data_checked" value="{{ opt.label }}" {% if opt.label in state.data_checked %}checked{% endif %}></div>
       <b>{{ opt.label }}</b><small>{{ opt.description }}</small>
     </label>
     {% endfor %}
@@ -19,7 +19,7 @@
   <div id="suggested-donnees"></div>
   <label class="freefield">
     Autre (en tes mots) :
-    <input type="text" name="data_free_text"
+    <input type="text" name="data_free_text" value="{{ state.data_free_text|e }}"
            hx-post="/wizard/suggest/donnees" hx-trigger="changed delay:500ms"
            hx-target="#suggested-donnees" hx-swap="innerHTML">
   </label>

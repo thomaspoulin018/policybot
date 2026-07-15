@@ -29,3 +29,17 @@ def test_goto_profil_utilisateurs_prefills_state(tmp_path):
     assert 'name="niveau_maitrise_ti" value="intermédiaire" checked' in resp.text
     assert 'name="formation_iag_recue" value="partielle" checked' in resp.text
     assert 'name="acces_protege_a_ou_plus" value="non" checked' in resp.text
+
+
+def test_goto_donnees_prefills_state(tmp_path):
+    client = _client(tmp_path)
+    resp = client.post("/wizard/goto/donnees", data={
+        "tool_name": "ChatGPT",
+        "data_checked": ["Renseignements personnels", "Documents internes de travail"],
+        "data_free_text": "notes de cours",
+    })
+    assert resp.status_code == 200
+    assert "données" in resp.text.lower()
+    assert 'name="data_checked" value="Renseignements personnels" checked' in resp.text
+    assert 'name="data_checked" value="Documents internes de travail" checked' in resp.text
+    assert 'name="data_free_text" value="notes de cours"' in resp.text
