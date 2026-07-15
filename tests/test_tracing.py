@@ -6,6 +6,7 @@ from policybot.models import RequestInfo
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
+from tests.helpers.arp_fixtures import arp_extraction_responses
 
 
 class _ListHandler(logging.Handler):
@@ -43,7 +44,7 @@ def test_pipeline_steps_share_interview_id(tmp_path, trace_events):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "no", "data_residency": "canada", "extraction_confidence": 0.9},
+        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
     ])
     state = itv.assess(
         request=RequestInfo(numero="IAG-TEST-001"),
@@ -71,7 +72,7 @@ def test_no_raw_text_leaks_into_logs(tmp_path, trace_events):
         {"already_public": False, "contains_personal_info": True,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.95},
-        {"trains_on_input": "no", "data_residency": "canada", "extraction_confidence": 0.9},
+        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
     ])
     itv.assess(
         request=RequestInfo(numero="IAG-TEST-002"),

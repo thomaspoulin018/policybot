@@ -3,6 +3,7 @@ from policybot.models import ArpRecord, ContractFacts, RequestInfo, Qualificatio
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
+from tests.helpers.arp_fixtures import arp_extraction_responses
 
 
 def _terms_get(url):
@@ -15,9 +16,11 @@ def test_protege_b_into_public_tool_is_refused(tmp_path):
         {"already_public": False, "contains_personal_info": True,
          "strategic_sensitive": True, "internal_nonpublic": True,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "yes", "data_retention": "indefinite",
-         "data_residency": "us", "sub_processors": "undisclosed",
-         "human_review": "no", "extraction_confidence": 0.8},
+        *arp_extraction_responses(
+            trains_on_input="yes", data_retention="indefinite",
+            data_residency="us", sub_processors="undisclosed",
+            human_review="no",
+        ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     itv = Interview(llm=llm, store=store, http_get=_terms_get)
@@ -40,8 +43,10 @@ def test_public_data_public_tool_authorised(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "no", "data_retention": "none", "data_residency": "canada",
-         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+        *arp_extraction_responses(
+            trains_on_input="no", data_retention="none", data_residency="canada",
+            sub_processors="disclosed", human_review="yes",
+        ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     itv = Interview(llm=llm, store=store, http_get=_terms_get)
@@ -61,8 +66,10 @@ def test_assess_attaches_arp_record_to_tool_ref(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "no", "data_retention": "none", "data_residency": "canada",
-         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+        *arp_extraction_responses(
+            trains_on_input="no", data_retention="none", data_residency="canada",
+            sub_processors="disclosed", human_review="yes",
+        ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     itv = Interview(llm=llm, store=store, http_get=_terms_get)
@@ -82,8 +89,10 @@ def test_assess_reuses_cached_arp_record_on_second_call(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "no", "data_retention": "none", "data_residency": "canada",
-         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+        *arp_extraction_responses(
+            trains_on_input="no", data_retention="none", data_residency="canada",
+            sub_processors="disclosed", human_review="yes",
+        ),
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
@@ -105,8 +114,11 @@ def test_assess_refreshes_stale_cached_arp_record(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "no", "data_retention": "none", "data_residency": "canada",
-         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+        *arp_extraction_responses(
+            trains_on_input="no", data_retention="none", data_residency="canada",
+            sub_processors="disclosed", human_review="yes",
+            evidence="We may use your content to train our models.",
+        ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     store.save_arp(ArpRecord(
@@ -149,8 +161,10 @@ def test_unregistered_tool_with_override_uses_override_iag_type(tmp_path):
         {"already_public": False, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": True,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "no", "data_retention": "limited", "data_residency": "canada",
-         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+        *arp_extraction_responses(
+            trains_on_input="no", data_retention="limited", data_residency="canada",
+            sub_processors="disclosed", human_review="yes",
+        ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     itv = Interview(llm=llm, store=store, http_get=_terms_get)
@@ -173,8 +187,10 @@ def test_assess_stores_qualification_profile_and_tool_version(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "no", "data_retention": "none", "data_residency": "canada",
-         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+        *arp_extraction_responses(
+            trains_on_input="no", data_retention="none", data_residency="canada",
+            sub_processors="disclosed", human_review="yes",
+        ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     itv = Interview(llm=llm, store=store, http_get=_terms_get)
@@ -204,8 +220,10 @@ def test_assess_defaults_qualification_and_new_usage_fields_when_omitted(tmp_pat
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "no", "data_retention": "none", "data_residency": "canada",
-         "sub_processors": "disclosed", "human_review": "yes", "extraction_confidence": 0.9},
+        *arp_extraction_responses(
+            trains_on_input="no", data_retention="none", data_residency="canada",
+            sub_processors="disclosed", human_review="yes",
+        ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     itv = Interview(llm=llm, store=store, http_get=_terms_get)

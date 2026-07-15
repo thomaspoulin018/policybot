@@ -46,7 +46,7 @@ TAVILY_API_KEY=<ta cle Tavily>
 POLICYBOT_CONTRACT_SEARCH=tavily
 ```
 
-Au premier passage d'un outil, PolicyBot genere automatiquement `configs/tavily_contracts/<outil>.yaml`. Ce YAML contient une requete Tavily Search par champ `ContractFacts`, puis les URLs trouvees sont envoyees a Tavily Extract pour recuperer le contenu complet avant la normalisation LLM : `trains_on_input`, `data_retention`, `data_residency`, `sub_processors`, `human_review`, `encryption_standard`, `ip_ownership`, `applicable_law`, `foreign_vendor_dependency`, `contract_prohibits_reuse` et `reentraining_opt_out`. Tavily Extract accepte au maximum 20 URLs par appel; ajuste `extract_defaults.max_urls` dans le YAML pour reduire ce nombre au besoin.
+Au premier passage d'un outil, PolicyBot genere automatiquement `configs/tavily_contracts/<outil>.yaml`. Ce YAML contient 5 recherches ciblées, une par famille de critères (entreposage, utilisation, gouvernance, sécurité, propriété intellectuelle), chacune avec ses propres mots-clés et champs de extraction — 16 champs au total répartis sur les 5 familles. Les URLs trouvees sont envoyees a Tavily Extract pour recuperer le contenu complet avant la normalisation LLM. Tavily Extract accepte au maximum 20 URLs par appel; ajuste `extract_defaults.max_urls` dans le YAML pour reduire ce nombre au besoin.
 
 Tester Tavily sans lancer le serveur web :
 

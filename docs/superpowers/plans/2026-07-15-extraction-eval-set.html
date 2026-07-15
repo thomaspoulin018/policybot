@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Plan : jeu d'évaluation de l'extraction ARP</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.6; color: #1a1a2e;
+    background: #f4f6fb; padding: 2rem;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.7rem; font-weight: 700; }
+  header p  { margin-top: .4rem; opacity: .8; font-size: .95rem; }
+  .meta { display: flex; gap: 1.5rem; margin-top: 1rem; font-size: .85rem; opacity: .65; flex-wrap: wrap; }
+
+  .section {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+  }
+  .section h2 {
+    font-size: 1.05rem; font-weight: 700; color: #16213e;
+    border-left: 4px solid #4361ee; padding-left: .75rem;
+    margin-bottom: 1rem;
+  }
+  .section h3 {
+    font-size: .95rem; font-weight: 700; color: #16213e; margin: 1rem 0 .5rem;
+  }
+
+  ol.steps { padding-left: 1.25rem; }
+  ol.steps li { margin-bottom: .7rem; }
+  ol.steps li strong { color: #4361ee; }
+  ul.plain { padding-left: 1.25rem; }
+  ul.plain li { margin-bottom: .4rem; }
+
+  .badge {
+    display: inline-block; font-size: .72rem; font-weight: 700;
+    padding: .15rem .55rem; border-radius: 99px; margin-right: .3rem;
+    letter-spacing: .02em;
+  }
+  .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-yellow { background: #fef9c3; color: #a16207; }
+  .badge-red    { background: #fee2e2; color: #b91c1c; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .87rem; margin-top: .5rem; }
+  th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .75rem; }
+  td { padding: .5rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  code, .code-inline {
+    font-family: "SF Mono", Consolas, monospace; font-size: .85em;
+    background: #f0f2f8; padding: .1rem .35rem; border-radius: 4px;
+  }
+  .code-block {
+    font-family: "SF Mono", Consolas, monospace; font-size: .85rem;
+    background: #16213e; color: #e6e9f5; padding: 1rem 1.25rem;
+    border-radius: 8px; white-space: pre; overflow-x: auto; line-height: 1.5;
+  }
+
+  .callout {
+    border-left: 4px solid #4361ee; background: #f0f4ff;
+    padding: .75rem 1rem; border-radius: 0 8px 8px 0;
+    font-size: .88rem; margin-top: .75rem;
+  }
+  .callout.warn { border-color: #f59e0b; background: #fffbeb; }
+  .callout.danger { border-color: #ef4444; background: #fef2f2; }
+
+  .tree {
+    font-family: "SF Mono", Consolas, monospace; font-size: .82rem;
+    background: #f8f9fc; border: 1px solid #eaecf5; border-radius: 8px;
+    padding: 1rem 1.25rem; white-space: pre; overflow-x: auto; line-height: 1.55;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Jeu d'évaluation de l'extraction ARP (golden set)</h1>
+    <p>Mesurer la vraie qualité d'extraction des faits contractuels (ContractFacts) contre une vérité terrain rédigée à la main, sur 3 outils réels — hors suite pytest déterministe.</p>
+    <div class="meta">
+      <span>Date : 2026-07-15</span>
+      <span>Branche : tavily-fetcher-evidence</span>
+      <span>Exécutant : toi + Claude Code, en solo</span>
+      <span>Échéance : aucune</span>
+    </div>
+  </header>
+
+  <div class="section">
+    <h2>Pourquoi ce plan existe</h2>
+    <p>
+      <code>policybot/contract/arp.py</code> extrait 16 faits contractuels via un LLM, avec citation
+      verbatim obligatoire et vérification d'ancrage (<code>_quote_is_anchored</code>, déjà en place)
+      contre le texte source. La suite <code>pytest -v</code> reste volontairement 100&nbsp;% offline
+      (<code>FakeLLMProvider</code>) : elle prouve que la plomberie tient (schéma, dégradation, ancrage),
+      mais ne peut jamais dire si le LLM a extrait la <em>bonne</em> information sur un vrai contrat.
+    </p>
+    <p style="margin-top:.6rem;">
+      Ce plan ajoute un harnais séparé qui appelle le vrai LLM sur des preuves de contrats réelles et
+      figées, comparées à une vérité terrain validée à la main — pour suivre la fiabilité d'extraction
+      dans le temps (ex. après un changement de prompt ou de modèle), sans jamais toucher au caractère
+      déterministe de <code>pytest -v</code>.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Décisions actées</h2>
+    <table>
+      <tr><th>Question</th><th>Décision</th></tr>
+      <tr><td>Appel LLM réel ou déterministe ?</td><td>Vrai LLM (<code>OpenRouterProvider</code>), script à part — jamais dans <code>pytest -v</code></td></tr>
+      <tr><td>Combien d'outils ?</td><td>Exactement 3 : <code>chatgpt</code>, <code>claude.ai</code>, <code>microsoft copilot entreprise</code> — pas d'étape d'extension prévue dans ce plan (YAGNI)</td></tr>
+      <tr><td>Qui écrit la vérité terrain ?</td><td>Claude fait un premier jet via WebFetch sur les vraies pages, l'utilisateur valide/corrige avant de figer</td></tr>
+      <tr><td>Comment on lance l'éval ?</td><td>CLI dédié <code>python -m policybot.contract.extraction_eval</code>, à la manière de <code>tavily_probe.py</code></td></tr>
+      <tr><td>Retrieval (hybride/rerank) ?</td><td>Hors scope — évidence figée en une seule page par outil (<code>ContractEvidence.from_single</code>), on évalue l'extraction, pas la récupération</td></tr>
+      <tr><td>Modèle LLM utilisé pour l'éval ?</td><td>Le même que la prod (config <code>.env</code> existante) — pas de flag <code>--model</code></td></tr>
+      <tr><td>Code de sortie du script ?</td><td>Non-zéro si au moins un champ est <code>WRONG_VALUE</code> ; 0 sinon — utilisable comme gate manuel</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Nouveaux fichiers</h2>
+    <div class="tree">tests/contract/fixtures/golden/
+  chatgpt/
+    evidence.txt        # en-tête: date de capture + URL source
+    expected.yaml        # 16 champs -> valeur attendue
+  claude_ai/
+    evidence.txt
+    expected.yaml
+  microsoft_copilot_entreprise/
+    evidence.txt
+    expected.yaml
+
+policybot/contract/
+  extraction_eval.py     # loader golden + scoring + rapport + CLI main()
+
+tests/contract/
+  test_extraction_eval.py   # TDD, aucune vraie evidence/LLM, valeurs bidon</div>
+  </div>
+
+  <div class="section">
+    <h2>Phase 1 — Loader des cas golden (TDD)</h2>
+    <ol class="steps">
+      <li><strong>Étape 1.1 :</strong> Écrire un test qui pointe vers un dossier golden temporaire (<code>tmp_path</code>) contenant un <code>evidence.txt</code> factice (en-tête <code># source: ... \n# fetched_at: YYYY-MM-DD</code> puis le texte) et un <code>expected.yaml</code> factice à 2-3 champs. Le test attend qu'une fonction <code>load_golden_case(dir) -> GoldenCase</code> retourne une <code>ContractEvidence</code> (via <code>ContractEvidence.from_single</code>) et un <code>dict[str, str]</code> de valeurs attendues.</li>
+      <li><strong>Étape 1.2 :</strong> Implémenter <code>GoldenCase</code> (dataclass : <code>tool_slug</code>, <code>evidence: ContractEvidence</code>, <code>expected: dict[str, str]</code>) et <code>load_golden_case</code> dans <code>extraction_eval.py</code>. Parser l'en-tête de <code>evidence.txt</code> pour <code>source_url</code>/<code>fetched_at</code>, le reste comme <code>text</code>. Utiliser <code>yaml.safe_load</code> pour <code>expected.yaml</code> (déjà une dépendance du projet).</li>
+      <li><strong>Étape 1.3 :</strong> Ajouter un test qui valide que <code>expected.yaml</code> ne référence que des clés existantes dans <code>ALL_FACT_FIELDS</code> (<code>policybot/contract/families.py</code>) — échoue fort si une fixture golden réelle contient une faute de frappe de champ.</li>
+      <li><strong>Étape 1.4 :</strong> Ajouter <code>discover_golden_cases() -> list[GoldenCase]</code> qui itère <code>tests/contract/fixtures/golden/*/</code> — testé avec les vrais dossiers une fois créés en Phase 3, mais la fonction elle-même est testable dès maintenant avec un répertoire temporaire.</li>
+      <li>Fin de phase : <code>pytest tests/contract/test_extraction_eval.py -v</code> passe, aucune fixture réelle requise.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Phase 2 — Notation et rapport (TDD)</h2>
+    <ol class="steps">
+      <li><strong>Étape 2.1 :</strong> Écrire les tests de <code>score_field(expected: str, extracted: FactEvidence) -> Verdict</code> pour les 3 verdicts : <code>MATCH</code> (valeurs égales, y compris <code>unknown == unknown</code>), <code>WRONG_VALUE</code> (extrait non-<code>unknown</code> ≠ attendu), <code>WRONG_ABSTAIN</code> (extrait <code>unknown</code>, attendu ≠ <code>unknown</code>).</li>
+      <li><strong>Étape 2.2 :</strong> Implémenter <code>Verdict</code> (enum ou <code>Literal</code>) et <code>score_field</code>.</li>
+      <li><strong>Étape 2.3 :</strong> Écrire les tests de <code>score_case(case: GoldenCase, facts: ContractFacts) -> list[FieldResult]</code> (<code>FieldResult</code> : <code>field</code>, <code>expected</code>, <code>got</code>, <code>verdict</code>) — avec un <code>ContractFacts</code> construit à la main, sans LLM.</li>
+      <li><strong>Étape 2.4 :</strong> Implémenter <code>score_case</code>.</li>
+      <li><strong>Étape 2.5 :</strong> Écrire les tests de <code>format_report(results: dict[str, list[FieldResult]]) -> str</code> : vérifie que le tableau par outil/champ apparaît, que le résumé agrégé affiche le taux de <code>WRONG_VALUE</code> en évidence, et que <code>has_wrong_value(results) -> bool</code> retourne juste selon le contenu.</li>
+      <li><strong>Étape 2.6 :</strong> Implémenter <code>format_report</code> et <code>has_wrong_value</code>.</li>
+      <li>Fin de phase : tests de notation/rapport 100&nbsp;% verts, toujours sans réseau ni LLM.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Phase 3 — Collecte de la vérité terrain (3 outils réels)</h2>
+    <ol class="steps">
+      <li><strong>Étape 3.1 :</strong> Claude récupère (WebFetch) les vraies pages : CGU OpenAI (<code>openai.com/policies/terms-of-use</code>), conditions consommateur Anthropic (<code>anthropic.com/legal/consumer-terms</code>), et les termes Microsoft Copilot Entreprise pertinents. Extrait les passages utiles (pas la page entière si elle est énorme — un extrait raisonnable et représentatif suffit).</li>
+      <li><strong>Étape 3.2 :</strong> Claude rédige un premier jet de <code>expected.yaml</code> par outil (16 champs, valeur + brève justification en commentaire YAML) à partir de ces pages, et écrit <code>evidence.txt</code> (en-tête source/date + texte figé).</li>
+      <li><strong>Étape 3.3 :</strong> <span class="badge badge-yellow">CHECKPOINT</span> L'utilisateur relit les 3 <code>expected.yaml</code> et corrige toute valeur douteuse avant qu'on les considère figés. Aucune étape suivante ne dépend de la perfection du premier jet, mais ce fichier fait foi une fois validé.</li>
+      <li><strong>Étape 3.4 :</strong> Ajouter un test simple par outil (<code>test_golden_chatgpt_expected_is_well_formed</code>, etc., ou un test paramétré sur <code>discover_golden_cases()</code>) qui vérifie que chaque <code>expected.yaml</code> couvre bien les 16 champs et ne référence que des valeurs autorisées (<code>allowed_values</code> de <code>FactField</code>).</li>
+      <li>Fin de phase : 3 dossiers golden réels, validés par l'utilisateur, <code>pytest -v</code> toujours vert et toujours offline.</li>
+    </ol>
+    <div class="callout warn">
+      Les CGU réelles changent avec le temps. <code>evidence.txt</code> est un instantané figé volontairement —
+      s'il dérive trop de la page actuelle, c'est un signal pour rafraîchir la fixture, pas un bug du harnais.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Phase 4 — CLI d'évaluation</h2>
+    <ol class="steps">
+      <li><strong>Étape 4.1 :</strong> Écrire un test de <code>main(llm: LLMProvider, cases: list[GoldenCase]) -> int</code> (code de retour) avec un <code>FakeLLMProvider</code> injecté et 1-2 <code>GoldenCase</code> synthétiques — vérifie que le code de retour est <code>1</code> si un <code>WRONG_VALUE</code> apparaît, <code>0</code> sinon. C'est la seule partie de la logique CLI testée en déterministe.</li>
+      <li><strong>Étape 4.2 :</strong> Implémenter cette <code>main()</code> injectable : pour chaque cas, <code>extract_contract_facts(case.evidence, llm)</code>, puis <code>score_case</code>, accumule, imprime <code>format_report(...)</code>, retourne <code>has_wrong_value(...)</code> en entier.</li>
+      <li><strong>Étape 4.3 :</strong> Ajouter le point d'entrée réel <code>if __name__ == "__main__":</code> qui construit le vrai <code>OpenRouterProvider</code> (même config que <code>policybot/api/deps.py</code>), échoue avec un message clair si <code>OPENROUTER_API_KEY</code> est absent, appelle <code>discover_golden_cases()</code>, puis <code>main(llm, cases)</code>, et fait <code>sys.exit(...)</code> avec le code retourné.</li>
+      <li>Fin de phase : <code>pytest tests/contract/test_extraction_eval.py -v</code> toujours vert (avec le Fake), et le script est exécutable manuellement.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Phase 5 — Run réel &amp; revue</h2>
+    <ol class="steps">
+      <li><strong>Étape 5.1 :</strong> Lancer <code>python -m policybot.contract.extraction_eval</code> pour de vrai (clé OpenRouter déjà en <code>.env</code>).</li>
+      <li><strong>Étape 5.2 :</strong> Lire le rapport avec l'utilisateur : combien de <code>MATCH</code>/<code>WRONG_VALUE</code>/<code>WRONG_ABSTAIN</code>, et si un <code>WRONG_VALUE</code> révèle un vrai problème de prompt (pas juste une vérité terrain à corriger).</li>
+      <li><strong>Étape 5.3 :</strong> Si le run révèle une fixture <code>expected.yaml</code> mal renseignée plutôt qu'une vraie erreur d'extraction, corriger la fixture (pas le prompt) et relancer.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Environnement &amp; lancement</h2>
+    <div class="code-block">cd C:\code\05_Travail\PolicyBot
+
+# venv déjà en place pour ce repo ; sinon :
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -e ".[dev]"
+
+# suite déterministe (toujours offline)
+pytest -v
+
+# éval réelle (nécessite OPENROUTER_API_KEY dans .env)
+python -m policybot.contract.extraction_eval</div>
+    <div class="callout">
+      Aucune nouvelle dépendance : <code>pyyaml</code> est déjà déclaré dans <code>pyproject.toml</code> et
+      utilisé ailleurs dans <code>policybot/</code> (ex. <code>grille/rules.py</code>, <code>contract/tavily.py</code>).
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Risques &amp; mitigations</h2>
+    <table>
+      <tr><th>Risque</th><th>Mitigation</th></tr>
+      <tr>
+        <td>La vérité terrain (premier jet de Claude) contient une erreur de lecture de contrat</td>
+        <td><span class="badge badge-yellow">Checkpoint 3.3</span> obligatoire avant de figer — l'utilisateur valide avant tout run compté</td>
+      </tr>
+      <tr>
+        <td>Non-déterminisme du vrai LLM : un même run peut varier</td>
+        <td>Assumé et documenté — c'est un outil de suivi tendance, pas un gate CI ; jamais dans <code>pytest -v</code></td>
+      </tr>
+      <tr>
+        <td>Coût des appels API à chaque run</td>
+        <td>Script manuel, jamais automatique ; réutilise le modèle déjà configuré (pas de comparaison multi-modèles qui multiplierait les appels)</td>
+      </tr>
+      <tr>
+        <td>Le texte de CGU réel dérive avec le temps (fixture périmée)</td>
+        <td>Date de capture en en-tête de <code>evidence.txt</code> ; dérive = signal pour rafraîchir, pas un bug du harnais</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Critères de succès</h2>
+    <ul class="plain">
+      <li><code>pytest -v</code> reste 100&nbsp;% vert, offline et déterministe (aucune fixture golden réelle requise pour la suite standard)</li>
+      <li><code>python -m policybot.contract.extraction_eval</code> tourne de bout en bout sur les 3 outils et produit un rapport lisible</li>
+      <li>Le code de sortie reflète correctement la présence d'au moins un <code>WRONG_VALUE</code></li>
+      <li>Les 3 <code>expected.yaml</code> ont été relus et validés par l'utilisateur avant d'être considérés comme vérité terrain figée</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

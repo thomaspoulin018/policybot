@@ -1,180 +1,83 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
+from statistics import mean
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 
-from policybot.models import ContractFacts, ArpRecord, RiskFactor, IagType
-from policybot.contract.fetcher import FetchedTerms
+from policybot.models import ContractFacts, ArpRecord, RiskFactor, IagType, FactEvidence
+from policybot.contract.evidence import ContractEvidence
+from policybot.contract.families import FACT_FAMILIES, FactFamily, FactField
 from policybot.llm.provider import LLMProvider
 from policybot.criteria import ARP_CRITERIA
+from policybot.tracing import trace_step
 
 CURRENT_ARP_SCHEMA_VERSION = 2
 
+_MAX_FAMILY_EVIDENCE_CHARS = 8000
+_SOURCE_SEPARATOR = "\n\n---\n\n"
+_MAX_QUOTE_CHARS = 300
+# En dessous de ce seuil (après normalisation), une citation matche trivialement
+# n'importe quel texte ("yes", "encryption") et ne prouve rien : on la refuse.
+_MIN_QUOTE_MATCH_CHARS = 15
+# Ponctuation markdown/typographique effacée avant comparaison, pour qu'une
+# citation honnête que le LLM a délestée de sa mise en forme reste reconnue.
+_MATCH_STRIP = str.maketrans({
+    "*": " ", "_": " ", "#": " ", "`": " ", ">": " ",
+    "“": '"', "”": '"', "‘": "'", "’": "'", "—": "-", "–": "-", "…": " ",
+})
 
-class ContractFactsExtraction(BaseModel):
-    trains_on_input: Literal["yes", "no", "opt_out_available", "unknown"] = Field(
-        "unknown",
-        description="Whether submitted inputs may be used to train the model.",
-    )
-    data_retention: Literal["none", "limited", "indefinite", "unknown"] = Field(
-        "unknown",
-        description="How long the vendor retains submitted data.",
-    )
-    data_residency: Literal["canada", "us", "eu", "other", "unknown"] = Field(
-        "unknown",
-        description="Where submitted data is hosted or processed.",
-    )
-    sub_processors: Literal["disclosed", "undisclosed", "unknown"] = Field(
-        "unknown",
-        description="Whether subprocessors are disclosed contractually.",
-    )
-    human_review: Literal["yes", "no", "unknown"] = Field(
-        "unknown",
-        description="Whether the vendor may manually review submitted data.",
-    )
-    encryption_standard: Literal["strong", "partial", "none", "unknown"] = Field(
-        "unknown",
-        description=(
-            "strong means encryption in transit and at rest are both explicit; "
-            "partial means only one is explicit or the statement is incomplete."
-        ),
-    )
-    ip_ownership: Literal["customer", "vendor", "unclear", "unknown"] = Field(
-        "unknown",
-        description="Who owns generated content or submitted content rights.",
-    )
-    applicable_law: Literal["quebec_canada", "foreign", "unknown"] = Field(
-        "unknown",
-        description="Whether the contract is governed by Quebec/Canadian law or foreign law.",
-    )
-    foreign_vendor_dependency: Literal["yes", "no", "unknown"] = Field(
-        "unknown",
-        description="Whether using the tool creates dependency on a foreign vendor.",
-    )
-    contract_prohibits_reuse: Literal["yes", "no", "unknown"] = Field(
-        "unknown",
-        description="Whether the contract explicitly prohibits reuse of submitted data.",
-    )
-    reentraining_opt_out: Literal["yes", "no", "unknown"] = Field(
-        "unknown",
-        description=(
-            "Whether there is a mechanism to prevent model retraining from submitted "
-            "and generated data."
-        ),
-    )
-    authentication_support: Literal["sso_mfa", "partial", "none", "unknown"] = Field(
-        "unknown",
-        description=(
-            "Whether the tool supports strong authentication such as SSO/MFA and "
-            "institutional identity-provider integration."
-        ),
-    )
-    audit_logging: Literal[
-        "prompt_output_accessible", "access_logs_only", "none", "unknown"
-    ] = Field(
-        "unknown",
-        description=(
-            "Whether access logs and prompt/output audit logs are generated and "
-            "available to the organization."
-        ),
-    )
-    institutional_terms: Literal["acceptable", "problematic", "unknown"] = Field(
-        "unknown",
-        description=(
-            "Whether public terms appear acceptable for institutional use or contain "
-            "problematic clauses."
-        ),
-    )
-    quebec_higher_ed_license: Literal["yes", "no", "unknown"] = Field(
-        "unknown",
-        description=(
-            "Whether the license appears to allow use by a Quebec higher-education "
-            "institution."
-        ),
-    )
-    incident_response: Literal[
-        "documented_with_notice", "documented_no_notice", "none", "unknown"
-    ] = Field(
-        "unknown",
-        description=(
-            "Whether the vendor documents an incident response plan and breach "
-            "notification commitment."
-        ),
-    )
-    extraction_confidence: float = Field(
-        0.0,
-        ge=0.0,
-        le=1.0,
-        description="Confidence in the normalized extraction from 0 to 1.",
-    )
 
+def _normalize_for_match(text: str) -> str:
+    """Forme comparable : minuscules, markdown/guillemets neutralisés, espaces écrasés."""
+    return re.sub(r"\s+", " ", text.translate(_MATCH_STRIP).lower()).strip()
 
 _SYSTEM = (
     "You extract normalized contract facts for an AI tool. Return only one JSON "
     "object. Use only the allowed values listed in the prompt. Answer unknown "
     "when the evidence does not allow a conclusion. Do not infer guarantees "
-    "that are not written in the evidence."
-)
-
-_FIELD_INSTRUCTIONS = """
-Required JSON keys and allowed values:
-- trains_on_input: yes | no | opt_out_available | unknown
-- data_retention: none | limited | indefinite | unknown
-- data_residency: canada | us | eu | other | unknown
-- sub_processors: disclosed | undisclosed | unknown
-- human_review: yes | no | unknown
-- encryption_standard: strong | partial | none | unknown
-- ip_ownership: customer | vendor | unclear | unknown
-- applicable_law: quebec_canada | foreign | unknown
-- foreign_vendor_dependency: yes | no | unknown
-- contract_prohibits_reuse: yes | no | unknown
-- reentraining_opt_out: yes | no | unknown
-- authentication_support: sso_mfa | partial | none | unknown
-- audit_logging: prompt_output_accessible | access_logs_only | none | unknown
-- institutional_terms: acceptable | problematic | unknown
-- quebec_higher_ed_license: yes | no | unknown
-- incident_response: documented_with_notice | documented_no_notice | none | unknown
-- extraction_confidence: number from 0 to 1
-- Do not return an empty object. Include every required key even when unknown.
-
-Normalization hints:
-- trains_on_input=opt_out_available when submitted content may be used for
-  training by default but an opt-out control is explicitly available.
-- data_retention=limited when retention exists but is bounded or reducible;
-  indefinite only when no deletion/expiry limit is indicated.
-- encryption_standard=strong only when both encryption in transit and at rest
-  are explicit.
-- applicable_law=foreign when the governing law is outside Quebec/Canada.
-- authentication_support=sso_mfa only when SSO or SAML/OIDC and MFA support are explicit; partial when only one is explicit.
-- audit_logging=prompt_output_accessible only when prompt/output auditability is explicit and organization-accessible; access_logs_only when only sign-in/admin logs are explicit.
-- institutional_terms=problematic when evidence shows a clause that blocks or materially restricts institutional use; otherwise use unknown unless acceptability is explicit.
-- quebec_higher_ed_license=yes only when education, enterprise, public-sector, or institutional use is explicitly allowed.
-- incident_response=documented_with_notice only when both an incident response process and breach/security notification timing are documented.
-""".strip()
-
-_MAX_EVIDENCE_CHARS = 12000
-_SOURCE_SEPARATOR = "\n\n---\n\n"
-_KEYWORD_PATTERNS = (
-    r"train(?:ing)?|model performance|opt[ -]?out|do not train",
-    r"data retention|retention|retain|deleted?.{0,80}30 days|within 30 days",
-    r"servers located|various jurisdictions|United States|residen|region|hosting",
-    r"sub[- ]?processors?|service providers?|vendors?",
-    r"human review|manual review|abuse monitoring|safety review|authorized personnel",
-    r"encrypt|encryption|tls|aes",
-    r"ownership|intellectual property|assign|right, title",
-    r"governing law|California law|jurisdiction",
-    r"confidential|reuse|disclosure|data sharing",
-    r"sso|single sign-on|saml|oidc|mfa|multi-factor|identity provider",
-    r"audit logs?|access logs?|prompt logs?|output logs?|admin console|organization logs?",
-    r"institutional use|enterprise terms|education|higher education|public sector|acceptable use",
-    r"license|licence|government|public sector|education institution|academic",
-    r"incident response|security incident|breach notification|notify.{0,80}(hours|days)|sla",
+    "that are not written in the evidence. For every field, quote verbatim the "
+    "sentence from the evidence that supports the value, and give the URL of the "
+    "source it came from. If you cannot quote the evidence, answer unknown."
 )
 
 
-def _select_evidence_text(text: str, max_chars: int = _MAX_EVIDENCE_CHARS) -> str:
+class FieldExtraction(BaseModel):
+    value: str = "unknown"
+    source_url: Optional[str] = None
+    quote: Optional[str] = Field(
+        None, description="Verbatim sentence from the evidence supporting the value.",
+    )
+    confidence: float = Field(0.0, ge=0.0, le=1.0)
+
+
+_MODEL_CACHE: dict[str, type[BaseModel]] = {}
+
+
+def family_extraction_model(family: FactFamily) -> type[BaseModel]:
+    """Un schéma Pydantic par famille : le LLM ne voit que les champs qu'il doit remplir."""
+    if family.name not in _MODEL_CACHE:
+        class_name = "".join(part.capitalize() for part in family.name.split("_")) + "Extraction"
+        _MODEL_CACHE[family.name] = create_model(
+            class_name,
+            **{
+                field.name: (FieldExtraction, Field(default_factory=FieldExtraction))
+                for field in family.fields
+            },
+        )
+    return _MODEL_CACHE[family.name]
+
+
+def _select_evidence_text(
+    text: str, keywords: tuple[str, ...], max_chars: int = _MAX_FAMILY_EVIDENCE_CHARS,
+) -> str:
+    """Ne garde que les extraits pertinents pour CETTE famille quand l'évidence déborde.
+
+    Sur le chemin Tavily l'évidence d'une famille tient presque toujours dans le
+    budget ; sur le chemin de repli `fetch_terms` (une page de CGU entière), ce
+    découpage est ce qui rend le prompt exploitable.
+    """
     if len(text) <= max_chars:
         return text
 
@@ -200,7 +103,7 @@ def _select_evidence_text(text: str, max_chars: int = _MAX_EVIDENCE_CHARS) -> st
             break
         add_excerpt(source[:350], heading_budget)
 
-    for pattern in _KEYWORD_PATTERNS:
+    for pattern in keywords:
         for match in re.finditer(pattern, text, flags=re.IGNORECASE):
             start = max(0, match.start() - 250)
             end = min(len(text), match.end() + 500)
@@ -212,38 +115,144 @@ def _select_evidence_text(text: str, max_chars: int = _MAX_EVIDENCE_CHARS) -> st
     return "\n\n...\n\n".join(excerpts) if excerpts else text[:max_chars]
 
 
-def _build_extraction_prompt(text: str) -> str:
-    return (
-        f"{_FIELD_INSTRUCTIONS}\n\n"
-        "Evidence:\n"
-        f"{_select_evidence_text(text)}"
+def _build_family_prompt(family: FactFamily, text: str) -> str:
+    lines = [
+        "Required JSON keys. Each key maps to an object "
+        '{"value": ..., "source_url": ..., "quote": ..., "confidence": 0..1}.',
+    ]
+    for field in family.fields:
+        lines.append(f"- {field.name}: {' | '.join(field.allowed_values)} — {field.hint}")
+    lines.append(
+        "Include every key even when unknown. `quote` must be copied verbatim from "
+        "the evidence; without a quote, answer unknown."
     )
+    lines.append("")
+    lines.append("Evidence:")
+    lines.append(_select_evidence_text(text, family.keywords))
+    return "\n".join(lines)
 
 
-def _require_non_empty_extraction(extracted: ContractFactsExtraction) -> None:
-    populated = set(extracted.model_fields_set)
-    populated.discard("extraction_confidence")
-    if not populated:
-        raise ValueError(
-            "LLM returned no contract fact fields. Check the model/output; an "
-            "empty JSON object would otherwise be accepted as all unknown."
+def _quote_is_anchored(quote: str, evidence_text: str) -> bool:
+    """La citation est-elle réellement un extrait de la preuve (à la mise en forme près) ?
+
+    Compare les deux formes normalisées : une citation honnête que le LLM a
+    reformatée reste reconnue, mais une valeur+citation co-hallucinées, absentes
+    de la page, ne le sont pas. Une citation trop courte ne prouve rien.
+    """
+    needle = _normalize_for_match(quote)
+    if len(needle) < _MIN_QUOTE_MATCH_CHARS:
+        return False
+    return needle in _normalize_for_match(evidence_text)
+
+
+def _accept(field: FactField, raw: FieldExtraction, evidence_text: str) -> FactEvidence:
+    """Aucune valeur n'entre dans ContractFacts sans citation ancrée dans la preuve."""
+    if raw.value not in field.allowed_values:
+        # Le LLM a inventé une valeur hors du contrat du champ : distinct d'un
+        # "unknown" légitime, ça doit être visible pour l'officier.
+        return FactEvidence(
+            value="unknown", confidence=0.0,
+            note="valeur écartée: valeur hors des valeurs permises",
         )
+    value = raw.value
+    quote = (raw.quote or "").strip()[:_MAX_QUOTE_CHARS]
 
-
-def extract_contract_facts(terms: FetchedTerms, llm: LLMProvider) -> ContractFacts:
-    extracted = llm.complete_structured(
-        _SYSTEM,
-        _build_extraction_prompt(terms.text),
-        ContractFactsExtraction,
-        run_name="extract_contract_facts",
-        tags=["arp_extraction"],
+    if value == "unknown":
+        return FactEvidence(
+            value="unknown", source_url=raw.source_url, quote=quote or None,
+            confidence=raw.confidence,
+        )
+    if not quote or not raw.source_url:
+        return FactEvidence(
+            value="unknown", confidence=0.0,
+            note="valeur écartée: aucune citation vérifiable",
+        )
+    if not _quote_is_anchored(quote, evidence_text):
+        # La citation n'est pas un extrait de la page : le LLM l'a peut-être
+        # inventée en même temps que la valeur. On n'affirme rien sans ancrage.
+        return FactEvidence(
+            value="unknown", source_url=raw.source_url, quote=quote, confidence=0.0,
+            note="citation introuvable dans la preuve",
+        )
+    return FactEvidence(
+        value=value, source_url=raw.source_url, quote=quote, confidence=raw.confidence,
     )
-    _require_non_empty_extraction(extracted)
+
+
+def _unresolved(family: FactFamily, note: str) -> dict[str, FactEvidence]:
+    return {
+        field.name: FactEvidence(value="unknown", note=note) for field in family.fields
+    }
+
+
+def _extract_family(
+    family: FactFamily, evidence: ContractEvidence, llm: LLMProvider,
+) -> dict[str, FactEvidence]:
+    if family.name in evidence.failed_families:
+        return _unresolved(family, "collecte Tavily échouée")
+    terms = evidence.by_family.get(family.name)
+    if terms is None:
+        return _unresolved(family, "aucune évidence collectée")
+
+    with trace_step(None, "arp_family_extraction", family=family.name) as extra:
+        try:
+            extracted = llm.complete_structured(
+                _SYSTEM,
+                _build_family_prompt(family, terms.text),
+                family_extraction_model(family),
+                run_name=f"extract_contract_facts:{family.name}",
+                tags=["arp_extraction", family.name],
+            )
+        except Exception as exc:  # noqa: BLE001 — une famille perdue ne doit pas tuer l'entrevue
+            extra["outcome"] = "failed"
+            extra["error"] = type(exc).__name__
+            return _unresolved(family, "extraction LLM échouée")
+        extra["outcome"] = "ok"
+
+    return {
+        field.name: _accept(field, getattr(extracted, field.name), terms.text)
+        for field in family.fields
+    }
+
+
+def extract_contract_facts(evidence: ContractEvidence, llm: LLMProvider) -> ContractFacts:
+    proofs: dict[str, FactEvidence] = {}
+    for family in FACT_FAMILIES:
+        proofs.update(_extract_family(family, evidence, llm))
+
+    values = {name: proof.value for name, proof in proofs.items()}
+    confidences = [proof.confidence for proof in proofs.values() if proof.value != "unknown"]
+    primary = evidence.primary_source_url()
+    # Conservateur : la date de péremption du cache suit la page la PLUS
+    # ANCIENNE parmi les familles collectées, pas l'ordre d'insertion du dict
+    # (qui peut différer de l'ordre de `primary_source_url()`).
+    fetched_at = min(
+        (terms.fetched_at for terms in evidence.by_family.values()), default=None,
+    )
+
     return ContractFacts(
-        **extracted.model_dump(),
-        source_url=terms.source_url,
-        fetched_at=terms.fetched_at,
+        **values,
+        evidence=proofs,
+        source_url=primary,
+        fetched_at=fetched_at,
+        extraction_confidence=round(mean(confidences), 2) if confidences else 0.0,
     )
+
+
+def _observation(facts: ContractFacts, field_name: str) -> str:
+    """La ligne que l'officier lit dans le rapport : la valeur, sa source, sa preuve."""
+    base = f"{field_name}={getattr(facts, field_name)}"
+    proof = facts.evidence.get(field_name)
+    if proof is None:
+        return base
+    if proof.note:
+        return f"{base} — {proof.note}"
+    parts = [base]
+    if proof.quote:
+        parts.append(f"« {proof.quote} »")
+    if proof.source_url:
+        parts.append(f"source: {proof.source_url}")
+    return " — ".join(parts)
 
 
 def build_arp(tool_name: str, iag_type: IagType, facts: ContractFacts) -> ArpRecord:
@@ -254,21 +263,21 @@ def build_arp(tool_name: str, iag_type: IagType, facts: ContractFacts) -> ArpRec
     criteria.append(RiskFactor(
         category="Souveraineté et hébergement des données", criterion="Localisation des serveurs",
         inherent=residency_risk, residual=residency_risk, origin="rule",
-        observations=f"data_residency={facts.data_residency}",
+        observations=_observation(facts, "data_residency"),
     ))
 
     law_risk = "F" if facts.applicable_law == "quebec_canada" else "E"
     criteria.append(RiskFactor(
         category="Souveraineté et hébergement des données", criterion="Juridiction applicable",
         inherent=law_risk, residual=law_risk, origin="rule",
-        observations=f"applicable_law={facts.applicable_law}",
+        observations=_observation(facts, "applicable_law"),
     ))
 
     dependency_risk = "F" if facts.foreign_vendor_dependency == "no" else "E"
     criteria.append(RiskFactor(
         category="Souveraineté et hébergement des données", criterion="Dépendance technologique",
         inherent=dependency_risk, residual=dependency_risk, origin="rule",
-        observations=f"foreign_vendor_dependency={facts.foreign_vendor_dependency}",
+        observations=_observation(facts, "foreign_vendor_dependency"),
     ))
 
     training_risk = "E" if facts.trains_on_input in ("yes", "unknown") else "F"
@@ -276,7 +285,7 @@ def build_arp(tool_name: str, iag_type: IagType, facts: ContractFacts) -> ArpRec
         category="Souveraineté et hébergement des données",
         criterion="Données soumises utilisées pour entraînement du modèle",
         inherent=training_risk, residual=training_risk, origin="rule",
-        observations=f"trains_on_input={facts.trains_on_input}",
+        observations=_observation(facts, "trains_on_input"),
     ))
 
     reuse_risk = "F" if facts.contract_prohibits_reuse == "yes" else "E"
@@ -284,28 +293,28 @@ def build_arp(tool_name: str, iag_type: IagType, facts: ContractFacts) -> ArpRec
         category="Souveraineté et hébergement des données",
         criterion="Garanties contractuelles de non-divulgation",
         inherent=reuse_risk, residual=reuse_risk, origin="rule",
-        observations=f"contract_prohibits_reuse={facts.contract_prohibits_reuse}",
+        observations=_observation(facts, "contract_prohibits_reuse"),
     ))
 
     encryption_risk = "E" if facts.encryption_standard in ("none", "partial", "unknown") else "F"
     criteria.append(RiskFactor(
         category="Sécurité de l'information", criterion="Chiffrement des données",
         inherent=encryption_risk, residual=encryption_risk, origin="rule",
-        observations=f"encryption_standard={facts.encryption_standard}",
+        observations=_observation(facts, "encryption_standard"),
     ))
 
     opt_out_risk = "F" if facts.reentraining_opt_out == "yes" else "E"
     criteria.append(RiskFactor(
         category="Sécurité de l'information", criterion="Utilisation des entrées et des sorties",
         inherent=opt_out_risk, residual=opt_out_risk, origin="rule",
-        observations=f"reentraining_opt_out={facts.reentraining_opt_out}",
+        observations=_observation(facts, "reentraining_opt_out"),
     ))
 
     ip_risk = "E" if facts.ip_ownership in ("vendor", "unclear", "unknown") else "F"
     criteria.append(RiskFactor(
         category="Conformité légale et contractuelle", criterion="Propriété intellectuelle",
         inherent=ip_risk, residual=ip_risk, origin="rule",
-        observations=f"ip_ownership={facts.ip_ownership}",
+        observations=_observation(facts, "ip_ownership"),
     ))
 
     assert {factor.criterion for factor in criteria} <= {

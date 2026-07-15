@@ -4,6 +4,7 @@ from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview
 from policybot.report.renderer import render_html
+from tests.helpers.arp_fixtures import arp_extraction_responses
 
 
 def _terms_get(url):
@@ -16,8 +17,10 @@ def test_slide5_chatgpt_protege_b_is_refused_and_report_flags_it(tmp_path):
         {"already_public": False, "contains_personal_info": True,
          "strategic_sensitive": True, "internal_nonpublic": True,
          "highly_sensitive_secret": False, "confidence": 0.95},
-        {"trains_on_input": "yes", "data_retention": "indefinite", "data_residency": "us",
-         "sub_processors": "undisclosed", "human_review": "no", "extraction_confidence": 0.85},
+        *arp_extraction_responses(
+            trains_on_input="yes", data_retention="indefinite", data_residency="us",
+            sub_processors="undisclosed", human_review="no",
+        ),
     ])
     itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
                     http_get=_terms_get)

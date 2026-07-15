@@ -22,6 +22,17 @@ Later increments (web UI, grille rules) have their own spec/plan pairs in the
 same directories, dated by feature. Treat these specs/plans as the source of
 truth for *intent* — the README and this file summarize what's actually built.
 
+## Git & workflow constraints
+
+- **Never create a git worktree.** Do all work, tests, and edits directly in
+  the current working directory, on the current branch or a standard git
+  branch — no secondary worktrees under any circumstances.
+- **Never open a Pull Request or create a branch for minor changes**
+  (documentation, typos, markdown, single-file tweaks). Commit directly to the
+  current branch instead.
+- **Only open a PR for substantial work** — new features, multi-file
+  refactors, or non-trivial code changes.
+
 ## Commands
 
 ```bash
@@ -88,10 +99,7 @@ or presents facts. For one tool + one or more usages:
    Check the SQLite `PreApprovedStore` for a cached `ArpRecord` first. Otherwise
    fetch terms of use — via `TermsFetcher` (registry URL → HTML → text) or, if
    `POLICYBOT_CONTRACT_SEARCH=tavily` is set (or a `tavily_search` callable is
-   injected), via `policybot/contract/tavily.py` (Tavily Search + Extract,
-   config auto-generated per tool under `configs/tavily_contracts/`) — then
-   have the LLM extract normalized `ContractFacts` (trains on input? retention?
-   residency? sub-processors? human review? …), and cache the result.
+   injected), via `policybot/contract/tavily.py` (une recherche Tavily par **famille de critères** — 5 familles définies dans `contract/families.py` —, un seul Extract sur les URLs dédupliquées avec budget réparti en round-robin, config auto-générée par outil sous `configs/tavily_contracts/`) — puis une extraction LLM **par famille**, chaque fait revenant avec sa valeur, son URL et une citation verbatim (`ContractFacts.evidence`). Un fait sans citation retombe à `unknown`. Une erreur Tavily dégrade la famille concernée, jamais l'entrevue.
 3. **For each usage, classify the data.** The employee describes data in plain
    language (never the data itself); the LLM returns structured signals; a
    deterministic decision tree maps those to Non classifié / Protégé A/B/C
@@ -144,7 +152,10 @@ policybot/
                   tavily.py (Tavily Search + Extract alternative source, one
                   auto-generated query config per tool under
                   `configs/tavily_contracts/`), tavily_probe.py (manual CLI:
-                  `python -m policybot.contract.tavily_probe "<tool>"`)
+                  `python -m policybot.contract.tavily_probe "<tool>"`),
+                  families.py (les 5 familles de critères : requête, champs,
+                  mots-clés), evidence.py (`ContractEvidence` : l'évidence
+                  indexée par famille)
   grille/         matrix.py (hard gate), rules.py + grille.yaml (rule engine,
                   data not code, ~15 rules), engine.py (per-usage verdict +
                   synthesis)

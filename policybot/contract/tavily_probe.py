@@ -83,27 +83,37 @@ def main(argv: list[str] | None = None) -> int:
     if args.show_config:
         _print_yaml({"config_path": str(config_path), "config": config})
 
-    terms = search_contract_terms_with_tavily(args.tool_name, config_dir=args.config_dir)
-    if terms is None:
+    evidence = search_contract_terms_with_tavily(args.tool_name, config_dir=args.config_dir)
+    if evidence is None:
         print(
             "Aucune evidence Tavily trouvee. Verifie TAVILY_API_KEY et la config YAML.",
             file=sys.stderr,
         )
         return 2
 
-    _write_text(args.evidence_out, terms.text)
+    if args.evidence_out:
+        _write_text(args.evidence_out, "\n\n=====\n\n".join(
+            f"[{name}] {terms.source_url}\n{terms.text}"
+            for name, terms in evidence.by_family.items()
+        ))
 
     result: dict = {
         "tool_name": args.tool_name,
         "config_path": str(config_path),
-        "source_url": terms.source_url,
-        "fetched_at": terms.fetched_at.isoformat(),
-        "evidence_chars": len(terms.text),
+        "source_url": evidence.primary_source_url(),
+        "failed_families": list(evidence.failed_families),
+        "families": {
+            name: {
+                "source_url": terms.source_url,
+                "fetched_at": terms.fetched_at.isoformat(),
+                "evidence_chars": len(terms.text),
+                "evidence_preview": terms.text[:400],
+            }
+            for name, terms in evidence.by_family.items()
+        },
     }
     if args.evidence_out:
         result["evidence_out"] = args.evidence_out
-    else:
-        result["evidence_preview"] = terms.text[:2000]
 
     if args.facts:
         import os
@@ -115,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 3
-        facts = extract_contract_facts(terms, OpenRouterProvider(api_key))
+        facts = extract_contract_facts(evidence, OpenRouterProvider(api_key))
         result["contract_facts"] = facts.model_dump(mode="json")
         if args.arp:
             arp = build_arp(args.tool_name, args.iag_type, facts)

@@ -1,48 +1,42 @@
 from datetime import date
-import pytest
 from policybot.llm.fake import FakeLLMProvider
 from policybot.contract.fetcher import FetchedTerms
+from policybot.contract.evidence import ContractEvidence
 from policybot.contract.arp import extract_contract_facts, build_arp
+from tests.helpers.arp_fixtures import arp_extraction_responses, DEFAULT_EVIDENCE
 
 
 def _terms():
-    return FetchedTerms(text="...", source_url="http://x", fetched_at=date.today())
+    return FetchedTerms(text=DEFAULT_EVIDENCE, source_url="http://x", fetched_at=date.today())
 
 
 def test_extract_maps_llm_output_to_contractfacts():
-    llm = FakeLLMProvider(json_responses=[{
-        "trains_on_input": "yes", "data_retention": "indefinite",
-        "data_residency": "us", "sub_processors": "undisclosed",
-        "human_review": "no", "extraction_confidence": 0.8,
-    }])
-    facts = extract_contract_facts(_terms(), llm)
+    llm = FakeLLMProvider(json_responses=arp_extraction_responses(
+        "http://x",
+        trains_on_input="yes", data_retention="indefinite",
+        data_residency="us", sub_processors="undisclosed",
+        human_review="no",
+    ))
+    facts = extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
     assert facts.trains_on_input == "yes"
     assert facts.data_residency == "us"
     assert facts.source_url == "http://x"
-    assert facts.extraction_confidence == 0.8
-
-
-
-def test_extract_rejects_empty_llm_output():
-    llm = FakeLLMProvider(json_responses=[{}])
-
-    with pytest.raises(ValueError, match="no contract fact fields"):
-        extract_contract_facts(_terms(), llm)
+    assert facts.extraction_confidence == 0.9
 
 
 def test_extract_prompt_lists_required_contract_fields():
-    llm = FakeLLMProvider(json_responses=[{"trains_on_input": "yes"}])
+    llm = FakeLLMProvider(json_responses=arp_extraction_responses(trains_on_input="yes"))
 
-    extract_contract_facts(_terms(), llm)
+    extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
 
-    _, user_prompt = llm.calls[0]
-    assert "Required JSON keys" in user_prompt
-    assert "trains_on_input: yes | no | opt_out_available | unknown" in user_prompt
-    assert "reentraining_opt_out: yes | no | unknown" in user_prompt
-    assert "authentication_support: sso_mfa | partial | none | unknown" in user_prompt
-    assert "audit_logging: prompt_output_accessible | access_logs_only | none | unknown" in user_prompt
-    assert "quebec_higher_ed_license: yes | no | unknown" in user_prompt
-    assert "incident_response: documented_with_notice | documented_no_notice | none | unknown" in user_prompt
+    all_prompts = "\n".join(user_prompt for _, user_prompt in llm.calls)
+    assert "Required JSON keys" in all_prompts
+    assert "trains_on_input: yes | no | opt_out_available | unknown" in all_prompts
+    assert "reentraining_opt_out: yes | no | unknown" in all_prompts
+    assert "authentication_support: sso_mfa | partial | none | unknown" in all_prompts
+    assert "audit_logging: prompt_output_accessible | access_logs_only | none | unknown" in all_prompts
+    assert "quebec_higher_ed_license: yes | no | unknown" in all_prompts
+    assert "incident_response: documented_with_notice | documented_no_notice | none | unknown" in all_prompts
 
 
 def test_extract_prompt_includes_relevant_late_evidence():
@@ -57,12 +51,14 @@ def test_extract_prompt_includes_relevant_late_evidence():
         source_url="https://example.test/first",
         fetched_at=date.today(),
     )
-    llm = FakeLLMProvider(json_responses=[{"applicable_law": "foreign"}])
+    llm = FakeLLMProvider(json_responses=arp_extraction_responses(applicable_law="foreign"))
 
-    extract_contract_facts(late_terms, llm)
+    extract_contract_facts(ContractEvidence.from_single(late_terms), llm)
 
-    _, user_prompt = llm.calls[0]
-    assert "governing law is the laws of California" in user_prompt
+    assert any(
+        "governing law is the laws of California" in user_prompt
+        for _, user_prompt in llm.calls
+    )
 
 
 def test_build_arp_flags_training_as_high_risk():
@@ -76,24 +72,23 @@ def test_build_arp_flags_training_as_high_risk():
 
 
 def test_extract_maps_encryption_and_ip_fields():
-    llm = FakeLLMProvider(json_responses=[{
-        "trains_on_input": "no", "data_retention": "none",
-        "data_residency": "canada", "sub_processors": "disclosed",
-        "human_review": "yes", "encryption_standard": "strong",
-        "ip_ownership": "customer", "extraction_confidence": 0.9,
-    }])
-    facts = extract_contract_facts(_terms(), llm)
+    llm = FakeLLMProvider(json_responses=arp_extraction_responses(
+        trains_on_input="no", data_retention="none",
+        data_residency="canada", sub_processors="disclosed",
+        human_review="yes", encryption_standard="strong",
+        ip_ownership="customer",
+    ))
+    facts = extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
     assert facts.encryption_standard == "strong"
     assert facts.ip_ownership == "customer"
 
 
 def test_extract_maps_new_sovereignty_and_security_fields():
-    llm = FakeLLMProvider(json_responses=[{
-        "applicable_law": "foreign", "foreign_vendor_dependency": "yes",
-        "contract_prohibits_reuse": "no", "reentraining_opt_out": "no",
-        "extraction_confidence": 0.7,
-    }])
-    facts = extract_contract_facts(_terms(), llm)
+    llm = FakeLLMProvider(json_responses=arp_extraction_responses(
+        applicable_law="foreign", foreign_vendor_dependency="yes",
+        contract_prohibits_reuse="no", reentraining_opt_out="no",
+    ))
+    facts = extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
     assert facts.applicable_law == "foreign"
     assert facts.foreign_vendor_dependency == "yes"
     assert facts.contract_prohibits_reuse == "no"
@@ -101,16 +96,15 @@ def test_extract_maps_new_sovereignty_and_security_fields():
 
 
 def test_extract_maps_institutional_security_fields():
-    llm = FakeLLMProvider(json_responses=[{
-        "authentication_support": "sso_mfa",
-        "audit_logging": "prompt_output_accessible",
-        "institutional_terms": "acceptable",
-        "quebec_higher_ed_license": "yes",
-        "incident_response": "documented_with_notice",
-        "extraction_confidence": 0.75,
-    }])
+    llm = FakeLLMProvider(json_responses=arp_extraction_responses(
+        authentication_support="sso_mfa",
+        audit_logging="prompt_output_accessible",
+        institutional_terms="acceptable",
+        quebec_higher_ed_license="yes",
+        incident_response="documented_with_notice",
+    ))
 
-    facts = extract_contract_facts(_terms(), llm)
+    facts = extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
 
     assert facts.authentication_support == "sso_mfa"
     assert facts.audit_logging == "prompt_output_accessible"

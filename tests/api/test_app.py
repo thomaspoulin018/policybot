@@ -3,6 +3,7 @@ from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview
 from policybot.api.app import create_app
+from tests.helpers.arp_fixtures import arp_extraction_responses
 
 
 def _client(tmp_path):
@@ -10,7 +11,7 @@ def _client(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        {"trains_on_input": "no", "data_residency": "canada", "extraction_confidence": 0.9},
+        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
     ])
     itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
                     http_get=lambda url: "<html><body>ok</body></html>")
