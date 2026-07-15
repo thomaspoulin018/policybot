@@ -6,6 +6,7 @@ from policybot.models import RequestInfo
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
+from policybot.tracing import trace_step
 from tests.helpers.arp_fixtures import arp_extraction_responses
 
 
@@ -103,3 +104,18 @@ def test_unknown_tool_error_is_logged_before_raising(tmp_path, trace_events):
     assert error_events[0]["step"] == "assess"
     assert error_events[0]["error"] == "UnknownToolError"
     assert error_events[0]["interview_id"] is not None
+
+
+def test_error_message_is_masked(trace_events):
+    sentinel = "jean.tremblay@example.com"
+
+    with pytest.raises(RuntimeError, match=sentinel):
+        with trace_step("test-interview", "failing_step"):
+            raise RuntimeError(f"LLM response contained {sentinel}")
+
+    raw = json.dumps(trace_events)
+    assert sentinel not in raw
+    event = trace_events[-1]
+    assert event["error"] == "RuntimeError"
+    assert event["error_message"]["len"] > 0
+    assert len(event["error_message"]["sha256"]) == 12

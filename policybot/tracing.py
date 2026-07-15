@@ -79,7 +79,8 @@ def trace_step(interview_id: str | None, step: str, **fields):
         yield extra
     except Exception as exc:
         _emit(iid, step, "error", time.monotonic() - start,
-              error=type(exc).__name__, message=str(exc), **fields, **extra)
+              error=type(exc).__name__, error_message=mask_text(str(exc)),
+              **fields, **extra)
         raise
     else:
         _emit(iid, step, "ok", time.monotonic() - start, **fields, **extra)

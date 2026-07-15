@@ -53,6 +53,7 @@ def test_complete_json_parses_binds_and_tags(monkeypatch):
     # OpenRouter wiring
     assert captured["init"]["base_url"] == "https://openrouter.ai/api/v1"
     assert captured["init"]["model"] == "google/gemma-2-27b-it"
+    assert captured["init"]["reasoning_effort"] == "low"
     # JSON mode binds response_format
     assert captured["bind"]["response_format"] == {"type": "json_object"}
     # LangSmith trace annotations threaded through
@@ -96,3 +97,15 @@ def test_draft_text_no_json_binding_no_config(monkeypatch):
     assert "bind" not in captured
     # No run_name/tags -> no config passed
     assert captured["config"] is None
+
+
+def test_environment_configures_model_and_reasoning_effort(monkeypatch):
+    captured = {}
+    _install_fake_chat(monkeypatch, "free-form narrative", captured)
+    monkeypatch.setenv("OPENROUTER_MODEL", "openai/gpt-5.6-luna")
+    monkeypatch.setenv("OPENROUTER_REASONING_EFFORT", "minimal")
+
+    orm.OpenRouterProvider("sk-secret")
+
+    assert captured["init"]["model"] == "openai/gpt-5.6-luna"
+    assert captured["init"]["reasoning_effort"] == "minimal"

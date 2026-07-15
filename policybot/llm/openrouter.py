@@ -1,10 +1,13 @@
 import json
+import os
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from policybot.llm.provider import LLMProvider, StructuredModel
 from policybot.tracing import trace_step, mask_text
 
 _BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_MODEL = "openai/gpt-5.6-luna"
+DEFAULT_REASONING_EFFORT = "low"
 
 
 class OpenRouterProvider(LLMProvider):
@@ -14,19 +17,26 @@ class OpenRouterProvider(LLMProvider):
     LANGCHAIN_TRACING_V2 / LANGCHAIN_API_KEY environment variables are set. When
     tracing is disabled the client behaves like a plain OpenRouter call.
 
-    POC provider. Confirm the exact Gemma model slug on OpenRouter.
+    The model and reasoning effort can be changed through OPENROUTER_MODEL and
+    OPENROUTER_REASONING_EFFORT in .env.
     """
 
-    def __init__(self, api_key: str, model: str = "google/gemma-4-31b-it",
-                 timeout: float = 60.0):
-        self._model = model
+    def __init__(self, api_key: str, model: str | None = None,
+                 reasoning_effort: str | None = None, timeout: float = 60.0):
+        self._model = model or os.getenv("OPENROUTER_MODEL") or DEFAULT_MODEL
+        self._reasoning_effort = (
+            reasoning_effort
+            or os.getenv("OPENROUTER_REASONING_EFFORT")
+            or DEFAULT_REASONING_EFFORT
+        )
         # temperature is left unset (None -> not sent) so we defer to the model's
         # default, matching the previous raw-httpx behaviour rather than picking one.
         self._llm = ChatOpenAI(
-            model=model,
+            model=self._model,
             api_key=api_key,
             base_url=_BASE_URL,
             timeout=timeout,
+            reasoning_effort=self._reasoning_effort,
         )
 
     def _config(self, run_name: str | None, tags: list[str] | None) -> dict | None:
