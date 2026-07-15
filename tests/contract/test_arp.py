@@ -7,7 +7,7 @@ from tests.helpers.arp_fixtures import arp_extraction_responses
 
 
 def _terms():
-    return FetchedTerms(text="...", source_url="http://x", fetched_at=date.today())
+    return FetchedTerms(text=DEFAULT_EVIDENCE, source_url="http://x", fetched_at=date.today())
 
 
 def test_extract_maps_llm_output_to_contractfacts():
