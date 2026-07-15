@@ -19,6 +19,10 @@ body{
 .steps .st.done .n{background:var(--teal);border-color:var(--teal);color:#fff}
 .steps .st.active{color:#fff}
 .steps .st.active .n{border-color:var(--red);color:#fff;background:var(--red)}
+.steps button.st{background:none;border:none;font:inherit;text-align:left;width:100%}
+.steps button.st.done{cursor:pointer}
+.steps button.st.done:hover{color:#fff}
+.steps button.st.done:hover .n{background:#fff;color:var(--teal)}
 .main{padding:2.6rem 2.6rem 2.2rem;max-width:860px}
 .kicker{font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);margin-bottom:.6rem}
 h1{font-size:1.8rem;font-weight:800;letter-spacing:-.03em;line-height:1.15;margin-bottom:.65rem;max-width:22ch}

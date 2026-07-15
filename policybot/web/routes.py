@@ -146,6 +146,13 @@ def wizard_test_prefill(request: Request):
     return _render_contexte_affaires(request, state)
 
 
+@router.post("/wizard/goto/outil", response_class=HTMLResponse)
+async def wizard_goto_outil(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
+    return _render_outil(request, state)
+
+
 @router.post("/wizard/outil", response_class=HTMLResponse)
 async def wizard_outil(request: Request):
     form = _group_form(await request.form())
@@ -269,8 +276,22 @@ async def suggest_usage(request: Request):
     })
 
 
+@router.post("/wizard/goto/usage", response_class=HTMLResponse)
+async def wizard_goto_usage(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
+    return _render_usage(request, state)
+
+
 @router.post("/wizard/usage", response_class=HTMLResponse)
 async def wizard_usage_submit(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
+    return _render_resultats(request, state)
+
+
+@router.post("/wizard/goto/resultats", response_class=HTMLResponse)
+async def wizard_goto_resultats(request: Request):
     form = _group_form(await request.form())
     state = WizardState.from_form(form)
     return _render_resultats(request, state)
@@ -314,6 +335,13 @@ def _usage_inputs_from_state(state: WizardState) -> list[dict]:
     if state.has_current_usage():
         usage_inputs.append(_usage_input_from_draft(state.current_usage_draft()))
     return usage_inputs
+
+@router.post("/wizard/goto/contexte-affaires", response_class=HTMLResponse)
+async def wizard_goto_contexte_affaires(request: Request):
+    form = _group_form(await request.form())
+    state = WizardState.from_form(form)
+    return _render_contexte_affaires(request, state)
+
 
 @router.post("/wizard/contexte-affaires", response_class=HTMLResponse)
 async def wizard_contexte_affaires_submit(request: Request):

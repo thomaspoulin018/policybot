@@ -11,7 +11,7 @@
   <div class="grid" id="usage-options">
     {% for opt in question.options %}
     <label class="opt">
-      <div class="top"><input type="checkbox" name="result_use_checked" value="{{ opt.label }}"></div>
+      <div class="top"><input type="checkbox" name="result_use_checked" value="{{ opt.label }}" {% if opt.label in state.result_use_checked %}checked{% endif %}></div>
       <b>{{ opt.label }}</b>
     </label>
     {% endfor %}
@@ -19,12 +19,12 @@
   <div id="suggested-usage"></div>
   <label class="freefield">
     Autre :
-    <input type="text" name="result_use_free_text"
+    <input type="text" name="result_use_free_text" value="{{ state.result_use_free_text|e }}"
            hx-post="/wizard/suggest/usage" hx-trigger="changed delay:500ms"
            hx-target="#suggested-usage" hx-swap="innerHTML">
   </label>
   <label class="opt">
-    <div class="top"><input type="checkbox" name="automated_decisions" value="true"></div>
+    <div class="top"><input type="checkbox" name="automated_decisions" value="true" {% if state.automated_decisions %}checked{% endif %}></div>
     <b>Décision automatisée</b>
     <small>Le résultat va-t-il déclencher une décision automatique sans révision humaine&nbsp;?</small>
   </label>

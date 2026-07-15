@@ -10,25 +10,25 @@
   {% endfor %}
   <label class="freefield">
     Description de l'usage :
-    <input type="text" name="usage_description"
+    <input type="text" name="usage_description" value="{{ state.usage_description|e }}"
            hx-post="/wizard/mode-guess" hx-trigger="changed delay:500ms"
            hx-target="#mode-fragment" hx-swap="innerHTML">
   </label>
   <div id="mode-fragment">
-    <label><input type="radio" name="mode" value="prompt" checked> Je tape mes questions directement</label>
-    <label><input type="radio" name="mode" value="api"> C'est intégré à un autre système (API)</label>
+    <label><input type="radio" name="mode" value="prompt" {% if state.mode != "api" %}checked{% endif %}> Je tape mes questions directement</label>
+    <label><input type="radio" name="mode" value="api" {% if state.mode == "api" %}checked{% endif %}> C'est intégré à un autre système (API)</label>
   </div>
   <label class="freefield">
     Fréquence d'utilisation prévue :
-    <input type="text" name="frequence_utilisation" placeholder="ex. quelques fois par semaine">
+    <input type="text" name="frequence_utilisation" value="{{ state.frequence_utilisation|e }}" placeholder="ex. quelques fois par semaine">
   </label>
   <label class="freefield">
     Nombre d'utilisateurs pour cet usage :
-    <input type="number" name="nb_utilisateurs" min="0">
+    <input type="number" name="nb_utilisateurs" value="{{ state.nb_utilisateurs }}" min="0">
   </label>
   <label class="freefield">
     Systèmes cibles si intégré par API :
-    <input type="text" name="systemes_api_cibles" placeholder="ex. CRM interne, portail étudiant">
+    <input type="text" name="systemes_api_cibles" value="{{ state.systemes_api_cibles|e }}" placeholder="ex. CRM interne, portail étudiant">
   </label>
   <div class="foot">
     <button class="back" type="button" onclick="history.back()">← Retour</button>
