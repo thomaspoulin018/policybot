@@ -4,7 +4,7 @@
 <div class="kicker">&Eacute;tape 2 &middot; Profil utilisateurs</div>
 <h1>Qui utilisera cet outil&nbsp;?</h1>
 <div class="assist"><img src="/static/friendly.png" alt=""> On pr&eacute;cise ici &agrave; qui l'outil s'adresse pour mieux estimer le niveau d'accompagnement requis.</div>
-<form class="profile-form" method="post" action="/wizard/profil-utilisateurs">
+<form class="profile-form" method="post" action="/wizard/profil-utilisateurs" id="wizard-form">
   {% for name, value in hidden_fields %}
   <input type="hidden" name="{{ name }}" value="{{ value|e }}">
   {% endfor %}

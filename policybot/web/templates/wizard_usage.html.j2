@@ -4,7 +4,7 @@
 <div class="kicker">Étape 4 · Ton usage · Usage {{ usage_number|default(1) }}</div>
 <h1>Comment vas-tu utiliser cet outil&nbsp;?</h1>
 <div class="assist"><img src="/static/friendly.png" alt=""> Décris ce que tu comptes faire, en tes mots.</div>
-<form method="post" action="/wizard/usage">
+<form method="post" action="/wizard/usage" id="wizard-form">
   {% for name, value in hidden_fields %}
   <input type="hidden" name="{{ name }}" value="{{ value|e }}">
   {% endfor %}

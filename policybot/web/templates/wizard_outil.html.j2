@@ -4,7 +4,7 @@
 <div class="kicker">Étape 1 · Ton outil</div>
 <h1>Quel outil d'IA générative comptes-tu utiliser&nbsp;?</h1>
 <div class="assist"><img src="/static/friendly.png" alt=""> Choisis un outil connu ou tape son nom.</div>
-<form method="post" action="/wizard/outil">
+<form method="post" action="/wizard/outil" id="wizard-form">
   {% if errors %}<div class="form-errors" role="alert">Corrigez les champs indiques ci-dessous.</div>{% endif %}
   <div class="chips">
     {% for name in known_tools %}
