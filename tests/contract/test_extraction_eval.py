@@ -20,6 +20,7 @@ from policybot.contract.extraction_eval import (
     score_case,
     score_field,
     validate_complete_case,
+    MetricCategory,
 )
 from policybot.contract.evidence import ContractEvidence
 from policybot.contract.families import ALL_FACT_FIELDS, FACT_FAMILIES
@@ -86,10 +87,10 @@ def test_load_golden_case_builds_single_page_evidence(tmp_path):
         "ip_ownership": "customer",
     }
     assert set(case.evidence.by_family) == {family.name for family in FACT_FAMILIES}
-    terms = case.evidence.by_family[FACT_FAMILIES[0].name]
-    assert terms.source_url == "https://example.test/terms"
-    assert terms.fetched_at == date(2026, 7, 15)
-    assert terms.text == "Synthetic terms evidence."
+    document = case.evidence.documents_by_family[FACT_FAMILIES[0].name][0]
+    assert document.url == "https://example.test/terms"
+    assert document.collected_at == date(2026, 7, 15)
+    assert document.content == "Synthetic terms evidence."
 
 
 def test_load_golden_case_rejects_unknown_field(tmp_path):
@@ -114,7 +115,7 @@ class _TinyTavilyClient:
     def search(self, *, query, **kwargs):
         return {
             "results": [
-                {"url": "https://example.test/terms", "content": f"hit for {query}"}
+                {"url": "https://openai.com/policies/terms-of-use", "content": f"hit for {query}"}
             ]
         }
 
@@ -188,7 +189,8 @@ def test_score_case_uses_contract_fact_evidence():
     assert score_case(case, facts) == [
         FieldResult("trains_on_input", "no", "no", Verdict.MATCH),
         FieldResult(
-            "data_retention", "limited", "unknown", Verdict.WRONG_ABSTAIN
+            "data_retention", "limited", "unknown", Verdict.WRONG_ABSTAIN,
+            (MetricCategory.MODEL_ABSTENTION,),
         ),
     ]
 
@@ -214,6 +216,62 @@ def test_format_report_and_wrong_value_gate():
     assert "**Taux WRONG_VALUE: 33.3%**" in report
     assert has_wrong_value(results) is True
     assert has_wrong_value({"tool": results["claude_ai"]}) is False
+
+
+def test_metrics_separate_pipeline_failures_and_false_reassurance():
+    case = _synthetic_case()
+    case.expected.clear()
+    case.expected.update({
+        "data_residency": "unknown",
+        "sub_processors": "undisclosed",
+        "human_review": "yes",
+        "encryption_standard": "strong",
+        "ip_ownership": "customer",
+    })
+    facts = ContractFacts(evidence={
+        "data_residency": FactEvidence(
+            value="unknown", outcome="collection_failure",
+        ),
+        "sub_processors": FactEvidence(
+            value="unknown", outcome="evidence_missing",
+        ),
+        "human_review": FactEvidence(
+            value="unknown", outcome="llm_failure",
+        ),
+        "encryption_standard": FactEvidence(
+            value="unknown", outcome="model_abstention",
+        ),
+        "ip_ownership": FactEvidence(
+            value="vendor", outcome="accepted",
+        ),
+    })
+
+    results = score_case(case, facts)
+    categories = {result.field: set(result.metrics) for result in results}
+
+    assert MetricCategory.COLLECTION_FAILURE in categories["data_residency"]
+    assert MetricCategory.FACT_ABSENT in categories["sub_processors"]
+    assert MetricCategory.LLM_FAILURE in categories["human_review"]
+    assert MetricCategory.MODEL_ABSTENTION in categories["encryption_standard"]
+    assert MetricCategory.INCORRECT_VALUE in categories["ip_ownership"]
+
+
+def test_false_reassuring_is_reported_in_addition_to_incorrect_value():
+    case = _synthetic_case()
+    case.expected.clear()
+    case.expected["sub_processors"] = "undisclosed"
+    facts = ContractFacts(
+        sub_processors="disclosed",
+        evidence={"sub_processors": FactEvidence(value="disclosed", outcome="accepted")},
+    )
+
+    result = score_case(case, facts)[0]
+
+    assert result.verdict is Verdict.WRONG_VALUE
+    assert result.metrics == (
+        MetricCategory.INCORRECT_VALUE,
+        MetricCategory.FALSE_REASSURING,
+    )
 
 
 def test_validate_complete_case_checks_coverage_and_allowed_values():

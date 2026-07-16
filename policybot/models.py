@@ -1,5 +1,7 @@
 from __future__ import annotations
 from datetime import date
+import hashlib
+import json
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
@@ -11,6 +13,63 @@ RiskLevel = Literal["Faible", "Modéré", "Élevé", "Critique"]
 Recommendation = Literal[
     "Autoriser", "Autoriser_avec_conditions", "Refuser", "Escalader"
 ]
+
+EvidenceOutcome = Literal[
+    "accepted",
+    "collection_failure",
+    "evidence_missing",
+    "llm_failure",
+    "model_abstention",
+    "citation_rejected",
+    "invalid_value",
+]
+
+
+class ContractOfferingIdentity(BaseModel):
+    """Identité stable de l'offre dont les garanties contractuelles s'appliquent.
+
+    Un nom de produit ne suffit pas : les garanties de ChatGPT grand public,
+    Enterprise et Edu ne sont pas interchangeables. Cette identité est donc la
+    frontière de collecte, de rapport et de cache de l'ARP.
+    """
+
+    vendor: str
+    product: str
+    plan: str = ""
+    deployment_mode: str = "unknown"
+    contract_type: str = "unknown"
+    contract_version: str = ""
+    effective_date: Optional[date] = None
+
+    def canonical_payload(self) -> dict[str, str]:
+        return {
+            "vendor": self.vendor.strip().casefold(),
+            "product": self.product.strip().casefold(),
+            "plan": self.plan.strip().casefold(),
+            "deployment_mode": self.deployment_mode.strip().casefold(),
+            "contract_type": self.contract_type.strip().casefold(),
+            "contract_version": self.contract_version.strip().casefold(),
+            "effective_date": self.effective_date.isoformat() if self.effective_date else "",
+        }
+
+    def cache_key(self) -> str:
+        encoded = json.dumps(
+            self.canonical_payload(), ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        digest = hashlib.sha256(encoded).hexdigest()
+        return f"offering:{digest}"
+
+    def display_label(self) -> str:
+        parts = [self.vendor, self.product]
+        if self.plan:
+            parts.append(self.plan)
+        parts.extend([self.deployment_mode, self.contract_type])
+        if self.contract_version:
+            parts.append(self.contract_version)
+        if self.effective_date:
+            parts.append(self.effective_date.isoformat())
+        return " — ".join(part for part in parts if part)
 
 
 class QuestionOption(BaseModel):
@@ -38,6 +97,20 @@ class FactEvidence(BaseModel):
     quote: Optional[str] = None
     confidence: float = 0.0
     note: Optional[str] = None
+    outcome: Optional[EvidenceOutcome] = None
+    source_type: Optional[str] = None
+    source_effective_date: Optional[date] = None
+    source_collected_at: Optional[date] = None
+    source_sha256: Optional[str] = None
+
+
+class ContractSource(BaseModel):
+    url: str
+    title: str = ""
+    source_type: str
+    effective_date: Optional[date] = None
+    collected_at: date
+    sha256: str
 
 
 class ContractFacts(BaseModel):
@@ -66,6 +139,7 @@ class ContractFacts(BaseModel):
     snapshot_ref: Optional[str] = None
     extraction_confidence: float = 0.0
     evidence: dict[str, FactEvidence] = Field(default_factory=dict)
+    sources: list[ContractSource] = Field(default_factory=list)
 
 
 class RiskFactor(BaseModel):
@@ -83,6 +157,7 @@ class RiskFactor(BaseModel):
 class ArpRecord(BaseModel):
     tool_name: str
     iag_type: IagType
+    offering: Optional[ContractOfferingIdentity] = None
     contract_facts: ContractFacts
     criteria: list[RiskFactor] = Field(default_factory=list)
     schema_version: int = 1
@@ -144,6 +219,7 @@ class ToolRef(BaseModel):
     iag_type: Optional[IagType] = None
     arp: Optional[ArpRecord] = None
     version_plan_tarifaire: str = ""
+    offering: Optional[ContractOfferingIdentity] = None
 
 
 class Usage(BaseModel):

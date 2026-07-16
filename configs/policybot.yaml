@@ -48,4 +48,4 @@ cache:
     # refresh: ignore le cache existant et le remplace
     # read_only: lit le cache sans jamais écrire
     # disabled: ne lit ni n'écrit dans le cache
-    mode: disabled
+    mode: read_write

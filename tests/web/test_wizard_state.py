@@ -162,6 +162,24 @@ def test_from_form_defaults_new_fields_to_empty_string_on_missing_keys():
     assert state.mode_acquisition == ""
 
 
+def test_contract_offering_fields_round_trip_through_hidden_form_state():
+    state = WizardState(
+        tool_name="ChatGPT",
+        version_plan_tarifaire="Enterprise",
+        deployment_mode="managed_saas",
+        contract_type="institutional_agreement",
+        contract_version="DPA-2026",
+        contract_effective_date="2026-07-01",
+    )
+
+    restored = WizardState.from_form(dict(state.to_hidden_fields()))
+
+    assert restored.deployment_mode == "managed_saas"
+    assert restored.contract_type == "institutional_agreement"
+    assert restored.contract_version == "DPA-2026"
+    assert restored.contract_effective_date == "2026-07-01"
+
+
 def test_saved_usages_roundtrip_through_hidden_json():
     state = WizardState(
         tool_name="ChatGPT",

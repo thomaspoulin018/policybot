@@ -13,7 +13,7 @@ même preuve à l'entrevue.
 """
 from policybot.contract.families import FACT_FAMILIES
 
-DEFAULT_URL = "https://example.test/evidence"
+DEFAULT_URL = "https://openai.com/policies/terms-of-use"
 
 # Preuve canonique : contient une phrase par sujet, assez longue pour être une
 # ancre valable (≥ 15 caractères normalisés). Les tests qui vérifient des valeurs

@@ -142,8 +142,25 @@ _INCIDENT_LABELS = {
 }
 
 
-def _auto_observation(label: str) -> str:
-    return f"Réponse automatisée: {label}"
+def _auto_observation(
+    label: str,
+    facts: ContractFacts,
+    field_name: str,
+) -> str:
+    parts = [f"Réponse automatisée: {label}"]
+    proof = facts.evidence.get(field_name)
+    if proof is not None:
+        if proof.note:
+            parts.append(proof.note)
+        if proof.quote:
+            parts.append(f"« {proof.quote} »")
+        if proof.source_url:
+            parts.append(f"source: {proof.source_url}")
+        if proof.source_collected_at:
+            parts.append(f"collectée le: {proof.source_collected_at}")
+        if proof.source_sha256:
+            parts.append(f"sha256: {proof.source_sha256}")
+    return " — ".join(parts)
 
 
 def _arp_automated_observations(facts: ContractFacts | None) -> dict[str, str]:
@@ -151,19 +168,21 @@ def _arp_automated_observations(facts: ContractFacts | None) -> dict[str, str]:
         return {}
     return {
         "Mécanismes d'authentification": _auto_observation(
-            _AUTH_LABELS[facts.authentication_support]
+            _AUTH_LABELS[facts.authentication_support], facts, "authentication_support",
         ),
         "Journalisation et traçabilité": _auto_observation(
-            _AUDIT_LABELS[facts.audit_logging]
+            _AUDIT_LABELS[facts.audit_logging], facts, "audit_logging",
         ),
         "Gestion des incidents": _auto_observation(
-            _INCIDENT_LABELS[facts.incident_response]
+            _INCIDENT_LABELS[facts.incident_response], facts, "incident_response",
         ),
         "Conditions d'utilisation acceptables": _auto_observation(
-            _TERMS_LABELS[facts.institutional_terms]
+            _TERMS_LABELS[facts.institutional_terms], facts, "institutional_terms",
         ),
         "Compatibilité licence usage gouvernemental": _auto_observation(
-            _LICENSE_LABELS[facts.quebec_higher_ed_license]
+            _LICENSE_LABELS[facts.quebec_higher_ed_license],
+            facts,
+            "quebec_higher_ed_license",
         ),
     }
 
@@ -207,6 +226,8 @@ def render_html(state: InterviewState) -> str:
     arp_tables = [
         {
             "tool_name": tool.name,
+            "offering": tool.offering or (tool.arp.offering if tool.arp else None),
+            "sources": tool.arp.contract_facts.sources if tool.arp else [],
             "groups": _group_by_category(
                 _merge_rows(
                     ARP_CRITERIA,
@@ -379,7 +400,12 @@ def _fill_tools_table(table: ET.Element, state: InterviewState) -> None:
         offset = index * 4
         _set_table_value(table, offset, tool.name)
         _set_table_value(table, offset + 1, _label(tool.iag_type, _IAG_TYPE_LABELS))
-        _set_table_value(table, offset + 2, tool.version_plan_tarifaire)
+        _set_table_value(
+            table,
+            offset + 2,
+            tool.offering.display_label()
+            if tool.offering else tool.version_plan_tarifaire,
+        )
         _set_table_value(table, offset + 3, tool.vendor or "")
 
 
@@ -703,6 +729,8 @@ def _render_reportlab_pdf(state: InterviewState) -> bytes:
     arp_tables = [
         {
             "tool_name": tool.name,
+            "offering": tool.offering or (tool.arp.offering if tool.arp else None),
+            "sources": tool.arp.contract_facts.sources if tool.arp else [],
             "groups": _group_by_category(
                 _merge_rows(
                     ARP_CRITERIA,
@@ -717,6 +745,19 @@ def _render_reportlab_pdf(state: InterviewState) -> bytes:
     ]
     for table in arp_tables:
         story.append(_para(f"Outil : {table['tool_name']}", styles["Heading3"]))
+        if table["offering"] is not None:
+            story.append(_para(
+                f"Identite de l'offre contractuelle : {table['offering'].display_label()}",
+                styles["BodyText"],
+            ))
+        if table["sources"]:
+            story.append(_para("Sources contractuelles retenues :", styles["BodyText"]))
+            for source in table["sources"]:
+                story.append(_para(
+                    f"{source.source_type} | {source.url} | collecte {source.collected_at} | "
+                    f"effet {source.effective_date or 'inconnu'} | sha256 {source.sha256}",
+                    styles["BodyText"],
+                ))
         story.append(_risk_table([
             "Critere", "Description / question", "Risque inherent", "Mesures de mitigation",
             "Risque residuel", "Responsable", "Observations / constats",

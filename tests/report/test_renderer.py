@@ -3,7 +3,7 @@ from html import unescape
 from io import BytesIO
 import zipfile
 import xml.etree.ElementTree as ET
-from policybot.models import InterviewState, RequestInfo, Usage, ToolRef, GlobalResult, ContractFacts, QualificationProfile
+from policybot.models import InterviewState, RequestInfo, Usage, ToolRef, GlobalResult, ContractFacts, QualificationProfile, ContractOfferingIdentity
 from policybot.contract.arp import build_arp
 from policybot.grille.engine import evaluate_usage
 from policybot.report.renderer import docx_filename, render_docx, pdf_filename, render_html, write_docx, write_pdf
@@ -56,6 +56,25 @@ def test_render_contains_request_and_verdict():
     assert "ChatGPT" in html
     assert "Refuser" in html
     assert "Non classifié" in html
+
+
+def test_render_contains_the_contract_offering_identity():
+    state = _state()
+    offering = ContractOfferingIdentity(
+        vendor="OpenAI", product="ChatGPT", plan="Enterprise",
+        deployment_mode="managed_saas", contract_type="institutional_agreement",
+        contract_version="2026-07", effective_date=__import__("datetime").date(2026, 7, 1),
+    )
+    state.tools[0].offering = offering
+    state.tools[0].arp.offering = offering
+
+    html = unescape(render_html(state))
+
+    assert "Identité de l’offre contractuelle" in html
+    assert "Enterprise" in html
+    assert "managed_saas" in html
+    assert "institutional_agreement" in html
+    assert "2026-07-01" in html
 
 
 def test_render_contains_disclaimer_footer():

@@ -1,5 +1,10 @@
 from datetime import date, timedelta
-from policybot.models import ArpRecord, ContractFacts, PreApprovedRecord
+from policybot.models import (
+    ArpRecord,
+    ContractFacts,
+    ContractOfferingIdentity,
+    PreApprovedRecord,
+)
 from policybot.preapproved.store import PreApprovedStore
 
 
@@ -13,6 +18,28 @@ def test_save_and_get_arp(tmp_path):
     store.save_arp(arp)
     got = store.get_arp("ChatGPT")
     assert got is not None and got.tool_name == "ChatGPT"
+
+
+def test_arp_cache_is_partitioned_by_contract_offering(tmp_path):
+    store = _store(tmp_path)
+    consumer = ContractOfferingIdentity(
+        vendor="OpenAI", product="ChatGPT", plan="Plus",
+        deployment_mode="public_saas", contract_type="consumer_terms",
+    )
+    enterprise = consumer.model_copy(update={
+        "plan": "Enterprise", "contract_type": "institutional_agreement",
+    })
+    store.save_arp(ArpRecord(
+        tool_name="ChatGPT", iag_type="publique", offering=consumer,
+        contract_facts=ContractFacts(trains_on_input="opt_out_available"),
+    ))
+    store.save_arp(ArpRecord(
+        tool_name="ChatGPT", iag_type="circuit_ferme", offering=enterprise,
+        contract_facts=ContractFacts(trains_on_input="no"),
+    ))
+
+    assert store.get_arp(consumer).contract_facts.trains_on_input == "opt_out_available"
+    assert store.get_arp(enterprise).contract_facts.trains_on_input == "no"
 
 
 def test_find_decision_matches_current(tmp_path):

@@ -1,7 +1,8 @@
 import os
 import httpx
 import pytest
-from policybot.contract.fetcher import fetch_terms, html_to_text
+from policybot.contract.fetcher import fetch_terms, fetch_offering_terms, html_to_text
+from policybot.models import ContractOfferingIdentity
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures", "openai_terms.html")
 
@@ -37,3 +38,23 @@ def test_fetch_unknown_tool_returns_none():
 
 def test_fetch_falls_back_to_none_when_vendor_blocks_the_request():
     assert fetch_terms("ChatGPT", http_get=_blocked_get) is None
+
+
+def test_fetch_offering_terms_uses_only_the_matching_contract_source_set():
+    requested = []
+
+    def get(url):
+        requested.append(url)
+        return "<html><body>contract</body></html>"
+
+    offering = ContractOfferingIdentity(
+        vendor="OpenAI", product="ChatGPT", plan="Enterprise",
+        deployment_mode="managed_saas", contract_type="institutional_agreement",
+    )
+
+    terms = fetch_offering_terms("ChatGPT", offering, http_get=get)
+
+    assert requested
+    assert all("terms-of-use" not in url for url in requested)
+    assert any("business-terms" in url for url in requested)
+    assert {item.source_url for item in terms} == set(requested)

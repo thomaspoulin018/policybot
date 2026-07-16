@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from policybot.models import InterviewState, RequestInfo
+from policybot.models import InterviewState, RequestInfo, ContractOfferingIdentity
 from policybot.interview.orchestrator import Interview, UnknownToolError
 from policybot.interview.graph import run_graph
 from policybot.classify.tool_type import tool_type_question
@@ -39,6 +39,8 @@ def create_app(itv: Interview) -> FastAPI:
                     payload["tool_name"],
                     payload["usage_inputs"],
                     payload.get("iag_type_override"),
+                    ContractOfferingIdentity.model_validate(payload["offering"])
+                    if payload.get("offering") else None,
                 )
                 extra["response"] = "ok"
                 return result

@@ -11,6 +11,7 @@ from policybot.llm.fake import FakeLLMProvider
 from tests.helpers.arp_fixtures import (
     DEFAULT_EVIDENCE,
     DEFAULT_QUOTE,
+    DEFAULT_URL,
     arp_extraction_responses,
 )
 
@@ -22,7 +23,7 @@ def _evidence(text: str = DEFAULT_EVIDENCE) -> ContractEvidence:
     preuve, donc un test qui vérifie des valeurs doit fournir cette preuve-là.
     """
     return ContractEvidence.from_single(FetchedTerms(
-        text=text, source_url="https://example.test/cgu", fetched_at=date(2026, 7, 14),
+        text=text, source_url=DEFAULT_URL, fetched_at=date(2026, 7, 14),
     ))
 
 
@@ -58,7 +59,7 @@ def test_each_fact_carries_its_url_and_verbatim_quote():
 
     proof = facts.evidence["trains_on_input"]
     assert proof.value == "yes"
-    assert proof.source_url == "https://example.test/evidence"
+    assert proof.source_url == DEFAULT_URL
     assert proof.quote == DEFAULT_QUOTE
     assert proof.quote in DEFAULT_EVIDENCE
     assert proof.confidence == 0.9
@@ -90,7 +91,7 @@ def test_a_legitimate_llm_unknown_keeps_its_quote_and_confidence_without_a_note(
     responses = arp_extraction_responses()
     responses[0]["trains_on_input"] = {
         "value": "unknown",
-        "source_url": "https://example.test/evidence",
+        "source_url": DEFAULT_URL,
         "quote": "Le contrat ne précise pas ce point.",
         "confidence": 0.4,
     }
@@ -122,6 +123,40 @@ def test_an_empty_source_url_is_demoted_to_unknown():
 
     assert facts.trains_on_input == "unknown"
     assert facts.evidence["trains_on_input"].note == "valeur écartée: aucune citation vérifiable"
+
+
+def test_quote_must_belong_to_the_exact_document_named_by_source_url():
+    from policybot.contract.evidence import EvidenceDocument
+
+    evidence = ContractEvidence(documents_by_family={
+        family.name: [
+            EvidenceDocument(
+                url="https://example.test/a",
+                title="A",
+                content=DEFAULT_QUOTE + " Document A only.",
+                source_type="contractual",
+                collected_at=date(2026, 7, 14),
+            ),
+            EvidenceDocument(
+                url="https://example.test/b",
+                title="B",
+                content="Document B has unrelated contractual content.",
+                source_type="contractual",
+                collected_at=date(2026, 7, 14),
+            ),
+        ]
+        for family in FACT_FAMILIES
+    })
+    responses = arp_extraction_responses(trains_on_input="no")
+    responses[0]["trains_on_input"]["source_url"] = "https://example.test/b"
+    responses[0]["trains_on_input"]["quote"] = DEFAULT_QUOTE
+
+    facts = extract_contract_facts(evidence, FakeLLMProvider(json_responses=responses))
+
+    proof = facts.evidence["trains_on_input"]
+    assert proof.value == "unknown"
+    assert proof.outcome == "citation_rejected"
+    assert proof.note == "citation introuvable dans la source indiquée"
 
 
 def test_a_failed_family_leaves_its_fields_unknown_and_annotated():
@@ -191,7 +226,7 @@ def test_source_url_and_fetched_at_come_from_the_evidence():
 
     facts = extract_contract_facts(_evidence(), llm)
 
-    assert facts.source_url == "https://example.test/cgu"
+    assert facts.source_url == DEFAULT_URL
     assert facts.fetched_at == date(2026, 7, 14)
 
 

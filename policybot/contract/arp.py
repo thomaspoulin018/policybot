@@ -6,8 +6,16 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, create_model
 
-from policybot.models import ContractFacts, ArpRecord, RiskFactor, IagType, FactEvidence
-from policybot.contract.evidence import ContractEvidence
+from policybot.models import (
+    ContractFacts,
+    ContractOfferingIdentity,
+    ArpRecord,
+    RiskFactor,
+    IagType,
+    FactEvidence,
+    ContractSource,
+)
+from policybot.contract.evidence import ContractEvidence, EvidenceDocument
 from policybot.contract.families import FACT_FAMILIES, FactFamily, FactField
 from policybot.llm.provider import LLMProvider
 from policybot.prompts import get_prompt
@@ -106,13 +114,41 @@ def _select_evidence_text(
     return "\n\n...\n\n".join(excerpts) if excerpts else text[:max_chars]
 
 
-def _build_family_prompt(family: FactFamily, text: str) -> str:
+def _document_prompt_text(
+    document: EvidenceDocument,
+    family: FactFamily,
+    max_chars: int,
+) -> str:
+    selected = _select_evidence_text(document.content, family.keywords, max_chars)
+    return (
+        "DOCUMENT SOURCE\n"
+        f"URL: {document.url}\n"
+        f"TYPE: {document.source_type}\n"
+        f"DATE_EFFECTIVE: {document.effective_date or 'unknown'}\n"
+        f"DATE_COLLECTE: {document.collected_at}\n"
+        f"SHA256: {document.sha256}\n"
+        f"TITRE: {document.title}\n"
+        f"CONTENU:\n{selected}"
+    )
+
+
+def _family_evidence_text(family: FactFamily, documents: list[EvidenceDocument]) -> str:
+    if not documents:
+        return ""
+    per_document = max(800, _MAX_FAMILY_EVIDENCE_CHARS // len(documents))
+    return _SOURCE_SEPARATOR.join(
+        _document_prompt_text(document, family, per_document)
+        for document in documents
+    )[:_MAX_FAMILY_EVIDENCE_CHARS + len(documents) * 350]
+
+
+def _build_family_prompt(family: FactFamily, documents: list[EvidenceDocument]) -> str:
     fields = []
     for field in family.fields:
         fields.append(f"- {field.name}: {' | '.join(field.allowed_values)} — {field.hint}")
     return get_prompt("contract_extraction").render_user(
         fields="\n".join(fields),
-        evidence=_select_evidence_text(text, family.keywords),
+        evidence=_family_evidence_text(family, documents),
     )
 
 
@@ -129,7 +165,11 @@ def _quote_is_anchored(quote: str, evidence_text: str) -> bool:
     return needle in _normalize_for_match(evidence_text)
 
 
-def _accept(field: FactField, raw: FieldExtraction, evidence_text: str) -> FactEvidence:
+def _accept(
+    field: FactField,
+    raw: FieldExtraction,
+    documents: list[EvidenceDocument],
+) -> FactEvidence:
     """Aucune valeur n'entre dans ContractFacts sans citation ancrée dans la preuve."""
     if raw.value not in field.allowed_values:
         # Le LLM a inventé une valeur hors du contrat du champ : distinct d'un
@@ -137,6 +177,7 @@ def _accept(field: FactField, raw: FieldExtraction, evidence_text: str) -> FactE
         return FactEvidence(
             value="unknown", confidence=0.0,
             note="valeur écartée: valeur hors des valeurs permises",
+            outcome="invalid_value",
         )
     value = raw.value
     quote = (raw.quote or "").strip()[:_MAX_QUOTE_CHARS]
@@ -145,27 +186,50 @@ def _accept(field: FactField, raw: FieldExtraction, evidence_text: str) -> FactE
         return FactEvidence(
             value="unknown", source_url=raw.source_url, quote=quote or None,
             confidence=raw.confidence,
+            outcome="model_abstention",
         )
     if not quote or not raw.source_url:
         return FactEvidence(
             value="unknown", confidence=0.0,
             note="valeur écartée: aucune citation vérifiable",
+            outcome="citation_rejected",
         )
-    if not _quote_is_anchored(quote, evidence_text):
+    source_document = next(
+        (document for document in documents if document.url == raw.source_url),
+        None,
+    )
+    if source_document is None:
+        return FactEvidence(
+            value="unknown", source_url=raw.source_url, quote=quote,
+            confidence=0.0, outcome="citation_rejected",
+            note="source URL absente de la preuve collectée",
+        )
+    if not _quote_is_anchored(quote, source_document.content):
         # La citation n'est pas un extrait de la page : le LLM l'a peut-être
         # inventée en même temps que la valeur. On n'affirme rien sans ancrage.
         return FactEvidence(
             value="unknown", source_url=raw.source_url, quote=quote, confidence=0.0,
-            note="citation introuvable dans la preuve",
+            note="citation introuvable dans la source indiquée",
+            outcome="citation_rejected",
         )
     return FactEvidence(
         value=value, source_url=raw.source_url, quote=quote, confidence=raw.confidence,
+        outcome="accepted",
+        source_type=source_document.source_type,
+        source_effective_date=source_document.effective_date,
+        source_collected_at=source_document.collected_at,
+        source_sha256=source_document.sha256,
     )
 
 
-def _unresolved(family: FactFamily, note: str) -> dict[str, FactEvidence]:
+def _unresolved(
+    family: FactFamily,
+    note: str,
+    outcome: str,
+) -> dict[str, FactEvidence]:
     return {
-        field.name: FactEvidence(value="unknown", note=note) for field in family.fields
+        field.name: FactEvidence(value="unknown", note=note, outcome=outcome)
+        for field in family.fields
     }
 
 
@@ -173,17 +237,21 @@ def _extract_family(
     family: FactFamily, evidence: ContractEvidence, llm: LLMProvider,
 ) -> dict[str, FactEvidence]:
     if family.name in evidence.failed_families:
-        return _unresolved(family, "collecte Tavily échouée")
-    terms = evidence.by_family.get(family.name)
-    if terms is None:
-        return _unresolved(family, "aucune évidence collectée")
+        return _unresolved(
+            family, "collecte Tavily échouée", "collection_failure",
+        )
+    documents = evidence.documents_for_family(family.name)
+    if not documents:
+        return _unresolved(
+            family, "aucune évidence collectée", "evidence_missing",
+        )
 
     with trace_step(None, "arp_family_extraction", family=family.name) as extra:
         try:
             prompt = get_prompt("contract_extraction")
             extracted = llm.complete_structured(
                 prompt.render_system(),
-                _build_family_prompt(family, terms.text),
+                _build_family_prompt(family, documents),
                 family_extraction_model(family),
                 run_name=f"extract_contract_facts:{family.name}",
                 tags=["arp_extraction", family.name],
@@ -192,11 +260,13 @@ def _extract_family(
         except Exception as exc:  # noqa: BLE001 — une famille perdue ne doit pas tuer l'entrevue
             extra["outcome"] = "failed"
             extra["error"] = type(exc).__name__
-            return _unresolved(family, "extraction LLM échouée")
+            return _unresolved(
+                family, "extraction LLM échouée", "llm_failure",
+            )
         extra["outcome"] = "ok"
 
     return {
-        field.name: _accept(field, getattr(extracted, field.name), terms.text)
+        field.name: _accept(field, getattr(extracted, field.name), documents)
         for field in family.fields
     }
 
@@ -212,16 +282,41 @@ def extract_contract_facts(evidence: ContractEvidence, llm: LLMProvider) -> Cont
     # Conservateur : la date de péremption du cache suit la page la PLUS
     # ANCIENNE parmi les familles collectées, pas l'ordre d'insertion du dict
     # (qui peut différer de l'ordre de `primary_source_url()`).
-    fetched_at = min(
-        (terms.fetched_at for terms in evidence.by_family.values()), default=None,
-    )
+    fetched_at = min((
+        document.collected_at
+        for documents in evidence.documents_by_family.values()
+        for document in documents
+    ), default=None)
+    unique_documents: dict[str, EvidenceDocument] = {}
+    for documents in evidence.documents_by_family.values():
+        for document in documents:
+            unique_documents.setdefault(document.url, document)
+    source_refs = [
+        ContractSource(
+            url=document.url,
+            title=document.title,
+            source_type=document.source_type,
+            effective_date=document.effective_date,
+            collected_at=document.collected_at,
+            sha256=document.sha256,
+        )
+        for document in unique_documents.values()
+    ]
+    snapshot_ref = None
+    if source_refs:
+        import hashlib
+        snapshot_ref = hashlib.sha256("|".join(
+            f"{source.url}:{source.sha256}" for source in source_refs
+        ).encode("utf-8")).hexdigest()
 
     return ContractFacts(
         **values,
         evidence=proofs,
         source_url=primary,
         fetched_at=fetched_at,
+        snapshot_ref=snapshot_ref,
         extraction_confidence=round(mean(confidences), 2) if confidences else 0.0,
+        sources=source_refs,
     )
 
 
@@ -238,10 +333,19 @@ def _observation(facts: ContractFacts, field_name: str) -> str:
         parts.append(f"« {proof.quote} »")
     if proof.source_url:
         parts.append(f"source: {proof.source_url}")
+    if proof.source_collected_at:
+        parts.append(f"collectée le: {proof.source_collected_at}")
+    if proof.source_sha256:
+        parts.append(f"sha256: {proof.source_sha256}")
     return " — ".join(parts)
 
 
-def build_arp(tool_name: str, iag_type: IagType, facts: ContractFacts) -> ArpRecord:
+def build_arp(
+    tool_name: str,
+    iag_type: IagType,
+    facts: ContractFacts,
+    offering: ContractOfferingIdentity | None = None,
+) -> ArpRecord:
     """Produce the 8 Partie A criteria PolicyBot can derive automatically."""
     criteria: list[RiskFactor] = []
 
@@ -308,7 +412,9 @@ def build_arp(tool_name: str, iag_type: IagType, facts: ContractFacts) -> ArpRec
     }
 
     return ArpRecord(
-        tool_name=tool_name, iag_type=iag_type, contract_facts=facts,
-        criteria=criteria, schema_version=CURRENT_ARP_SCHEMA_VERSION, terms_snapshot=facts.source_url,
+        tool_name=tool_name, iag_type=iag_type, offering=offering,
+        contract_facts=facts,
+        criteria=criteria, schema_version=CURRENT_ARP_SCHEMA_VERSION,
+        terms_snapshot=facts.snapshot_ref or facts.source_url,
         fetched_at=facts.fetched_at,
     )

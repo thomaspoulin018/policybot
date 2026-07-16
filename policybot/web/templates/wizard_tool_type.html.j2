@@ -9,6 +9,10 @@
   <input type="hidden" name="demandeur" value="{{ state.demandeur|e }}">
   <input type="hidden" name="unite" value="{{ state.unite|e }}">
   <input type="hidden" name="version_plan_tarifaire" value="{{ version_plan_tarifaire }}">
+  <input type="hidden" name="deployment_mode" value="{{ state.deployment_mode }}">
+  <input type="hidden" name="contract_type" value="{{ state.contract_type }}">
+  <input type="hidden" name="contract_version" value="{{ state.contract_version }}">
+  <input type="hidden" name="contract_effective_date" value="{{ state.contract_effective_date }}">
   <div class="grid">
     {% for opt in question.options %}
     <label class="opt">

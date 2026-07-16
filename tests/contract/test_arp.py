@@ -3,16 +3,16 @@ from policybot.llm.fake import FakeLLMProvider
 from policybot.contract.fetcher import FetchedTerms
 from policybot.contract.evidence import ContractEvidence
 from policybot.contract.arp import extract_contract_facts, build_arp
-from tests.helpers.arp_fixtures import DEFAULT_EVIDENCE, arp_extraction_responses
+from tests.helpers.arp_fixtures import DEFAULT_EVIDENCE, DEFAULT_URL, arp_extraction_responses
 
 
 def _terms():
-    return FetchedTerms(text=DEFAULT_EVIDENCE, source_url="http://x", fetched_at=date.today())
+    return FetchedTerms(text=DEFAULT_EVIDENCE, source_url=DEFAULT_URL, fetched_at=date.today())
 
 
 def test_extract_maps_llm_output_to_contractfacts():
     llm = FakeLLMProvider(json_responses=arp_extraction_responses(
-        "http://x",
+        DEFAULT_URL,
         trains_on_input="yes", data_retention="indefinite",
         data_residency="us", sub_processors="undisclosed",
         human_review="no",
@@ -20,7 +20,7 @@ def test_extract_maps_llm_output_to_contractfacts():
     facts = extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
     assert facts.trains_on_input == "yes"
     assert facts.data_residency == "us"
-    assert facts.source_url == "http://x"
+    assert facts.source_url == DEFAULT_URL
     assert facts.extraction_confidence == 0.9
 
 

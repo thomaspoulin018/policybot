@@ -121,3 +121,77 @@ def test_malformed_result_elements_do_not_raise():
     evidence = collect_evidence_from_tavily(CONFIG, search, extract)
 
     assert "Contenu" in evidence.by_family["entrainement_reutilisation"].text
+
+
+def test_writes_raw_search_and_extract_responses_to_markdown(tmp_path):
+    output_path = tmp_path / "tavily.md"
+
+    def search(**kwargs):
+        return {"results": [{
+            "url": "https://example.test/terms",
+            "title": "Terms",
+            "content": "Search result content",
+        }]}
+
+    def extract(urls, **kwargs):
+        return {"results": [{
+            "url": urls[0],
+            "raw_content": "Extracted contract content",
+        }]}
+
+    collect_evidence_from_tavily(
+        CONFIG, search, extract, markdown_output_path=output_path,
+    )
+
+    report = output_path.read_text(encoding="utf-8")
+    assert "ToolX training" in report
+    assert "Search result content" in report
+    assert "Extracted contract content" in report
+    assert "https://example.test/terms" in report
+
+
+def test_source_policy_rejects_forums_archives_and_wrong_offers():
+    config = {
+        **CONFIG,
+        "source_policy": {
+            "priority_urls": ["https://example.test/legal/enterprise-terms"],
+            "allowed_domains": ["example.test"],
+            "allowed_path_prefixes": ["/legal", "/docs"],
+            "excluded_path_patterns": ["/forum", "/archives"],
+            "required_offer_terms": ["enterprise"],
+            "excluded_offer_terms": ["consumer", "individual"],
+        },
+    }
+
+    def search(**kwargs):
+        return {"results": [
+            {"url": "https://example.test/forum/enterprise", "title": "Enterprise forum", "content": "x"},
+            {"url": "https://example.test/legal/archives/enterprise", "title": "Enterprise archive", "content": "x"},
+            {"url": "https://example.test/legal/consumer-terms", "title": "Consumer terms", "content": "x"},
+            {"url": "https://example.test/legal/team-terms", "title": "Team agreement", "content": "x"},
+            {"url": "https://example.test/legal/enterprise-terms", "title": "Enterprise agreement", "content": "valid"},
+        ]}
+
+    evidence = collect_evidence_from_tavily(config, search)
+
+    documents = evidence.documents_by_family["entrainement_reutilisation"]
+    assert [document.url for document in documents] == [
+        "https://example.test/legal/enterprise-terms"
+    ]
+    assert documents[0].source_type == "contractual"
+    assert len(documents[0].sha256) == 64
+
+
+def test_evidence_keeps_one_structured_document_per_url():
+    def search(**kwargs):
+        return {"results": [
+            {"url": "https://example.test/legal/terms", "title": "Terms", "content": "snippet"},
+            {"url": "https://example.test/docs/security", "title": "Security", "content": "snippet"},
+        ]}
+
+    evidence = collect_evidence_from_tavily(CONFIG, search)
+    documents = evidence.documents_by_family["entrainement_reutilisation"]
+
+    assert len(documents) == 2
+    assert documents[0].url != documents[1].url
+    assert all(document.content == "snippet" for document in documents)

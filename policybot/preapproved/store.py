@@ -2,7 +2,13 @@ from __future__ import annotations
 import sqlite3
 import threading
 from datetime import date
-from policybot.models import ArpRecord, PreApprovedRecord, DataClass, IagType
+from policybot.models import (
+    ArpRecord,
+    ContractOfferingIdentity,
+    PreApprovedRecord,
+    DataClass,
+    IagType,
+)
 
 
 class PreApprovedStore:
@@ -13,6 +19,10 @@ class PreApprovedStore:
             "CREATE TABLE IF NOT EXISTS arp (tool_name TEXT PRIMARY KEY, json TEXT)"
         )
         self._db.execute(
+            "CREATE TABLE IF NOT EXISTS arp_offering ("
+            "offering_key TEXT PRIMARY KEY, tool_name TEXT NOT NULL, json TEXT NOT NULL)"
+        )
+        self._db.execute(
             "CREATE TABLE IF NOT EXISTS decision ("
             "id TEXT PRIMARY KEY, tool_name TEXT, data_classification TEXT, "
             "iag_type TEXT, expires_at TEXT, json TEXT)"
@@ -21,17 +31,54 @@ class PreApprovedStore:
 
     def save_arp(self, arp: ArpRecord) -> None:
         with self._lock:
-            self._db.execute(
-                "INSERT OR REPLACE INTO arp VALUES (?, ?)",
-                (arp.tool_name.lower(), arp.model_dump_json()),
-            )
+            if arp.offering is not None:
+                self._db.execute(
+                    "INSERT OR REPLACE INTO arp_offering VALUES (?, ?, ?)",
+                    (
+                        arp.offering.cache_key(),
+                        arp.tool_name.lower(),
+                        arp.model_dump_json(),
+                    ),
+                )
+            else:
+                self._db.execute(
+                    "INSERT OR REPLACE INTO arp VALUES (?, ?)",
+                    (arp.tool_name.lower(), arp.model_dump_json()),
+                )
             self._db.commit()
 
-    def get_arp(self, tool_name: str) -> ArpRecord | None:
+    def get_arp(
+        self,
+        offering: ContractOfferingIdentity | str,
+    ) -> ArpRecord | None:
         with self._lock:
-            row = self._db.execute(
-                "SELECT json FROM arp WHERE tool_name = ?", (tool_name.lower(),)
-            ).fetchone()
+            if isinstance(offering, ContractOfferingIdentity):
+                row = self._db.execute(
+                    "SELECT json FROM arp_offering WHERE offering_key = ?",
+                    (offering.cache_key(),),
+                ).fetchone()
+                if row is None and not any((
+                    offering.plan,
+                    offering.contract_version,
+                    offering.effective_date,
+                )):
+                    # Migration douce des anciennes ARP indexées seulement par
+                    # produit. Une offre explicitement précisée ne retombe jamais
+                    # sur ce cache ambigu.
+                    row = self._db.execute(
+                        "SELECT json FROM arp WHERE tool_name = ?",
+                        (offering.product.lower(),),
+                    ).fetchone()
+            else:
+                row = self._db.execute(
+                    "SELECT json FROM arp_offering WHERE tool_name = ? "
+                    "ORDER BY rowid DESC LIMIT 1",
+                    (offering.lower(),),
+                ).fetchone()
+                if row is None:
+                    row = self._db.execute(
+                        "SELECT json FROM arp WHERE tool_name = ?", (offering.lower(),)
+                    ).fetchone()
         return ArpRecord.model_validate_json(row[0]) if row else None
 
     def save_decision(self, rec: PreApprovedRecord) -> None:

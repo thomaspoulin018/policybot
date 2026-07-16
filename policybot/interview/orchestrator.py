@@ -1,18 +1,21 @@
 from __future__ import annotations
 import os
+from datetime import date
+import inspect
 from typing import Callable, Optional
 from policybot.config import ArpCacheMode
 from policybot.models import (
     InterviewState, RequestInfo, ToolRef, Usage, ContractFacts, IagType,
-    QualificationProfile,
+    QualificationProfile, ContractOfferingIdentity,
 )
 from policybot.llm.provider import LLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.classify.data_classifier import classify_data
 from policybot.classify.tool_type import classify_tool_type
 from policybot.classify.tool_registry import lookup_tool
-from policybot.contract.fetcher import FetchedTerms, fetch_terms
+from policybot.contract.fetcher import fetch_offering_terms
 from policybot.contract.evidence import ContractEvidence
+from policybot.contract.offering import build_offering_identity
 from policybot.contract.arp import CURRENT_ARP_SCHEMA_VERSION, extract_contract_facts, build_arp
 from policybot.grille.engine import evaluate_usage, synthesize
 from policybot.grille.matrix import evaluate_matrix
@@ -51,12 +54,18 @@ class Interview:
     def llm(self) -> LLMProvider:
         return self._llm
 
-    def _resolve_arp(self, tool_name: str, iag_type: IagType) -> ArpRecord:
+    def _resolve_arp(
+        self,
+        tool_name: str,
+        iag_type: IagType,
+        offering: ContractOfferingIdentity | None = None,
+    ) -> ArpRecord:
+        offering = offering or build_offering_identity(tool_name, iag_type)
         with trace_step(None, "resolve_arp", tool_name=tool_name) as extra:
             cached = None
             cache_read_enabled = self._arp_cache_mode in ("read_write", "read_only")
             if cache_read_enabled:
-                cached = self._store.get_arp(tool_name)
+                cached = self._store.get_arp(offering)
             else:
                 extra["cache"] = self._arp_cache_mode
             if cached and cached.schema_version >= CURRENT_ARP_SCHEMA_VERSION:
@@ -70,18 +79,26 @@ class Interview:
             with trace_step(None, "resolve_arp_fetch", tool_name=tool_name) as fetch_extra:
                 evidence = None
                 if self._tavily_search is not None:
-                    evidence = self._tavily_search(tool_name)
+                    parameters = inspect.signature(self._tavily_search).parameters
+                    if "offering" in parameters:
+                        evidence = self._tavily_search(tool_name, offering=offering)
+                    else:
+                        evidence = self._tavily_search(tool_name)
                     fetch_extra["source"] = "tavily" if evidence is not None else "tavily_miss"
                 elif os.environ.get("POLICYBOT_CONTRACT_SEARCH", "").strip().lower() == "tavily":
                     from policybot.contract.tavily import search_contract_terms_with_tavily
 
-                    evidence = search_contract_terms_with_tavily(tool_name)
+                    evidence = search_contract_terms_with_tavily(
+                        tool_name, offering=offering,
+                    )
                     fetch_extra["source"] = "tavily" if evidence is not None else "tavily_miss"
                 if evidence is None:
-                    terms = fetch_terms(tool_name, http_get=self._http_get)
+                    terms = fetch_offering_terms(
+                        tool_name, offering, http_get=self._http_get,
+                    )
                     fetch_extra.setdefault("source", "direct_terms")
                     evidence = (
-                        ContractEvidence.from_single(terms) if terms is not None else None
+                        ContractEvidence.from_terms(terms) if terms else None
                     )
                 fetch_extra["found"] = evidence is not None
                 if evidence is None:
@@ -89,7 +106,7 @@ class Interview:
                 else:
                     fetch_extra["families"] = len(evidence.by_family)
                     facts = extract_contract_facts(evidence, self._llm)
-            arp = build_arp(tool_name, iag_type, facts)
+            arp = build_arp(tool_name, iag_type, facts, offering)
             if self._arp_cache_mode in ("read_write", "refresh"):
                 self._store.save_arp(arp)
                 extra["cache_write"] = True
@@ -101,7 +118,12 @@ class Interview:
                usage_inputs: list[dict],
                iag_type_override: IagType | None = None,
                qualification: QualificationProfile | None = None,
-               tool_version_plan_tarifaire: str | None = None) -> InterviewState:
+               tool_version_plan_tarifaire: str | None = None,
+               deployment_mode: str | None = None,
+               contract_type: str | None = None,
+               contract_version: str | None = None,
+               contract_effective_date: date | None = None,
+               offering_override: ContractOfferingIdentity | None = None) -> InterviewState:
         state = InterviewState(interview_id=str(uuid.uuid4()), request=request)
         if qualification is not None:
             state.qualification = qualification
@@ -113,11 +135,22 @@ class Interview:
                     if iag_type_override is None:
                         raise UnknownToolError(tool_name)
                     iag_type = iag_type_override
+                offering = offering_override or build_offering_identity(
+                    tool_name,
+                    iag_type,
+                    vendor=entry["vendor"] if entry else None,
+                    plan=tool_version_plan_tarifaire,
+                    deployment_mode=deployment_mode,
+                    contract_type=contract_type,
+                    contract_version=contract_version,
+                    effective_date=contract_effective_date,
+                )
                 state.tools.append(ToolRef(
                     name=tool_name,
                     vendor=entry["vendor"] if entry else None,
                     iag_type=iag_type,
                     version_plan_tarifaire=tool_version_plan_tarifaire or "",
+                    offering=offering,
                 ))
 
                 # Classify each usage's data description first, then resolve (and cache)
@@ -144,7 +177,7 @@ class Interview:
                     # A matrix refusal is final; ARP/Tavily data cannot override it.
                     facts = ContractFacts()
                 else:
-                    arp = self._resolve_arp(tool_name, iag_type)
+                    arp = self._resolve_arp(tool_name, iag_type, offering)
                     state.tools[0].arp = arp
                     facts = arp.contract_facts
 

@@ -102,6 +102,35 @@ def test_search_returns_none_when_all_families_fail(tmp_path):
     ) is None
 
 
+def test_search_writes_one_markdown_artifact_for_an_arp_collection(tmp_path):
+    class Client:
+        def search(self, **kwargs):
+            return {"results": [{
+                "url": "https://example.test/terms",
+                "content": "Search response",
+            }]}
+
+        def extract(self, urls, **kwargs):
+            return {"results": [{
+                "url": url,
+                "raw_content": "Extract response",
+            } for url in urls]}
+
+    output_dir = tmp_path / "markdown"
+    evidence = search_contract_terms_with_tavily(
+        "ToolX",
+        api_key="unused",
+        config_dir=tmp_path / "config",
+        markdown_output_dir=output_dir,
+        client=Client(),
+    )
+
+    reports = list(output_dir.glob("*.md"))
+    assert evidence is not None
+    assert len(reports) == 1
+    assert "Extract response" in reports[0].read_text(encoding="utf-8")
+
+
 def test_interview_uses_injected_tavily_terms_before_direct_fetch(tmp_path):
     # La citation de la fixture est tirée de cette preuve : sans cet ancrage,
     # l'extraction ferait légitimement retomber la valeur à `unknown`.
@@ -110,7 +139,11 @@ def test_interview_uses_injected_tavily_terms_before_direct_fetch(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="no", evidence=tavily_evidence),
+        *arp_extraction_responses(
+            "https://example.test/tavily",
+            trains_on_input="no",
+            evidence=tavily_evidence,
+        ),
     ])
 
     def tavily_search(tool_name):

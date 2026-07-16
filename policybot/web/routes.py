@@ -172,8 +172,16 @@ async def wizard_outil(request: Request):
     demandeur = str(form.get("demandeur", "") or "").strip()
     unite = str(form.get("unite", "") or "").strip()
     version_plan_tarifaire = str(form.get("version_plan_tarifaire", "") or "").strip()
+    deployment_mode = str(form.get("deployment_mode", "") or "").strip()
+    contract_type = str(form.get("contract_type", "") or "").strip()
+    contract_version = str(form.get("contract_version", "") or "").strip()
+    contract_effective_date = str(form.get("contract_effective_date", "") or "").strip()
     state = WizardState(tool_name=tool_name, demandeur=demandeur, unite=unite,
-                        version_plan_tarifaire=version_plan_tarifaire)
+                        version_plan_tarifaire=version_plan_tarifaire,
+                        deployment_mode=deployment_mode,
+                        contract_type=contract_type,
+                        contract_version=contract_version,
+                        contract_effective_date=contract_effective_date)
     errors = {
         name: error for name, error in {
             "tool_name": _required_text(tool_name, "Indiquez le nom de l'outil d'IA generative."),
@@ -208,7 +216,11 @@ async def wizard_outil_type(request: Request):
     version_plan_tarifaire = form.get("version_plan_tarifaire", "") or ""
     state = WizardState(tool_name=tool_name, demandeur=demandeur, unite=unite,
                          tool_type_override=tool_type_override,
-                         version_plan_tarifaire=version_plan_tarifaire)
+                         version_plan_tarifaire=version_plan_tarifaire,
+                         deployment_mode=form.get("deployment_mode", "") or "",
+                         contract_type=form.get("contract_type", "") or "",
+                         contract_version=form.get("contract_version", "") or "",
+                         contract_effective_date=form.get("contract_effective_date", "") or "")
     return _render_profil_utilisateurs(request, state)
 
 
@@ -387,6 +399,13 @@ async def wizard_contexte_affaires_submit(request: Request):
             iag_type_override=state.tool_type_override,
             qualification=qualification,
             tool_version_plan_tarifaire=state.version_plan_tarifaire,
+            deployment_mode=state.deployment_mode or None,
+            contract_type=state.contract_type or None,
+            contract_version=state.contract_version or None,
+            contract_effective_date=(
+                date.fromisoformat(state.contract_effective_date)
+                if state.contract_effective_date else None
+            ),
         )
     except Exception:
         logger.exception("wizard/contexte-affaires assess failed for tool_name=%r numero=%s", state.tool_name, numero)

@@ -24,6 +24,10 @@ class WizardState(BaseModel):
     unite: str = ""
     tool_type_override: IagType | None = None
     version_plan_tarifaire: str = ""
+    deployment_mode: str = ""
+    contract_type: str = ""
+    contract_version: str = ""
+    contract_effective_date: str = ""
     nb_utilisateurs_vises: str = ""
     fonctions_roles: str = ""
     niveau_maitrise_ti: str = ""
@@ -63,6 +67,14 @@ class WizardState(BaseModel):
             fields.append(("tool_type_override", self.tool_type_override))
         if self.version_plan_tarifaire:
             fields.append(("version_plan_tarifaire", self.version_plan_tarifaire))
+        if self.deployment_mode:
+            fields.append(("deployment_mode", self.deployment_mode))
+        if self.contract_type:
+            fields.append(("contract_type", self.contract_type))
+        if self.contract_version:
+            fields.append(("contract_version", self.contract_version))
+        if self.contract_effective_date:
+            fields.append(("contract_effective_date", self.contract_effective_date))
         if self.nb_utilisateurs_vises:
             fields.append(("nb_utilisateurs_vises", self.nb_utilisateurs_vises))
         if self.fonctions_roles:
@@ -144,6 +156,10 @@ class WizardState(BaseModel):
             unite=form.get("unite", "") or "",
             tool_type_override=form.get("tool_type_override") or None,
             version_plan_tarifaire=form.get("version_plan_tarifaire", "") or "",
+            deployment_mode=form.get("deployment_mode", "") or "",
+            contract_type=form.get("contract_type", "") or "",
+            contract_version=form.get("contract_version", "") or "",
+            contract_effective_date=form.get("contract_effective_date", "") or "",
             nb_utilisateurs_vises=form.get("nb_utilisateurs_vises", "") or "",
             fonctions_roles=form.get("fonctions_roles", "") or "",
             niveau_maitrise_ti=form.get("niveau_maitrise_ti", "") or "",
@@ -386,5 +402,4 @@ def demo_wizard_state(scenario_id: str = "public_permitted") -> WizardState:
         if scenario.id == scenario_id:
             return scenario.state.model_copy(deep=True)
     raise KeyError(scenario_id)
-
 

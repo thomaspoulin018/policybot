@@ -25,10 +25,12 @@ from policybot.contract.arp import extract_contract_facts
 from policybot.contract.evidence import ContractEvidence
 from policybot.contract.families import ALL_FACT_FIELDS
 from policybot.contract.fetcher import FetchedTerms
+from policybot.contract.offering import build_offering_identity
+from policybot.classify.tool_registry import lookup_tool
 from policybot.contract.tavily import search_contract_terms_with_tavily
 from policybot.llm.openrouter import OpenRouterProvider
 from policybot.llm.provider import LLMProvider
-from policybot.models import ContractFacts, FactEvidence
+from policybot.models import ContractFacts, ContractOfferingIdentity, FactEvidence
 
 
 DEFAULT_GOLDEN_ROOT = (
@@ -48,6 +50,7 @@ class GoldenCase:
     tool_slug: str
     evidence: ContractEvidence
     expected: dict[str, str]
+    offering: ContractOfferingIdentity | None = None
 
 
 class Verdict(str, Enum):
@@ -56,12 +59,80 @@ class Verdict(str, Enum):
     WRONG_ABSTAIN = "WRONG_ABSTAIN"
 
 
+class MetricCategory(str, Enum):
+    COLLECTION_FAILURE = "COLLECTION_FAILURE"
+    FACT_ABSENT = "FACT_ABSENT"
+    LLM_FAILURE = "LLM_FAILURE"
+    MODEL_ABSTENTION = "MODEL_ABSTENTION"
+    CITATION_REJECTED = "CITATION_REJECTED"
+    INCORRECT_VALUE = "INCORRECT_VALUE"
+    FALSE_REASSURING = "FALSE_REASSURING"
+
+
 @dataclass(frozen=True)
 class FieldResult:
     field: str
     expected: str
     got: str
     verdict: Verdict
+    metrics: tuple[MetricCategory, ...] = ()
+
+
+_RISK_RANKS: dict[str, dict[str, int]] = {
+    "trains_on_input": {"no": 0, "opt_out_available": 1, "yes": 2, "unknown": 3},
+    "data_retention": {"none": 0, "limited": 1, "indefinite": 2, "unknown": 3},
+    "data_residency": {"canada": 0, "eu": 1, "us": 2, "other": 2, "unknown": 3},
+    "sub_processors": {"disclosed": 0, "undisclosed": 2, "unknown": 3},
+    # Rang conforme à la grille actuelle; la sémantique de ce champ doit être
+    # revue séparément (accès humain fournisseur vs supervision interne).
+    "human_review": {"yes": 0, "no": 2, "unknown": 3},
+    "encryption_standard": {"strong": 0, "partial": 1, "none": 2, "unknown": 3},
+    "ip_ownership": {"customer": 0, "unclear": 1, "vendor": 2, "unknown": 3},
+    "contract_prohibits_reuse": {"yes": 0, "no": 2, "unknown": 3},
+    "reentraining_opt_out": {"yes": 0, "no": 2, "unknown": 3},
+    "authentication_support": {"sso_mfa": 0, "partial": 1, "none": 2, "unknown": 3},
+    "audit_logging": {"prompt_output_accessible": 0, "access_logs_only": 1, "none": 2, "unknown": 3},
+    "institutional_terms": {"acceptable": 0, "problematic": 2, "unknown": 3},
+    "quebec_higher_ed_license": {"yes": 0, "no": 2, "unknown": 3},
+    "incident_response": {"documented_with_notice": 0, "documented_no_notice": 1, "none": 2, "unknown": 3},
+    "applicable_law": {"quebec_canada": 0, "foreign": 2, "unknown": 3},
+    "foreign_vendor_dependency": {"no": 0, "yes": 2, "unknown": 3},
+}
+
+_OUTCOME_METRICS = {
+    "collection_failure": MetricCategory.COLLECTION_FAILURE,
+    "evidence_missing": MetricCategory.FACT_ABSENT,
+    "llm_failure": MetricCategory.LLM_FAILURE,
+    "model_abstention": MetricCategory.MODEL_ABSTENTION,
+    "citation_rejected": MetricCategory.CITATION_REJECTED,
+    "invalid_value": MetricCategory.CITATION_REJECTED,
+}
+
+
+def _is_false_reassuring(field: str, expected: str, got: str) -> bool:
+    ranks = _RISK_RANKS.get(field)
+    if ranks is None or expected not in ranks or got not in ranks:
+        return False
+    return ranks[got] < ranks[expected]
+
+
+def _field_metrics(
+    field: str,
+    expected: str,
+    extracted: FactEvidence,
+    verdict: Verdict,
+) -> tuple[MetricCategory, ...]:
+    outcome_metric = _OUTCOME_METRICS.get(extracted.outcome or "")
+    if outcome_metric is not None and extracted.value == "unknown":
+        return (outcome_metric,)
+    if verdict is Verdict.WRONG_ABSTAIN:
+        return (MetricCategory.MODEL_ABSTENTION,)
+    if verdict is Verdict.WRONG_VALUE:
+        metrics = [MetricCategory.INCORRECT_VALUE]
+        if _is_false_reassuring(field, expected, extracted.value):
+            metrics.append(MetricCategory.FALSE_REASSURING)
+        return tuple(metrics)
+    return ()
 
 
 class RecordingTavilyClient:
@@ -198,10 +269,16 @@ def load_golden_case(case_dir: str | Path) -> GoldenCase:
     directory = Path(case_dir)
     terms = _parse_evidence_file(directory / "evidence.txt")
     expected = _load_expected(directory / "expected.yaml")
+    tool_name = _TOOL_NAMES.get(directory.name, directory.name.replace("_", " "))
+    entry = lookup_tool(tool_name) or {}
     return GoldenCase(
         tool_slug=directory.name,
         evidence=ContractEvidence.from_single(terms),
         expected=expected,
+        offering=build_offering_identity(
+            tool_name, entry.get("iag_type") or "publique",
+            vendor=entry.get("vendor"),
+        ),
     )
 
 
@@ -267,7 +344,9 @@ def collect_cases(
             tool_name = _TOOL_NAMES.get(case.tool_slug, case.tool_slug.replace("_", " "))
             if source == "live":
                 recorder = RecordingTavilyClient(client)
-                evidence = search_contract_terms_with_tavily(tool_name, client=recorder)
+                evidence = search_contract_terms_with_tavily(
+                    tool_name, offering=case.offering, client=recorder,
+                )
                 _write_snapshot(directory, case, tool_name, recorder)
             elif source == "snapshot":
                 path = _snapshot_path(directory, case.tool_slug)
@@ -275,7 +354,9 @@ def collect_cases(
                     raise FileNotFoundError(f"Snapshot Tavily absent: {path}")
                 payload = json.loads(path.read_text(encoding="utf-8"))
                 evidence = search_contract_terms_with_tavily(
-                    tool_name, client=SnapshotTavilyClient(payload)
+                    tool_name,
+                    offering=case.offering,
+                    client=SnapshotTavilyClient(payload),
                 )
             else:
                 raise ValueError(f"Source inconnue: {source!r}")
@@ -286,6 +367,7 @@ def collect_cases(
                     tool_slug=case.tool_slug,
                     evidence=evidence,
                     expected=case.expected,
+                    offering=case.offering,
                 )
             )
     finally:
@@ -337,7 +419,8 @@ def score_case(case: GoldenCase, facts: ContractFacts) -> list[FieldResult]:
                 field=field_name,
                 expected=expected,
                 got=extracted.value,
-                verdict=score_field(expected, extracted),
+                verdict=(verdict := score_field(expected, extracted)),
+                metrics=_field_metrics(field_name, expected, extracted, verdict),
             )
         )
     return results
@@ -354,20 +437,24 @@ def has_wrong_value(results: dict[str, list[FieldResult]]) -> bool:
 def format_report(results: dict[str, list[FieldResult]]) -> str:
     lines = ["Extraction ARP — rapport du jeu d'évaluation", ""]
     counts = {verdict: 0 for verdict in Verdict}
+    metric_counts = {metric: 0 for metric in MetricCategory}
 
     for tool_slug, case_results in results.items():
         lines.extend(
             [
                 f"## {tool_slug}",
-                "field | expected | got | verdict",
-                "--- | --- | --- | ---",
+                "field | expected | got | verdict | metrics",
+                "--- | --- | --- | --- | ---",
             ]
         )
         for result in case_results:
             counts[result.verdict] += 1
+            for metric in result.metrics:
+                metric_counts[metric] += 1
             lines.append(
                 f"{result.field} | {result.expected} | {result.got} | "
-                f"{result.verdict.value}"
+                f"{result.verdict.value} | "
+                f"{', '.join(metric.value for metric in result.metrics)}"
             )
         lines.append("")
 
@@ -380,6 +467,12 @@ def format_report(results: dict[str, list[FieldResult]]) -> str:
             f"WRONG_ABSTAIN: {counts[Verdict.WRONG_ABSTAIN]}",
             f"WRONG_VALUE: {counts[Verdict.WRONG_VALUE]}",
             f"**Taux WRONG_VALUE: {wrong_value_rate:.1f}%**",
+            "",
+            "## Métriques par cause",
+            *[
+                f"{metric.value}: {metric_counts[metric]}"
+                for metric in MetricCategory
+            ],
         ]
     )
     return "\n".join(lines)

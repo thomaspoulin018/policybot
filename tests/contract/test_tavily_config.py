@@ -1,4 +1,5 @@
 import yaml
+from policybot.models import ContractOfferingIdentity
 
 from policybot.contract.families import FACT_FAMILIES
 from policybot.contract.tavily import (
@@ -33,6 +34,31 @@ def test_unknown_tool_falls_back_to_its_own_name_as_vendor():
     assert config["tool"]["vendor"] == ""
     assert config["search_defaults"]["include_domains"] == []
     assert all("OutilInconnu" in family["query"] for family in config["families"])
+
+
+def test_offering_identity_scopes_queries_policy_and_config_filename(tmp_path):
+    offering = ContractOfferingIdentity(
+        vendor="OpenAI", product="ChatGPT", plan="Enterprise",
+        deployment_mode="managed_saas", contract_type="institutional_agreement",
+        contract_version="2026-07",
+    )
+
+    config = build_contract_search_config("ChatGPT", offering)
+    path = ensure_contract_search_config(
+        "ChatGPT", config_dir=tmp_path, offering=offering,
+    )
+
+    assert config["offering"]["plan"] == "Enterprise"
+    assert all("Enterprise" in family["query"] for family in config["families"])
+    assert "https://openai.com/policies/business-terms" in (
+        config["source_policy"]["priority_urls"]
+    )
+    assert "https://openai.com/policies/terms-of-use" not in (
+        config["source_policy"]["priority_urls"]
+    )
+    assert "community" in " ".join(config["source_policy"]["excluded_path_patterns"])
+    assert path.name.startswith("chatgpt-")
+    assert path.name != "chatgpt.yaml"
 
 
 def test_ensure_config_writes_once_then_reuses(tmp_path):

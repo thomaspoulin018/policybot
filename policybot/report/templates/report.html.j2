@@ -19,6 +19,33 @@
     <p>L'ARP évalue l'outil en tant que produit, indépendamment des usages spécifiques. Elle porte sur la sécurité, la souveraineté et les conditions contractuelles du fournisseur.</p>
     {% for table in arp_tables %}
     <h3>Outil : {{ table.tool_name }}</h3>
+    {% if table.offering %}
+    <table>
+      <tr><th colspan="2">Identité de l’offre contractuelle</th></tr>
+      <tr><th>Fournisseur</th><td>{{ table.offering.vendor }}</td></tr>
+      <tr><th>Produit</th><td>{{ table.offering.product }}</td></tr>
+      <tr><th>Plan</th><td>{{ table.offering.plan or "Non précisé" }}</td></tr>
+      <tr><th>Mode de déploiement</th><td>{{ table.offering.deployment_mode }}</td></tr>
+      <tr><th>Type de contrat</th><td>{{ table.offering.contract_type }}</td></tr>
+      <tr><th>Version du contrat</th><td>{{ table.offering.contract_version or "Non précisée" }}</td></tr>
+      <tr><th>Date d’effet</th><td>{{ table.offering.effective_date or "Non précisée" }}</td></tr>
+    </table>
+    {% endif %}
+    {% if table.sources %}
+    <h4>Registre des sources contractuelles</h4>
+    <table>
+      <tr><th>Classement</th><th>URL</th><th>Date d’effet</th><th>Date de collecte</th><th>SHA-256</th></tr>
+      {% for source in table.sources %}
+      <tr>
+        <td>{{ source.source_type }}</td>
+        <td>{{ source.url }}</td>
+        <td>{{ source.effective_date or "Inconnue" }}</td>
+        <td>{{ source.collected_at }}</td>
+        <td>{{ source.sha256 }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
     <table class="risk-table">
       <tr>
         <th>Critère</th><th>Description / Question d'évaluation</th>
