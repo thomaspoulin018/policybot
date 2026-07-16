@@ -29,7 +29,7 @@ from policybot.llm.fake import FakeLLMProvider
 from policybot.models import ContractFacts, FactEvidence
 
 
-def _write_case(case_dir, expected: str = "trains_on_input: unknown\n"):
+def _write_case(case_dir, expected: str = "training_default: unknown\n"):
     case_dir.mkdir()
     (case_dir / "evidence.txt").write_text(
         "# source: https://example.test/terms\n"
@@ -73,7 +73,7 @@ def test_load_golden_case_builds_single_page_evidence(tmp_path):
     case_dir = tmp_path / "example_tool"
     _write_case(
         case_dir,
-        "trains_on_input: no\n"
+        "training_default: no\n"
         "data_retention: limited\n"
         "ip_ownership: customer\n",
     )
@@ -82,7 +82,7 @@ def test_load_golden_case_builds_single_page_evidence(tmp_path):
 
     assert case.tool_slug == "example_tool"
     assert case.expected == {
-        "trains_on_input": "no",
+        "training_default": "no",
         "data_retention": "limited",
         "ip_ownership": "customer",
     }
@@ -95,7 +95,7 @@ def test_load_golden_case_builds_single_page_evidence(tmp_path):
 
 def test_load_golden_case_rejects_unknown_field(tmp_path):
     case_dir = tmp_path / "typo"
-    _write_case(case_dir, "trains_on_inputs: no\n")
+    _write_case(case_dir, "training_defaults: no\n")
 
     with pytest.raises(ValueError, match="Unknown ContractFacts field"):
         load_golden_case(case_dir)
@@ -176,18 +176,18 @@ def test_score_field(expected, got, verdict):
 def test_score_case_uses_contract_fact_evidence():
     case = _synthetic_case()
     case.expected.clear()
-    case.expected.update({"trains_on_input": "no", "data_retention": "limited"})
+    case.expected.update({"training_default": "no", "data_retention": "limited"})
     facts = ContractFacts(
-        trains_on_input="no",
+        training_default="no",
         data_retention="unknown",
         evidence={
-            "trains_on_input": FactEvidence(value="no"),
+            "training_default": FactEvidence(value="no"),
             "data_retention": FactEvidence(value="unknown"),
         },
     )
 
     assert score_case(case, facts) == [
-        FieldResult("trains_on_input", "no", "no", Verdict.MATCH),
+        FieldResult("training_default", "no", "no", Verdict.MATCH),
         FieldResult(
             "data_retention", "limited", "unknown", Verdict.WRONG_ABSTAIN,
             (MetricCategory.MODEL_ABSTENTION,),
@@ -198,7 +198,7 @@ def test_score_case_uses_contract_fact_evidence():
 def test_format_report_and_wrong_value_gate():
     results = {
         "chatgpt": [
-            FieldResult("trains_on_input", "no", "no", Verdict.MATCH),
+            FieldResult("training_default", "no", "no", Verdict.MATCH),
             FieldResult("data_retention", "limited", "none", Verdict.WRONG_VALUE),
         ],
         "claude_ai": [
@@ -224,7 +224,7 @@ def test_metrics_separate_pipeline_failures_and_false_reassurance():
     case.expected.update({
         "data_residency": "unknown",
         "sub_processors": "undisclosed",
-        "human_review": "yes",
+        "provider_human_access": "yes",
         "encryption_standard": "strong",
         "ip_ownership": "customer",
     })
@@ -235,7 +235,7 @@ def test_metrics_separate_pipeline_failures_and_false_reassurance():
         "sub_processors": FactEvidence(
             value="unknown", outcome="evidence_missing",
         ),
-        "human_review": FactEvidence(
+        "provider_human_access": FactEvidence(
             value="unknown", outcome="llm_failure",
         ),
         "encryption_standard": FactEvidence(
@@ -251,7 +251,7 @@ def test_metrics_separate_pipeline_failures_and_false_reassurance():
 
     assert MetricCategory.COLLECTION_FAILURE in categories["data_residency"]
     assert MetricCategory.FACT_ABSENT in categories["sub_processors"]
-    assert MetricCategory.LLM_FAILURE in categories["human_review"]
+    assert MetricCategory.LLM_FAILURE in categories["provider_human_access"]
     assert MetricCategory.MODEL_ABSTENTION in categories["encryption_standard"]
     assert MetricCategory.INCORRECT_VALUE in categories["ip_ownership"]
 
@@ -279,19 +279,19 @@ def test_validate_complete_case_checks_coverage_and_allowed_values():
     validate_complete_case(case)
 
     incomplete = _synthetic_case("incomplete")
-    incomplete.expected.pop("human_review")
+    incomplete.expected.pop("provider_human_access")
     with pytest.raises(ValueError, match="missing"):
         validate_complete_case(incomplete)
 
     invalid = _synthetic_case("invalid")
-    invalid.expected["trains_on_input"] = "sometimes"
+    invalid.expected["training_default"] = "sometimes"
     with pytest.raises(ValueError, match="Invalid expected value"):
         validate_complete_case(invalid)
 
 
 def test_main_returns_zero_when_only_matches_and_abstains():
     case = _synthetic_case()
-    case.expected["trains_on_input"] = "yes"
+    case.expected["training_default"] = "yes"
     llm = FakeLLMProvider(json_responses=_unknown_family_responses())
     output = StringIO()
 
@@ -304,7 +304,7 @@ def test_main_returns_zero_when_only_matches_and_abstains():
 def test_main_returns_one_for_wrong_value():
     case = _synthetic_case()
     responses = _unknown_family_responses()
-    responses[0]["trains_on_input"] = {
+    responses[0]["training_default"] = {
         "value": "yes",
         "source_url": "https://example.test/terms",
         "quote": "This deliberately long synthetic sentence supports every test value.",

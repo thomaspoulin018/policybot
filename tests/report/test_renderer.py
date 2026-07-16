@@ -3,7 +3,7 @@ from html import unescape
 from io import BytesIO
 import zipfile
 import xml.etree.ElementTree as ET
-from policybot.models import InterviewState, RequestInfo, Usage, ToolRef, GlobalResult, ContractFacts, QualificationProfile, ContractOfferingIdentity
+from policybot.models import InterviewState, RequestInfo, Usage, ToolRef, GlobalResult, ContractFacts, QualificationProfile, ContractOfferingIdentity, FactEvidence
 from policybot.contract.arp import build_arp
 from policybot.grille.engine import evaluate_usage
 from policybot.report.renderer import docx_filename, render_docx, pdf_filename, render_html, write_docx, write_pdf
@@ -13,24 +13,43 @@ _TIMESTAMP = r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}"
 
 def _state():
     facts = ContractFacts(
-        trains_on_input="yes",
+        training_default="yes",
         data_residency="us",
         applicable_law="foreign",
         foreign_vendor_dependency="yes",
         contract_prohibits_reuse="no",
         encryption_standard="none",
-        reentraining_opt_out="no",
+        opt_out_available="no",
         ip_ownership="vendor",
         authentication_support="sso_mfa",
         audit_logging="prompt_output_accessible",
-        institutional_terms="problematic",
+        institutional_terms_available="yes",
+        dpa_available="yes",
+        institutional_use_restricted="yes",
         quebec_higher_ed_license="unknown",
         incident_response="documented_with_notice",
+        evidence={
+            field_name: FactEvidence(
+                value=value,
+                source_url="https://example.test/contracts",
+                quote="The institutional contract explicitly documents this control.",
+                confidence=0.9,
+            )
+            for field_name, value in {
+                "authentication_support": "sso_mfa",
+                "audit_logging": "prompt_output_accessible",
+                "incident_response": "documented_with_notice",
+                "institutional_terms_available": "yes",
+                "dpa_available": "yes",
+                "institutional_use_restricted": "yes",
+                "quebec_higher_ed_license": "unknown",
+            }.items()
+        },
     )
     arp = build_arp("ChatGPT", "publique", facts)
     usage = evaluate_usage(
         Usage(description="Résumer des rapports", data_classification="Non classifié"),
-        ContractFacts(trains_on_input="no"),
+        ContractFacts(training_default="no"),
         iag_type="publique",
     )
     return InterviewState(
@@ -112,9 +131,15 @@ def test_render_contains_automated_observations_for_manual_arp_criteria():
     assert "Compatibilité licence usage gouvernemental" in html
     assert "Réponse automatisée: SSO/MFA et intégration IdP documentés." in html
     assert "Réponse automatisée: Journaux d'accès et audit prompts/sorties accessibles" in html
-    assert "Réponse automatisée: Clauses potentiellement problématiques détectées" in html
+    assert "restriction d'usage institutionnel détectée" in html
     assert "Réponse automatisée: À confirmer; preuve insuffisante sur la compatibilité" in html
     assert "Réponse automatisée: Plan de réponse aux incidents et notification de brèche" in html
+    for field_name in (
+        "authentication_support", "audit_logging", "incident_response",
+        "institutional_terms_available", "quebec_higher_ed_license",
+    ):
+        assert f"citation ({field_name}):" in html
+        assert f"URL ({field_name}): https://example.test/contracts" in html
 
 def test_render_contains_partie_c_conditions():
     state = _state()

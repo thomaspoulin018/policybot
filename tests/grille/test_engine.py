@@ -14,7 +14,11 @@ def test_interdit_short_circuits_to_refuser():
 
 def test_permis_with_training_rule_adds_conditions():
     usage = Usage(data_classification="Protégé B")
-    facts = ContractFacts(trains_on_input="yes")
+    facts = ContractFacts(
+        training_default="yes",
+        opt_out_available="yes",
+        opt_out_confirmed_enabled="unknown",
+    )
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     assert out.matrix_result == "PERMIS"
     assert out.risk_level == "Élevé"
@@ -24,7 +28,7 @@ def test_permis_with_training_rule_adds_conditions():
 
 def test_permis_clean_case_authorises():
     usage = Usage(data_classification="Non classifié")
-    out = evaluate_usage(usage, ContractFacts(trains_on_input="no"), iag_type="publique")
+    out = evaluate_usage(usage, ContractFacts(training_default="no"), iag_type="publique")
     assert out.verdict == "Autoriser"
     assert out.risk_level == "Faible"
 
@@ -32,17 +36,44 @@ def test_permis_clean_case_authorises():
 def test_partie_b_has_eleven_fixed_criteria():
     from policybot.criteria import USAGE_CRITERIA
     usage = Usage(data_classification="Non classifié")
-    out = evaluate_usage(usage, ContractFacts(trains_on_input="no"), iag_type="publique")
+    out = evaluate_usage(usage, ContractFacts(training_default="no"), iag_type="publique")
     assert len(out.partie_b) == 11
     assert {c.criterion for c in out.partie_b} == {name for _, name, _ in USAGE_CRITERIA}
 
 
 def test_partie_b_training_criterion_reflects_r07():
     usage = Usage(data_classification="Protégé B")
-    facts = ContractFacts(trains_on_input="yes")
+    facts = ContractFacts(training_default="yes")
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     by_criterion = {c.criterion: c for c in out.partie_b}
     assert by_criterion["Utilisation de données pour entraînement"].inherent == "E"
+
+
+def test_available_opt_out_is_not_treated_as_enabled():
+    usage = Usage(data_classification="Protégé A")
+    facts = ContractFacts(
+        training_default="yes",
+        opt_out_available="yes",
+        opt_out_confirmed_enabled="unknown",
+    )
+
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+
+    assert out.risk_level == "Élevé"
+    assert any("activation n'est pas confirmée" in condition for condition in out.conditions)
+
+
+def test_confirmed_enabled_opt_out_removes_training_condition():
+    usage = Usage(data_classification="Protégé A")
+    facts = ContractFacts(
+        training_default="yes",
+        opt_out_available="yes",
+        opt_out_confirmed_enabled="yes",
+    )
+
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+
+    assert not any("opt-out" in condition for condition in out.conditions)
 
 
 def test_partie_b_base_risk_scales_with_data_classification():
@@ -57,7 +88,7 @@ def test_partie_b_base_risk_scales_with_data_classification():
 
 def test_partie_b_fixed_advisories_always_present_with_moderate_risk():
     usage = Usage(data_classification="Non classifié")
-    out = evaluate_usage(usage, ContractFacts(trains_on_input="no"), iag_type="publique")
+    out = evaluate_usage(usage, ContractFacts(training_default="no"), iag_type="publique")
     by_criterion = {c.criterion: c for c in out.partie_b}
     for name in ("Hallucinations et erreurs factuelles", "Biais algorithmiques",
                  "Formation insuffisante du personnel", "Dépendance technologique",
@@ -88,7 +119,7 @@ def test_synthesize_takes_worst_and_flags_efvpr():
     assert g.efvpr_required is True
 
 
-def test_facts_dict_includes_all_eleven_keys(monkeypatch):
+def test_facts_dict_contains_only_usage_and_relevant_contract_semantics(monkeypatch):
     captured = {}
     from policybot.grille import engine as engine_module
 
@@ -102,17 +133,22 @@ def test_facts_dict_includes_all_eleven_keys(monkeypatch):
 
     usage = Usage(data_classification="Non classifié", rens_personnels=True,
                   needs_officer_confirmation=True)
-    facts = ContractFacts(sub_processors="disclosed", data_retention="none",
-                           human_review="yes", encryption_standard="strong",
-                           ip_ownership="customer")
+    facts = ContractFacts(
+        training_default="no", opt_out_available="yes",
+        opt_out_confirmed_enabled="yes", sub_processors="disclosed",
+        data_retention="none", provider_human_access="yes",
+        encryption_standard="strong", ip_ownership="customer",
+    )
     evaluate_usage(usage, facts, iag_type="publique")
 
     assert set(captured.keys()) == {
-        "data_classification", "automated_decisions", "trains_on_input",
-        "data_residency", "sub_processors", "data_retention", "human_review",
+        "data_classification", "automated_decisions", "training_default",
+        "opt_out_available", "opt_out_confirmed_enabled",
+        "data_residency", "sub_processors", "data_retention",
         "encryption_standard", "ip_ownership", "rens_personnels",
         "needs_officer_confirmation",
     }
+    assert "provider_human_access" not in captured
 
 
 def test_synthesize_deduplicates_conditions_preserving_order():
@@ -126,7 +162,7 @@ def test_synthesize_deduplicates_conditions_preserving_order():
 
 def test_r21_undisclosed_subprocessors_with_classified_data():
     usage = Usage(data_classification="Protégé A")
-    facts = ContractFacts(sub_processors="undisclosed", trains_on_input="no")
+    facts = ContractFacts(sub_processors="undisclosed", training_default="no")
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     assert out.risk_level == "Modéré"
     assert any("sous-traitants" in c for c in out.conditions)
@@ -154,19 +190,26 @@ def test_r22_does_not_trigger_when_retention_is_limited():
     assert not any("conservation" in c.lower() for c in out.conditions)
 
 
-def test_r23_no_human_review_with_personal_info():
-    usage = Usage(data_classification="Protégé A", rens_personnels=True)
-    facts = ContractFacts(human_review="no")
+def test_provider_human_access_does_not_control_internal_supervision():
+    usage = Usage(
+        data_classification="Protégé A", rens_personnels=True,
+        automated_decisions=False,
+    )
+    facts = ContractFacts(provider_human_access="no")
+
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+
+    assert not any("supervision humaine" in c.lower() for c in out.conditions)
+
+
+def test_internal_supervision_is_derived_from_usage():
+    usage = Usage(data_classification="Protégé A", automated_decisions=True)
+    facts = ContractFacts(provider_human_access="yes")
+
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+
     assert out.risk_level == "Élevé"
-    assert any("révision humaine" in c.lower() for c in out.conditions)
-
-
-def test_r23_does_not_trigger_without_personal_info():
-    usage = Usage(data_classification="Protégé A", rens_personnels=False)
-    facts = ContractFacts(human_review="no")
-    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
-    assert not any("révision humaine" in c.lower() for c in out.conditions)
+    assert any("supervision humaine" in c.lower() for c in out.conditions)
 
 
 def test_r24_personal_info_hosted_outside_quebec_escalates():
@@ -177,9 +220,19 @@ def test_r24_personal_info_hosted_outside_quebec_escalates():
     assert any("lai/prp" in c.lower() for c in out.conditions)
 
 
-def test_r24_does_not_trigger_when_residency_is_canada():
+def test_r24_eu_is_explicitly_outside_quebec():
     usage = Usage(data_classification="Protégé A", rens_personnels=True)
-    facts = ContractFacts(data_residency="canada")
+    facts = ContractFacts(data_residency="eu")
+
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+
+    assert out.verdict == "Escalader"
+    assert any("lai/prp" in c.lower() for c in out.conditions)
+
+
+def test_r24_does_not_trigger_when_residency_is_quebec():
+    usage = Usage(data_classification="Protégé A", rens_personnels=True)
+    facts = ContractFacts(data_residency="quebec")
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     assert not any("lai/prp" in c.lower() for c in out.conditions)
 
@@ -199,7 +252,7 @@ def test_r25_does_not_trigger_when_confirmation_not_needed():
 
 def test_r26_weak_encryption_with_classified_data():
     usage = Usage(data_classification="Protégé C")
-    facts = ContractFacts(encryption_standard="none", trains_on_input="no",
+    facts = ContractFacts(encryption_standard="none", training_default="no",
                           data_retention="limited", sub_processors="disclosed")
     out = evaluate_usage(usage, facts, iag_type="gouvernementale")
     assert out.risk_level == "Modéré"
@@ -208,7 +261,7 @@ def test_r26_weak_encryption_with_classified_data():
 
 def test_r26_does_not_trigger_with_strong_encryption():
     usage = Usage(data_classification="Protégé C")
-    facts = ContractFacts(encryption_standard="strong", trains_on_input="no",
+    facts = ContractFacts(encryption_standard="strong", training_default="no",
                           data_retention="limited", sub_processors="disclosed")
     out = evaluate_usage(usage, facts, iag_type="gouvernementale")
     assert not any("chiffrement" in c.lower() for c in out.conditions)
@@ -216,7 +269,7 @@ def test_r26_does_not_trigger_with_strong_encryption():
 
 def test_r26_partial_encryption_triggers():
     usage = Usage(data_classification="Protégé C")
-    facts = ContractFacts(encryption_standard="partial", trains_on_input="no",
+    facts = ContractFacts(encryption_standard="partial", training_default="no",
                           data_retention="limited", sub_processors="disclosed")
     out = evaluate_usage(usage, facts, iag_type="gouvernementale")
     assert out.risk_level == "Modéré"
@@ -225,8 +278,8 @@ def test_r26_partial_encryption_triggers():
 
 def test_r27_unclear_ip_ownership_triggers():
     usage = Usage(data_classification="Protégé A")
-    facts = ContractFacts(ip_ownership="vendor", trains_on_input="no",
-                          data_residency="canada", sub_processors="disclosed",
+    facts = ContractFacts(ip_ownership="vendor", training_default="no",
+                          data_residency="quebec", sub_processors="disclosed",
                           encryption_standard="strong")
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     assert out.risk_level == "Modéré"
@@ -235,8 +288,8 @@ def test_r27_unclear_ip_ownership_triggers():
 
 def test_r27_does_not_trigger_when_customer_owns_ip():
     usage = Usage(data_classification="Protégé A")
-    facts = ContractFacts(ip_ownership="customer", trains_on_input="no",
-                          data_residency="canada", sub_processors="disclosed",
+    facts = ContractFacts(ip_ownership="customer", training_default="no",
+                          data_residency="quebec", sub_processors="disclosed",
                           encryption_standard="strong")
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     assert not any("propriété intellectuelle" in c.lower() for c in out.conditions)
@@ -251,7 +304,7 @@ def test_r27_does_not_trigger_for_non_classified_data():
 
 def test_fixed_advisories_always_present_and_dont_affect_verdict():
     usage = Usage(data_classification="Non classifié")
-    out = evaluate_usage(usage, ContractFacts(trains_on_input="no"), iag_type="publique")
+    out = evaluate_usage(usage, ContractFacts(training_default="no"), iag_type="publique")
     assert out.verdict == "Autoriser"
     assert out.risk_level == "Faible"
     joined = " ".join(out.conditions).lower()

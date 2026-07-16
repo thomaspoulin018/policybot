@@ -1,10 +1,11 @@
-trains_on_input: "no"               # Prompts/réponses exclus de l'entraînement des modèles de base.
-reentraining_opt_out: "yes"         # L'engagement contractuel empêche ce réentraînement.
+training_default: "no"              # Prompts/réponses exclus de l'entraînement des modèles de base.
+opt_out_available: unknown          # L'offre n'a pas besoin d'un retrait pour établir cette garantie par défaut.
+opt_out_confirmed_enabled: unknown  # Aucun réglage d'opt-out propre au tenant n'est évalué.
 contract_prohibits_reuse: "yes"     # Microsoft limite l'usage aux instructions du client.
-human_review: "no"                  # M365 Copilot est exclu du contrôle d'abus avec revue humaine.
+provider_human_access: "no"         # M365 Copilot est exclu du contrôle d'abus avec accès humain.
 
 data_retention: limited              # Purview permet de fixer rétention et suppression.
-data_residency: other                # Hors UE, le traitement peut avoir lieu dans plusieurs régions.
+data_residency: multi_region         # Hors UE, le traitement peut avoir lieu dans plusieurs régions.
 sub_processors: disclosed           # Une liste officielle des sous-traitants est publiée.
 foreign_vendor_dependency: "yes"   # Fournisseur américain et traitement potentiellement étranger.
 
@@ -16,5 +17,7 @@ incident_response: documented_with_notice  # Processus documenté et avis sans d
 ip_ownership: customer              # L'Output est Customer Data et Microsoft ne le possède pas.
 applicable_law: unknown             # Dépend du contrat institutionnel effectivement signé.
 
-institutional_terms: acceptable     # EDP et DPA visent explicitement les organisations.
+institutional_terms_available: "yes"  # Les EDP visent explicitement les organisations.
+dpa_available: "yes"               # Un DPA vise explicitement les organisations.
+institutional_use_restricted: "no" # Aucune restriction institutionnelle explicite détectée.
 quebec_higher_ed_license: "yes"   # Un add-on académique Microsoft 365 Copilot est offert.

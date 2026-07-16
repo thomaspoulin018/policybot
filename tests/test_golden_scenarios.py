@@ -18,8 +18,8 @@ def test_slide5_chatgpt_protege_b_is_refused_and_report_flags_it(tmp_path):
          "strategic_sensitive": True, "internal_nonpublic": True,
          "highly_sensitive_secret": False, "confidence": 0.95},
         *arp_extraction_responses(
-            trains_on_input="yes", data_retention="indefinite", data_residency="us",
-            sub_processors="undisclosed", human_review="no",
+            training_default="yes", data_retention="indefinite", data_residency="us",
+            sub_processors="undisclosed", provider_human_access="no",
         ),
     ])
     itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),

@@ -11,7 +11,7 @@ def _client(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
+        *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
     itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
                     http_get=lambda url: "<html><body>ok</body></html>")

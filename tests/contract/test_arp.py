@@ -13,26 +13,28 @@ def _terms():
 def test_extract_maps_llm_output_to_contractfacts():
     llm = FakeLLMProvider(json_responses=arp_extraction_responses(
         DEFAULT_URL,
-        trains_on_input="yes", data_retention="indefinite",
+        training_default="yes", data_retention="indefinite",
         data_residency="us", sub_processors="undisclosed",
-        human_review="no",
+        provider_human_access="no",
     ))
     facts = extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
-    assert facts.trains_on_input == "yes"
+    assert facts.training_default == "yes"
     assert facts.data_residency == "us"
     assert facts.source_url == DEFAULT_URL
     assert facts.extraction_confidence == 0.9
 
 
 def test_extract_prompt_lists_required_contract_fields():
-    llm = FakeLLMProvider(json_responses=arp_extraction_responses(trains_on_input="yes"))
+    llm = FakeLLMProvider(json_responses=arp_extraction_responses(training_default="yes"))
 
     extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
 
     all_prompts = "\n".join(user_prompt for _, user_prompt in llm.calls)
     assert "Required JSON keys" in all_prompts
-    assert "trains_on_input: yes | no | opt_out_available | unknown" in all_prompts
-    assert "reentraining_opt_out: yes | no | unknown" in all_prompts
+    assert "training_default: yes | no | unknown" in all_prompts
+    assert "opt_out_available: yes | no | unknown" in all_prompts
+    assert "opt_out_confirmed_enabled: yes | no | unknown" in all_prompts
+    assert "provider_human_access: yes | no | unknown" in all_prompts
     assert "authentication_support: sso_mfa | partial | none | unknown" in all_prompts
     assert "audit_logging: prompt_output_accessible | access_logs_only | none | unknown" in all_prompts
     assert "quebec_higher_ed_license: yes | no | unknown" in all_prompts
@@ -63,19 +65,19 @@ def test_extract_prompt_includes_relevant_late_evidence():
 
 def test_build_arp_flags_training_as_high_risk():
     from policybot.models import ContractFacts
-    arp = build_arp("ChatGPT", "publique", ContractFacts(trains_on_input="yes"))
+    arp = build_arp("ChatGPT", "publique", ContractFacts(training_default="yes"))
     training = [c for c in arp.criteria if "entraîn" in c.criterion.lower()]
     assert training and training[0].inherent == "E"
     assert all(c.origin == "rule" for c in arp.criteria)
     assert arp.iag_type == "publique"
-    assert arp.schema_version == 2
+    assert arp.schema_version == 3
 
 
 def test_extract_maps_encryption_and_ip_fields():
     llm = FakeLLMProvider(json_responses=arp_extraction_responses(
-        trains_on_input="no", data_retention="none",
-        data_residency="canada", sub_processors="disclosed",
-        human_review="yes", encryption_standard="strong",
+        training_default="no", data_retention="none",
+        data_residency="quebec", sub_processors="disclosed",
+        provider_human_access="yes", encryption_standard="strong",
         ip_ownership="customer",
     ))
     facts = extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
@@ -86,20 +88,22 @@ def test_extract_maps_encryption_and_ip_fields():
 def test_extract_maps_new_sovereignty_and_security_fields():
     llm = FakeLLMProvider(json_responses=arp_extraction_responses(
         applicable_law="foreign", foreign_vendor_dependency="yes",
-        contract_prohibits_reuse="no", reentraining_opt_out="no",
+        contract_prohibits_reuse="no", opt_out_available="no",
     ))
     facts = extract_contract_facts(ContractEvidence.from_single(_terms()), llm)
     assert facts.applicable_law == "foreign"
     assert facts.foreign_vendor_dependency == "yes"
     assert facts.contract_prohibits_reuse == "no"
-    assert facts.reentraining_opt_out == "no"
+    assert facts.opt_out_available == "no"
 
 
 def test_extract_maps_institutional_security_fields():
     llm = FakeLLMProvider(json_responses=arp_extraction_responses(
         authentication_support="sso_mfa",
         audit_logging="prompt_output_accessible",
-        institutional_terms="acceptable",
+        institutional_terms_available="yes",
+        dpa_available="yes",
+        institutional_use_restricted="no",
         quebec_higher_ed_license="yes",
         incident_response="documented_with_notice",
     ))
@@ -108,17 +112,19 @@ def test_extract_maps_institutional_security_fields():
 
     assert facts.authentication_support == "sso_mfa"
     assert facts.audit_logging == "prompt_output_accessible"
-    assert facts.institutional_terms == "acceptable"
+    assert facts.institutional_terms_available == "yes"
+    assert facts.dpa_available == "yes"
+    assert facts.institutional_use_restricted == "no"
     assert facts.quebec_higher_ed_license == "yes"
     assert facts.incident_response == "documented_with_notice"
 
 def test_build_arp_generates_eight_criteria_rows():
     from policybot.models import ContractFacts
     arp = build_arp("ChatGPT", "publique", ContractFacts(
-        trains_on_input="yes", data_residency="us",
+        training_default="yes", data_residency="us",
         applicable_law="foreign", foreign_vendor_dependency="yes",
         contract_prohibits_reuse="no", encryption_standard="none",
-        reentraining_opt_out="no", ip_ownership="vendor",
+        opt_out_available="no", ip_ownership="vendor",
     ))
     assert len(arp.criteria) == 8
     assert all(c.origin == "rule" for c in arp.criteria)
@@ -138,7 +144,7 @@ def test_build_arp_flags_risky_facts_as_high_risk():
     facts = ContractFacts(
         applicable_law="foreign", foreign_vendor_dependency="yes",
         contract_prohibits_reuse="no", encryption_standard="none",
-        reentraining_opt_out="no", ip_ownership="vendor",
+        opt_out_available="no", ip_ownership="vendor",
     )
     arp = build_arp("ToolX", "publique", facts)
     by_criterion = {c.criterion: c for c in arp.criteria}
@@ -155,7 +161,8 @@ def test_build_arp_flags_safe_facts_as_low_risk():
     facts = ContractFacts(
         applicable_law="quebec_canada", foreign_vendor_dependency="no",
         contract_prohibits_reuse="yes", encryption_standard="strong",
-        reentraining_opt_out="yes", ip_ownership="customer",
+        training_default="yes", opt_out_available="yes",
+        opt_out_confirmed_enabled="yes", ip_ownership="customer",
     )
     arp = build_arp("ToolX", "publique", facts)
     by_criterion = {c.criterion: c for c in arp.criteria}

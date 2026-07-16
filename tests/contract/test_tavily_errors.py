@@ -141,7 +141,7 @@ def test_interview_uses_injected_tavily_terms_before_direct_fetch(tmp_path):
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(
             "https://example.test/tavily",
-            trains_on_input="no",
+            training_default="no",
             evidence=tavily_evidence,
         ),
     ])
@@ -177,4 +177,4 @@ def test_interview_uses_injected_tavily_terms_before_direct_fetch(tmp_path):
 
     assert state.tools[0].arp is not None
     assert state.tools[0].arp.contract_facts.source_url == "https://example.test/tavily"
-    assert state.tools[0].arp.contract_facts.trains_on_input == "no"
+    assert state.tools[0].arp.contract_facts.training_default == "no"

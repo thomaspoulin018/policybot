@@ -56,7 +56,7 @@ def test_pipeline_steps_share_interview_id(tmp_path, trace_events):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
+        *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
     state = itv.assess(
         request=RequestInfo(numero="IAG-TEST-001"),
@@ -84,7 +84,7 @@ def test_no_raw_text_leaks_into_logs(tmp_path, trace_events):
         {"already_public": False, "contains_personal_info": True,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.95},
-        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
+        *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
     itv.assess(
         request=RequestInfo(numero="IAG-TEST-002"),

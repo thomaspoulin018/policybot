@@ -31,15 +31,40 @@ def test_arp_cache_is_partitioned_by_contract_offering(tmp_path):
     })
     store.save_arp(ArpRecord(
         tool_name="ChatGPT", iag_type="publique", offering=consumer,
-        contract_facts=ContractFacts(trains_on_input="opt_out_available"),
+        contract_facts=ContractFacts(
+            training_default="yes", opt_out_available="yes",
+            opt_out_confirmed_enabled="unknown",
+        ),
     ))
     store.save_arp(ArpRecord(
         tool_name="ChatGPT", iag_type="circuit_ferme", offering=enterprise,
-        contract_facts=ContractFacts(trains_on_input="no"),
+        contract_facts=ContractFacts(training_default="no"),
     ))
 
-    assert store.get_arp(consumer).contract_facts.trains_on_input == "opt_out_available"
-    assert store.get_arp(enterprise).contract_facts.trains_on_input == "no"
+    consumer_facts = store.get_arp(consumer).contract_facts
+    assert consumer_facts.training_default == "yes"
+    assert consumer_facts.opt_out_available == "yes"
+    assert consumer_facts.opt_out_confirmed_enabled == "unknown"
+    assert store.get_arp(enterprise).contract_facts.training_default == "no"
+
+
+def test_legacy_cache_migration_never_confirms_an_available_opt_out():
+    facts = ContractFacts.model_validate({
+        "trains_on_input": "opt_out_available",
+        "reentraining_opt_out": "yes",
+        "human_review": "yes",
+        "institutional_terms": "acceptable",
+        "data_residency": "canada",
+    })
+
+    assert facts.training_default == "yes"
+    assert facts.opt_out_available == "yes"
+    assert facts.opt_out_confirmed_enabled == "unknown"
+    assert facts.provider_human_access == "yes"
+    assert facts.institutional_terms_available == "yes"
+    assert facts.dpa_available == "unknown"
+    assert facts.institutional_use_restricted == "no"
+    assert facts.data_residency == "canada_outside_quebec"
 
 
 def test_find_decision_matches_current(tmp_path):

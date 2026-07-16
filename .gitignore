@@ -230,3 +230,4 @@ __marimo__/
 
 configs/*
 !configs/policybot.yaml
+!configs/fact_families.yaml

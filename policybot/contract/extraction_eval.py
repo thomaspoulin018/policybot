@@ -79,20 +79,24 @@ class FieldResult:
 
 
 _RISK_RANKS: dict[str, dict[str, int]] = {
-    "trains_on_input": {"no": 0, "opt_out_available": 1, "yes": 2, "unknown": 3},
+    "training_default": {"no": 0, "yes": 2, "unknown": 3},
+    "opt_out_available": {"yes": 1, "no": 2, "unknown": 3},
+    "opt_out_confirmed_enabled": {"yes": 0, "no": 2, "unknown": 3},
     "data_retention": {"none": 0, "limited": 1, "indefinite": 2, "unknown": 3},
-    "data_residency": {"canada": 0, "eu": 1, "us": 2, "other": 2, "unknown": 3},
+    "data_residency": {
+        "quebec": 0, "canada_outside_quebec": 1, "us": 2, "eu": 2,
+        "multi_region": 3, "configurable": 3, "unknown": 3,
+    },
     "sub_processors": {"disclosed": 0, "undisclosed": 2, "unknown": 3},
-    # Rang conforme à la grille actuelle; la sémantique de ce champ doit être
-    # revue séparément (accès humain fournisseur vs supervision interne).
-    "human_review": {"yes": 0, "no": 2, "unknown": 3},
+    "provider_human_access": {"no": 0, "yes": 2, "unknown": 3},
     "encryption_standard": {"strong": 0, "partial": 1, "none": 2, "unknown": 3},
     "ip_ownership": {"customer": 0, "unclear": 1, "vendor": 2, "unknown": 3},
     "contract_prohibits_reuse": {"yes": 0, "no": 2, "unknown": 3},
-    "reentraining_opt_out": {"yes": 0, "no": 2, "unknown": 3},
     "authentication_support": {"sso_mfa": 0, "partial": 1, "none": 2, "unknown": 3},
     "audit_logging": {"prompt_output_accessible": 0, "access_logs_only": 1, "none": 2, "unknown": 3},
-    "institutional_terms": {"acceptable": 0, "problematic": 2, "unknown": 3},
+    "institutional_terms_available": {"yes": 0, "no": 2, "unknown": 3},
+    "dpa_available": {"yes": 0, "no": 2, "unknown": 3},
+    "institutional_use_restricted": {"no": 0, "yes": 2, "unknown": 3},
     "quebec_higher_ed_license": {"yes": 0, "no": 2, "unknown": 3},
     "incident_response": {"documented_with_notice": 0, "documented_no_notice": 1, "none": 2, "unknown": 3},
     "applicable_law": {"quebec_canada": 0, "foreign": 2, "unknown": 3},

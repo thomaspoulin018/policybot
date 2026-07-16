@@ -1,0 +1,145 @@
+# Contract fact families used for Tavily searches and LLM extraction.
+# The order of families and fields is significant.
+version: 1
+
+families:
+  - name: entrainement_reutilisation
+    query: >-
+      {tool} {vendor} terms customer content prompts used to train models
+      opt out reuse confidentiality human review
+    fields:
+      - name: training_default
+        allowed_values: ["yes", "no", "unknown"]
+        hint: >-
+          Use yes when submitted content is used for training by default, and no
+          only when the assessed offering disables training by default.
+      - name: opt_out_available
+        allowed_values: ["yes", "no", "unknown"]
+        hint: >-
+          Use yes only when an explicit control can disable training. Availability
+          does not prove that the control is enabled for the assessed account.
+      - name: opt_out_confirmed_enabled
+        allowed_values: ["yes", "no", "unknown"]
+        hint: >-
+          Use yes only when evidence specific to the assessed offering or account
+          confirms that the opt-out is enabled. A generic opt-out page is unknown.
+      - name: contract_prohibits_reuse
+        allowed_values: ["yes", "no", "unknown"]
+        hint: >-
+          Use yes only when the contract explicitly prohibits reuse of submitted
+          data.
+      - name: provider_human_access
+        allowed_values: ["yes", "no", "unknown"]
+        hint: >-
+          Use yes when provider personnel may access submitted data. This is not
+          the organization's internal human supervision of an AI-assisted usage.
+    keywords:
+      - 'train(?:ing)?|model performance|opt[ -]?out|do not train'
+      - 'human review|manual review|abuse monitoring|safety review|authorized personnel'
+      - 'confidential|reuse|disclosure|data sharing'
+
+  - name: hebergement_retention
+    query: >-
+      {tool} {vendor} privacy data retention deletion residency hosting region
+      subprocessors service providers
+    fields:
+      - name: data_retention
+        allowed_values: ["none", "limited", "indefinite", "unknown"]
+        hint: >-
+          Use limited when retention exists but is time-bounded or can be reduced;
+          use indefinite only when no deletion limit is stated.
+      - name: data_residency
+        allowed_values: ["quebec", "canada_outside_quebec", "us", "eu", "multi_region", "configurable", "unknown"]
+        hint: >-
+          Use quebec only for an explicit Quebec region; canada_outside_quebec
+          for another Canadian region; multi_region for several possible regions;
+          configurable when the customer can choose but the active region is not
+          evidenced.
+      - name: sub_processors
+        allowed_values: ["disclosed", "undisclosed", "unknown"]
+        hint: >-
+          Use disclosed only when the list of subprocessors is contractually
+          disclosed.
+      - name: foreign_vendor_dependency
+        allowed_values: ["yes", "no", "unknown"]
+        hint: >-
+          Use yes when usage creates a dependency on a foreign provider.
+    keywords:
+      - 'data retention|retention|retain|deleted?.{0,80}30 days|within 30 days'
+      - 'servers located|various jurisdictions|United States|residen|region|hosting'
+      - 'sub[- ]?processors?|service providers?|vendors?'
+
+  - name: securite_technique
+    query: >-
+      {tool} {vendor} security encryption in transit at rest SSO SAML MFA
+      audit logs incident response breach notification trust center
+    fields:
+      - name: encryption_standard
+        allowed_values: ["strong", "partial", "none", "unknown"]
+        hint: >-
+          Use strong only when encryption both in transit and at rest is explicit;
+          use partial when only one is explicit.
+      - name: authentication_support
+        allowed_values: ["sso_mfa", "partial", "none", "unknown"]
+        hint: >-
+          Use sso_mfa only when SSO or SAML/OIDC and MFA are explicit; use partial
+          when only one is explicit.
+      - name: audit_logging
+        allowed_values: ["prompt_output_accessible", "access_logs_only", "none", "unknown"]
+        hint: >-
+          Use prompt_output_accessible only when prompt and output auditing is
+          explicitly available to the organization; use access_logs_only when only
+          login or administrative logs are explicit.
+      - name: incident_response
+        allowed_values: ["documented_with_notice", "documented_no_notice", "none", "unknown"]
+        hint: >-
+          Use documented_with_notice only when both an incident response process
+          and a notification deadline are documented.
+    keywords:
+      - 'encrypt|encryption|tls|aes'
+      - 'sso|single sign-on|saml|oidc|mfa|multi-factor|identity provider'
+      - 'audit logs?|access logs?|prompt logs?|output logs?|admin console|organization logs?'
+      - 'incident response|security incident|breach notification|notify.{0,80}(hours|days)|sla'
+
+  - name: legal_pi
+    query: >-
+      {tool} {vendor} terms of service governing law jurisdiction ownership
+      output generated content intellectual property
+    fields:
+      - name: ip_ownership
+        allowed_values: ["customer", "vendor", "unclear", "unknown"]
+        hint: >-
+          Identify who owns generated content and the rights to submitted content.
+      - name: applicable_law
+        allowed_values: ["quebec_canada", "foreign", "unknown"]
+        hint: Use foreign when the governing law is outside Quebec or Canada.
+    keywords:
+      - 'ownership|intellectual property|assign|right, title'
+      - 'governing law|California law|jurisdiction'
+
+  - name: termes_institutionnels
+    query: >-
+      {tool} {vendor} enterprise institutional education higher education
+      public sector license acceptable use DPA terms
+    fields:
+      - name: institutional_terms_available
+        allowed_values: ["yes", "no", "unknown"]
+        hint: >-
+          Use yes when terms specifically applicable to organizations or
+          institutions are available. Do not judge them globally acceptable.
+      - name: dpa_available
+        allowed_values: ["yes", "no", "unknown"]
+        hint: Use yes only when a data processing agreement is explicitly available.
+      - name: institutional_use_restricted
+        allowed_values: ["yes", "no", "unknown"]
+        hint: >-
+          Use yes when a clause explicitly restricts or blocks the assessed
+          institutional use; no requires explicit permission without that restriction.
+      - name: quebec_higher_ed_license
+        allowed_values: ["yes", "no", "unknown"]
+        hint: >-
+          Use yes only when educational, enterprise, public-sector, or institutional
+          use is explicitly permitted.
+    keywords:
+      - 'institutional use|enterprise terms|education|higher education|public sector|acceptable use'
+      - 'license|licence|government|public sector|education institution|academic'

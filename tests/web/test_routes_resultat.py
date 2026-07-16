@@ -20,7 +20,7 @@ def test_final_submit_renders_report_on_success(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
+        *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
     resp = client.post("/wizard/contexte-affaires", data={
         "tool_name": "ChatGPT",
@@ -38,7 +38,7 @@ def test_golden_scenario_chatgpt_protege_b_is_refused(tmp_path):
         {"already_public": False, "contains_personal_info": False,
          "strategic_sensitive": True, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="yes", data_residency="us"),
+        *arp_extraction_responses(training_default="yes", data_residency="us"),
     ])
     resp = client.post("/wizard/contexte-affaires", data={
         "tool_name": "ChatGPT",
@@ -81,7 +81,7 @@ def test_final_submit_passes_qualification_fields_into_assess(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
+        *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
     resp = client.post("/wizard/contexte-affaires", data={
         "tool_name": "ChatGPT",
@@ -115,7 +115,7 @@ def test_final_submit_writes_pdf_and_exposes_download(tmp_path, monkeypatch):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
+        *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
 
     resp = client.post("/wizard/contexte-affaires", data={
@@ -147,7 +147,7 @@ def test_final_submit_writes_docx_and_exposes_download(tmp_path, monkeypatch):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
+        *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
 
     resp = client.post("/wizard/contexte-affaires", data={
@@ -174,7 +174,7 @@ def test_final_submit_accepts_saved_and_current_usages(tmp_path):
         {"already_public": False, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": True,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="no", data_residency="canada"),
+        *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
     first = client.post("/wizard/resultats", data={
         "tool_name": "ChatGPT",

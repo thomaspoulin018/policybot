@@ -1,18 +1,32 @@
 # Starter rules of thumb. Officers extend this file; it is data, not code.
 # Each rule runs only for usages the matrix marks PERMIS / OBLIGATOIRE.
-- id: R-07
+- id: R-07A
   when:
-    trains_on_input: ["yes", "unknown"]
+    training_default: ["yes", "unknown"]
+    opt_out_available: ["yes"]
+    opt_out_confirmed_enabled: ["no", "unknown"]
     data_classification: ["Protégé A", "Protégé B", "Protégé C"]
   then:
     category: "Gestion des données"
     criterion: "Utilisation de données pour entraînement"
     risk_level: "Élevé"
     recommendation: "Autoriser_avec_conditions"
-    conditions: ["Confirmer l'opt-out d'entraînement auprès du fournisseur."]
+    conditions: ["L'opt-out est disponible, mais son activation n'est pas confirmée pour cette offre — confirmer et documenter son activation avant de soumettre des données classifiées."]
+- id: R-07B
+  when:
+    training_default: ["yes", "unknown"]
+    opt_out_available: ["no", "unknown"]
+    opt_out_confirmed_enabled: ["no", "unknown"]
+    data_classification: ["Protégé A", "Protégé B", "Protégé C"]
+  then:
+    category: "Gestion des données"
+    criterion: "Utilisation de données pour entraînement"
+    risk_level: "Élevé"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Aucune garantie active de retrait de l'entraînement n'est démontrée pour cette offre — ne pas soumettre de données classifiées avant confirmation contractuelle et technique."]
 - id: R-12
   when:
-    data_residency: ["us", "other", "unknown"]
+    data_residency: ["canada_outside_quebec", "us", "eu", "multi_region", "configurable", "unknown"]
     data_classification: ["Protégé A", "Protégé B"]
   then:
     risk_level: "Modéré"
@@ -43,20 +57,10 @@
     risk_level: "Élevé"
     recommendation: "Autoriser_avec_conditions"
     conditions: ["Confirmer la politique de conservation et de suppression des données auprès du fournisseur."]
-- id: R-23
-  when:
-    human_review: ["no", "unknown"]
-    rens_personnels: ["True"]
-  then:
-    category: "Éthique et fiabilité des résultats"
-    criterion: "Supervision humaine insuffisante"
-    risk_level: "Élevé"
-    recommendation: "Autoriser_avec_conditions"
-    conditions: ["Aucune révision humaine confirmée chez le fournisseur pour des renseignements personnels — prévoir une validation manuelle interne."]
 - id: R-24
   when:
     rens_personnels: ["True"]
-    data_residency: ["us", "other", "unknown"]
+    data_residency: ["canada_outside_quebec", "us", "eu", "multi_region", "configurable", "unknown"]
   then:
     category: "Gestion des données"
     criterion: "Compatibilité avec la LAI/PRP"

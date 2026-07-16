@@ -23,9 +23,9 @@ def test_protege_b_into_public_tool_is_refused(tmp_path):
          "strategic_sensitive": True, "internal_nonpublic": True,
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(
-            trains_on_input="yes", data_retention="indefinite",
+            training_default="yes", data_retention="indefinite",
             data_residency="us", sub_processors="undisclosed",
-            human_review="no",
+            provider_human_access="no",
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
@@ -52,8 +52,8 @@ def test_public_data_public_tool_authorised(tmp_path):
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(
-            trains_on_input="no", data_retention="none", data_residency="canada",
-            sub_processors="disclosed", human_review="yes",
+            training_default="no", data_retention="none", data_residency="quebec",
+            sub_processors="disclosed", provider_human_access="yes",
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
@@ -75,8 +75,8 @@ def test_assess_attaches_arp_record_to_tool_ref(tmp_path):
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(
-            trains_on_input="no", data_retention="none", data_residency="canada",
-            sub_processors="disclosed", human_review="yes",
+            training_default="no", data_retention="none", data_residency="quebec",
+            sub_processors="disclosed", provider_human_access="yes",
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
@@ -98,8 +98,8 @@ def test_assess_reuses_cached_arp_record_on_second_call(tmp_path):
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(
-            trains_on_input="no", data_retention="none", data_residency="canada",
-            sub_processors="disclosed", human_review="yes",
+            training_default="no", data_retention="none", data_residency="quebec",
+            sub_processors="disclosed", provider_human_access="yes",
         ),
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
@@ -123,15 +123,15 @@ def test_assess_refreshes_stale_cached_arp_record(tmp_path):
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(
-            trains_on_input="no", data_retention="none", data_residency="canada",
-            sub_processors="disclosed", human_review="yes",
+            training_default="no", data_retention="none", data_residency="quebec",
+            sub_processors="disclosed", provider_human_access="yes",
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     store.save_arp(ArpRecord(
         tool_name="ChatGPT",
         iag_type="publique",
-        contract_facts=ContractFacts(trains_on_input="yes"),
+        contract_facts=ContractFacts(training_default="yes"),
         schema_version=1,
     ))
     itv = Interview(llm=llm, store=store, http_get=_terms_get)
@@ -145,9 +145,9 @@ def test_assess_refreshes_stale_cached_arp_record(tmp_path):
     )
 
     assert state.tools[0].arp is not None
-    assert state.tools[0].arp.schema_version == 2
-    assert state.tools[0].arp.contract_facts.trains_on_input == "no"
-    assert store.get_arp("ChatGPT").schema_version == 2
+    assert state.tools[0].arp.schema_version == 3
+    assert state.tools[0].arp.contract_facts.training_default == "no"
+    assert store.get_arp("ChatGPT").schema_version == 3
 
 
 @pytest.mark.parametrize(
@@ -163,8 +163,8 @@ def test_arp_cache_modes(tmp_path, mode, reuses_cached, replaces_cached):
     cached = ArpRecord(
         tool_name="ChatGPT",
         iag_type="publique",
-        contract_facts=ContractFacts(trains_on_input="yes"),
-        schema_version=2,
+        contract_facts=ContractFacts(training_default="yes"),
+        schema_version=3,
         terms_snapshot="cached-marker",
     )
     store = PreApprovedStore(str(tmp_path / "pb.db"))
@@ -199,7 +199,7 @@ def test_read_only_cache_miss_fetches_without_saving(tmp_path):
 
     resolved = itv._resolve_arp("ChatGPT", "publique")
 
-    assert resolved.schema_version == 2
+    assert resolved.schema_version == 3
     assert store.get_arp("ChatGPT") is None
     assert llm.tasks == ["contract_extraction"] * 5
 
@@ -223,8 +223,8 @@ def test_unregistered_tool_with_override_uses_override_iag_type(tmp_path):
          "strategic_sensitive": False, "internal_nonpublic": True,
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(
-            trains_on_input="no", data_retention="limited", data_residency="canada",
-            sub_processors="disclosed", human_review="yes",
+            training_default="no", data_retention="limited", data_residency="quebec",
+            sub_processors="disclosed", provider_human_access="yes",
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
@@ -249,8 +249,8 @@ def test_assess_stores_qualification_profile_and_tool_version(tmp_path):
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(
-            trains_on_input="no", data_retention="none", data_residency="canada",
-            sub_processors="disclosed", human_review="yes",
+            training_default="no", data_retention="none", data_residency="quebec",
+            sub_processors="disclosed", provider_human_access="yes",
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
@@ -282,8 +282,8 @@ def test_assess_defaults_qualification_and_new_usage_fields_when_omitted(tmp_pat
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(
-            trains_on_input="no", data_retention="none", data_residency="canada",
-            sub_processors="disclosed", human_review="yes",
+            training_default="no", data_retention="none", data_residency="quebec",
+            sub_processors="disclosed", provider_human_access="yes",
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))

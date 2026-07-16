@@ -124,10 +124,20 @@ _AUDIT_LABELS = {
     "none": "Aucune journalisation organisationnelle documentée.",
     "unknown": "À confirmer; preuve insuffisante sur les journaux et l'audit prompts/sorties.",
 }
-_TERMS_LABELS = {
-    "acceptable": "Conditions compatibles avec un usage institutionnel selon les sources consultées.",
-    "problematic": "Clauses potentiellement problématiques détectées; revue contractuelle requise.",
-    "unknown": "À confirmer; preuve insuffisante sur l'acceptabilité institutionnelle.",
+_TERMS_AVAILABLE_LABELS = {
+    "yes": "conditions institutionnelles disponibles",
+    "no": "aucune condition institutionnelle identifiée",
+    "unknown": "disponibilité des conditions institutionnelles à confirmer",
+}
+_DPA_LABELS = {
+    "yes": "DPA disponible",
+    "no": "DPA non disponible selon les sources",
+    "unknown": "disponibilité du DPA à confirmer",
+}
+_INSTITUTIONAL_RESTRICTION_LABELS = {
+    "yes": "restriction d'usage institutionnel détectée",
+    "no": "aucune restriction institutionnelle explicite détectée",
+    "unknown": "restrictions institutionnelles à confirmer",
 }
 _LICENSE_LABELS = {
     "yes": "Usage par une institution d'enseignement supérieur/public-sector permis selon les sources consultées.",
@@ -145,17 +155,29 @@ _INCIDENT_LABELS = {
 def _auto_observation(
     label: str,
     facts: ContractFacts,
-    field_name: str,
+    field_names: str | tuple[str, ...],
 ) -> str:
     parts = [f"Réponse automatisée: {label}"]
-    proof = facts.evidence.get(field_name)
-    if proof is not None:
+    names = (field_names,) if isinstance(field_names, str) else field_names
+    for field_name in names:
+        proof = facts.evidence.get(field_name)
+        parts.append(f"{field_name}={getattr(facts, field_name)}")
+        if proof is None:
+            parts.extend((
+                f"citation ({field_name}): non disponible",
+                f"URL ({field_name}): non disponible",
+            ))
+            continue
         if proof.note:
             parts.append(proof.note)
         if proof.quote:
-            parts.append(f"« {proof.quote} »")
+            parts.append(f"citation ({field_name}): « {proof.quote} »")
+        else:
+            parts.append(f"citation ({field_name}): non disponible")
         if proof.source_url:
-            parts.append(f"source: {proof.source_url}")
+            parts.append(f"URL ({field_name}): {proof.source_url}")
+        else:
+            parts.append(f"URL ({field_name}): non disponible")
         if proof.source_collected_at:
             parts.append(f"collectée le: {proof.source_collected_at}")
         if proof.source_sha256:
@@ -177,7 +199,17 @@ def _arp_automated_observations(facts: ContractFacts | None) -> dict[str, str]:
             _INCIDENT_LABELS[facts.incident_response], facts, "incident_response",
         ),
         "Conditions d'utilisation acceptables": _auto_observation(
-            _TERMS_LABELS[facts.institutional_terms], facts, "institutional_terms",
+            "; ".join((
+                _TERMS_AVAILABLE_LABELS[facts.institutional_terms_available],
+                _DPA_LABELS[facts.dpa_available],
+                _INSTITUTIONAL_RESTRICTION_LABELS[facts.institutional_use_restricted],
+            )),
+            facts,
+            (
+                "institutional_terms_available",
+                "dpa_available",
+                "institutional_use_restricted",
+            ),
         ),
         "Compatibilité licence usage gouvernemental": _auto_observation(
             _LICENSE_LABELS[facts.quebec_higher_ed_license],
@@ -362,18 +394,37 @@ _MODE_ACQUISITION_LABELS = {
     "contrat_existant": "Contrat existant",
 }
 _DATA_RESIDENCY_LABELS = {
-    "canada": "Oui - Canada/Quebec a confirmer",
-    "us": "Non - Etats-Unis",
-    "eu": "Non - Union europeenne",
-    "other": "Non - autre territoire",
+    "quebec": "Québec",
+    "canada_outside_quebec": "Canada hors Québec",
+    "us": "Non - États-Unis",
+    "eu": "Non - Union européenne",
+    "multi_region": "Multirégion - région active à confirmer",
+    "configurable": "Configurable - région active à confirmer",
     "unknown": "Inconnu",
 }
-_TRAINING_LABELS = {
-    "yes": "Oui",
-    "no": "Non",
-    "opt_out_available": "A verifier - opt-out disponible",
-    "unknown": "A verifier avec le fournisseur",
-}
+
+
+def _training_summary(facts: ContractFacts) -> str:
+    default_labels = {
+        "yes": "Entraînement activé par défaut",
+        "no": "Entraînement désactivé par défaut",
+        "unknown": "Comportement d'entraînement par défaut à confirmer",
+    }
+    available_labels = {
+        "yes": "opt-out disponible",
+        "no": "aucun opt-out démontré",
+        "unknown": "disponibilité de l'opt-out à confirmer",
+    }
+    confirmed_labels = {
+        "yes": "activation de l'opt-out confirmée",
+        "no": "opt-out confirmé non activé",
+        "unknown": "activation de l'opt-out non confirmée",
+    }
+    return " — ".join((
+        default_labels[facts.training_default],
+        available_labels[facts.opt_out_available],
+        confirmed_labels[facts.opt_out_confirmed_enabled],
+    ))
 
 
 def _usage_nature(usage) -> str:
@@ -457,7 +508,7 @@ def _fill_data_table(table: ET.Element, state: InterviewState) -> None:
     _set_table_value(table, 1, _usage_nature(usage))
     _set_table_value(table, 2, _label(facts.data_residency, _DATA_RESIDENCY_LABELS) if facts else "")
     _set_table_value(table, 3, _yes_no(any(usage.rens_personnels for usage in state.usages)))
-    _set_table_value(table, 4, _label(facts.trains_on_input, _TRAINING_LABELS) if facts else "")
+    _set_table_value(table, 4, _training_summary(facts) if facts else "")
     _set_table_value(table, 5, "Voir ARP et conditions fournisseur extraites automatiquement." if facts else "")
 
 

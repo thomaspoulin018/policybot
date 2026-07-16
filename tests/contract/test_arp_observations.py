@@ -6,8 +6,8 @@ from policybot.models import ContractFacts, FactEvidence
 
 def _facts(**overrides) -> ContractFacts:
     return ContractFacts(
-        trains_on_input="no",
-        evidence={"trains_on_input": FactEvidence(
+        training_default="no",
+        evidence={"training_default": FactEvidence(
             value="no",
             source_url="https://example.test/terms",
             quote="We do not train our models on your business data.",
@@ -30,7 +30,7 @@ def test_observations_cite_the_url_and_the_quote():
         arp, "Données soumises utilisées pour entraînement du modèle",
     ).observations
 
-    assert observations.startswith("trains_on_input=no")
+    assert observations.startswith("training_default=no")
     assert "https://example.test/terms" in observations
     assert "We do not train our models" in observations
 

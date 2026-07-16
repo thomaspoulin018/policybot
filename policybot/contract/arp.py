@@ -22,7 +22,7 @@ from policybot.prompts import get_prompt
 from policybot.criteria import ARP_CRITERIA
 from policybot.tracing import trace_step
 
-CURRENT_ARP_SCHEMA_VERSION = 2
+CURRENT_ARP_SCHEMA_VERSION = 3
 
 _MAX_FAMILY_EVIDENCE_CHARS = 8000
 _SOURCE_SEPARATOR = "\n\n---\n\n"
@@ -349,7 +349,7 @@ def build_arp(
     """Produce the 8 Partie A criteria PolicyBot can derive automatically."""
     criteria: list[RiskFactor] = []
 
-    residency_risk = "F" if facts.data_residency == "canada" else "M"
+    residency_risk = "F" if facts.data_residency == "quebec" else "M"
     criteria.append(RiskFactor(
         category="Souveraineté et hébergement des données", criterion="Localisation des serveurs",
         inherent=residency_risk, residual=residency_risk, origin="rule",
@@ -370,12 +370,19 @@ def build_arp(
         observations=_observation(facts, "foreign_vendor_dependency"),
     ))
 
-    training_risk = "E" if facts.trains_on_input in ("yes", "unknown") else "F"
+    training_protected = (
+        facts.training_default == "no" or facts.opt_out_confirmed_enabled == "yes"
+    )
+    training_risk = "F" if training_protected else "E"
     criteria.append(RiskFactor(
         category="Souveraineté et hébergement des données",
         criterion="Données soumises utilisées pour entraînement du modèle",
         inherent=training_risk, residual=training_risk, origin="rule",
-        observations=_observation(facts, "trains_on_input"),
+        observations=" | ".join((
+            _observation(facts, "training_default"),
+            _observation(facts, "opt_out_available"),
+            _observation(facts, "opt_out_confirmed_enabled"),
+        )),
     ))
 
     reuse_risk = "F" if facts.contract_prohibits_reuse == "yes" else "E"
@@ -393,11 +400,14 @@ def build_arp(
         observations=_observation(facts, "encryption_standard"),
     ))
 
-    opt_out_risk = "F" if facts.reentraining_opt_out == "yes" else "E"
+    opt_out_risk = "F" if training_protected else "E"
     criteria.append(RiskFactor(
         category="Sécurité de l'information", criterion="Utilisation des entrées et des sorties",
         inherent=opt_out_risk, residual=opt_out_risk, origin="rule",
-        observations=_observation(facts, "reentraining_opt_out"),
+        observations=" | ".join((
+            _observation(facts, "opt_out_available"),
+            _observation(facts, "opt_out_confirmed_enabled"),
+        )),
     ))
 
     ip_risk = "E" if facts.ip_ownership in ("vendor", "unclear", "unknown") else "F"

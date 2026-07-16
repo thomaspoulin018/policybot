@@ -23,9 +23,10 @@ def test_config_declares_one_entry_per_family():
     assert all("OpenAI" in family["query"] for family in config["families"])
 
     fields = [f for family in config["families"] for f in family["fields"]]
-    assert len(fields) == 16
-    trains = next(f for f in fields if f["name"] == "trains_on_input")
-    assert trains["allowed_values"] == ["yes", "no", "opt_out_available", "unknown"]
+    assert len(fields) == 19
+    training_default = next(f for f in fields if f["name"] == "training_default")
+    assert training_default["allowed_values"] == ["yes", "no", "unknown"]
+    assert next(f for f in fields if f["name"] == "opt_out_confirmed_enabled")
 
 
 def test_unknown_tool_falls_back_to_its_own_name_as_vendor():
@@ -79,7 +80,7 @@ def test_ensure_config_writes_once_then_reuses(tmp_path):
 def test_ensure_config_regenerates_a_stale_schema(tmp_path):
     path = tmp_path / "chatgpt.yaml"
     path.write_text(
-        yaml.safe_dump({"tool": {"name": "ChatGPT"}, "fields": [{"name": "trains_on_input"}]}),
+        yaml.safe_dump({"tool": {"name": "ChatGPT"}, "fields": [{"name": "training_default"}]}),
         encoding="utf-8",
     )
 

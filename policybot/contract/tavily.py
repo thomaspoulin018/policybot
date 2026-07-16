@@ -26,7 +26,7 @@ from policybot.tracing import trace_step
 DEFAULT_CONFIG_DIR = Path("configs") / "tavily_contracts"
 DEFAULT_MARKDOWN_OUTPUT_DIR = Path("output") / "tavily"
 
-CONFIG_SCHEMA_VERSION = 3
+CONFIG_SCHEMA_VERSION = 4
 
 SEARCH_KEYS = {
     "search_depth",

@@ -15,10 +15,12 @@ from policybot.contract.fetcher import FetchedTerms
 from policybot.models import ContractFacts, FactEvidence
 
 CONTRACT_FACT_FIELDS = {
-    "trains_on_input", "data_retention", "data_residency", "sub_processors",
-    "human_review", "encryption_standard", "ip_ownership", "applicable_law",
-    "foreign_vendor_dependency", "contract_prohibits_reuse", "reentraining_opt_out",
-    "authentication_support", "audit_logging", "institutional_terms",
+    "training_default", "opt_out_available", "opt_out_confirmed_enabled",
+    "data_retention", "data_residency", "sub_processors",
+    "provider_human_access", "encryption_standard", "ip_ownership", "applicable_law",
+    "foreign_vendor_dependency", "contract_prohibits_reuse",
+    "authentication_support", "audit_logging", "institutional_terms_available",
+    "dpa_available", "institutional_use_restricted",
     "quebec_higher_ed_license", "incident_response",
 }
 
@@ -64,7 +66,7 @@ def test_families_cover_every_contract_fact_field_exactly_once():
     names = [field.name for family in FACT_FAMILIES for field in family.fields]
 
     assert len(FACT_FAMILIES) == 5
-    assert len(names) == len(set(names)) == 16
+    assert len(names) == len(set(names)) == 19
     assert set(names) == CONTRACT_FACT_FIELDS
     assert {field.name for field in ALL_FACT_FIELDS} == CONTRACT_FACT_FIELDS
 
@@ -112,8 +114,8 @@ def test_empty_contract_evidence_is_empty():
 
 def test_contract_facts_carries_per_field_evidence():
     facts = ContractFacts(
-        trains_on_input="no",
-        evidence={"trains_on_input": FactEvidence(
+        training_default="no",
+        evidence={"training_default": FactEvidence(
             value="no",
             source_url="https://example.test/cgu",
             quote="We do not train our models on your business data.",
@@ -121,5 +123,5 @@ def test_contract_facts_carries_per_field_evidence():
         )},
     )
 
-    assert facts.evidence["trains_on_input"].quote.startswith("We do not train")
+    assert facts.evidence["training_default"].quote.startswith("We do not train")
     assert ContractFacts().evidence == {}
