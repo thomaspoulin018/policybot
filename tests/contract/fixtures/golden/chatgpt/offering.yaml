@@ -1,0 +1,7 @@
+vendor: OpenAI
+product: ChatGPT
+plan: Plus
+deployment_mode: public_saas
+contract_type: consumer_terms
+contract_version: "2026-01-01"
+effective_date: 2026-01-01

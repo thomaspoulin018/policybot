@@ -7,8 +7,14 @@ from policybot.report.renderer import render_html
 from tests.helpers.arp_fixtures import arp_extraction_responses
 
 
+_GOLDEN_TERMS = (
+    "The vendor's terms of service and privacy policy describe this fact "
+    "explicitly for institutional customers such as universities."
+)
+
+
 def _terms_get(url):
-    return "<html><body>content may be used to train models</body></html>"
+    return f"<html><body>{_GOLDEN_TERMS}</body></html>"
 
 
 def test_slide5_chatgpt_protege_b_is_refused_and_report_flags_it(tmp_path):
@@ -40,7 +46,6 @@ def test_slide5_chatgpt_protege_b_is_refused_and_report_flags_it(tmp_path):
     assert usage.verdict == "Refuser"
     assert usage.efvpr_required is True
     assert state.result_global.recommendation == "Refuser"
-
     html = render_html(state)
     assert "Identification" in html
     assert "Partie A — Analyse des risques du produit (ARP)" in html
@@ -49,3 +54,34 @@ def test_slide5_chatgpt_protege_b_is_refused_and_report_flags_it(tmp_path):
     assert "Refuser" in html
     assert "ÉFVP-R requise" in html
     assert "requiert validation et autorisation par l'autorité désignée" in html
+
+
+def test_golden_chatgpt_public_offer_keeps_opt_out_as_unconfirmed(tmp_path):
+    """Une option d'opt-out ne devient pas une garantie active dans l'ARP."""
+    llm = FakeLLMProvider(json_responses=[
+        {"already_public": True, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": False,
+         "highly_sensitive_secret": False, "confidence": 0.95},
+        *arp_extraction_responses(
+            evidence=_GOLDEN_TERMS,
+            training_default="yes", opt_out_available="yes",
+            opt_out_confirmed_enabled="unknown", data_residency="multi_region",
+        ),
+    ])
+    state = Interview(
+        llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")), http_get=_terms_get,
+    ).assess(
+        request=RequestInfo(numero="IAG-2026-007"),
+        tool_name="ChatGPT Pro",
+        usage_inputs=[{
+            "description": "Résumer des sources publiques",
+            "data_description": "articles déjà publiés",
+            "automated_decisions": False, "mode": ["prompt"], "result_use": [],
+        }],
+    )
+
+    facts = state.tools[0].arp.contract_facts
+    assert facts.training_default == "yes"
+    assert facts.opt_out_available == "yes"
+    assert facts.opt_out_confirmed_enabled == "unknown"
+    assert facts.data_residency == "multi_region"

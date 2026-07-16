@@ -23,7 +23,8 @@ Chats are saved to your account until you delete them manually.
 Deletion from OpenAI systems is scheduled within 30 days, subject to stated exceptions.
 
 URL: https://openai.com/policies/privacy-policy/
-Personal data may be processed on servers in the United States and other jurisdictions.
+OpenAI processes personal data on servers in various jurisdictions, including the United States,
+or in countries or territories where its affiliates, partners, vendors, and service providers are located.
 The consumer policy identifies categories of vendors and service providers, but no applicable named subprocessor list.
 
 URL: https://openai.com/security-and-privacy/
@@ -31,6 +32,3 @@ Your content is encrypted at rest and in transit.
 
 URL: https://help.openai.com/en/articles/7967234
 MFA applies across OpenAI services, including ChatGPT.
-
-URL: https://openai.com/index/introducing-chatgpt-edu/
-ChatGPT Edu is built for universities to responsibly deploy AI to students, faculty, researchers, and campus operations.

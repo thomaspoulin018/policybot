@@ -69,13 +69,30 @@ def _unknown_family_responses() -> list[dict]:
     ]
 
 
-def test_load_golden_case_builds_single_page_evidence(tmp_path):
+def test_load_golden_case_builds_documents_per_url_and_offering_identity(tmp_path):
     case_dir = tmp_path / "example_tool"
     _write_case(
         case_dir,
         "training_default: no\n"
         "data_retention: limited\n"
         "ip_ownership: customer\n",
+    )
+    (case_dir / "evidence.txt").write_text(
+        "# source: https://example.test/terms\n"
+        "# fetched_at: 2026-07-15\n\n"
+        "URL: https://example.test/terms\n"
+        "Terms support ownership.\n\n"
+        "URL: https://example.test/privacy\n"
+        "Privacy support retention.\n",
+        encoding="utf-8",
+    )
+    (case_dir / "offering.yaml").write_text(
+        "vendor: Example\n"
+        "product: Example Tool\n"
+        "plan: Institution\n"
+        "deployment_mode: managed_saas\n"
+        "contract_type: institutional_agreement\n",
+        encoding="utf-8",
     )
 
     case = load_golden_case(case_dir)
@@ -87,10 +104,15 @@ def test_load_golden_case_builds_single_page_evidence(tmp_path):
         "ip_ownership": "customer",
     }
     assert set(case.evidence.by_family) == {family.name for family in FACT_FAMILIES}
-    document = case.evidence.documents_by_family[FACT_FAMILIES[0].name][0]
-    assert document.url == "https://example.test/terms"
-    assert document.collected_at == date(2026, 7, 15)
-    assert document.content == "Synthetic terms evidence."
+    documents = case.evidence.documents_by_family[FACT_FAMILIES[0].name]
+    assert [document.url for document in documents] == [
+        "https://example.test/terms", "https://example.test/privacy",
+    ]
+    assert documents[0].collected_at == date(2026, 7, 15)
+    assert documents[1].content == "Privacy support retention."
+    assert case.offering is not None
+    assert case.offering.cache_key() == case.offering.cache_key()
+    assert case.offering.contract_type == "institutional_agreement"
 
 
 def test_load_golden_case_rejects_unknown_field(tmp_path):

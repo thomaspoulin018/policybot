@@ -1,0 +1,5 @@
+vendor: Microsoft
+product: Microsoft 365 Copilot
+plan: Enterprise
+deployment_mode: managed_saas
+contract_type: institutional_agreement

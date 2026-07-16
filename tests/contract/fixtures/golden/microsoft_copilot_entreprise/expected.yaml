@@ -5,19 +5,19 @@ contract_prohibits_reuse: "yes"     # Microsoft limite l'usage aux instructions 
 provider_human_access: "no"         # M365 Copilot est exclu du contrôle d'abus avec accès humain.
 
 data_retention: limited              # Purview permet de fixer rétention et suppression.
-data_residency: multi_region         # Hors UE, le traitement peut avoir lieu dans plusieurs régions.
+data_residency: configurable          # La résidence dépend du tenant et des options souscrites.
 sub_processors: disclosed           # Une liste officielle des sous-traitants est publiée.
 foreign_vendor_dependency: "yes"   # Fournisseur américain et traitement potentiellement étranger.
 
 encryption_standard: strong         # Chiffrement au repos et en transit.
 authentication_support: sso_mfa     # Entra SSO (SAML/OIDC) et MFA sont pris en charge.
 audit_logging: prompt_output_accessible  # Purview audite prompts, réponses et contenu référencé.
-incident_response: documented_with_notice  # Processus documenté et avis sans délai indu.
+incident_response: documented_no_notice  # Processus documenté, sans délai chiffré dans la preuve.
 
 ip_ownership: customer              # L'Output est Customer Data et Microsoft ne le possède pas.
 applicable_law: unknown             # Dépend du contrat institutionnel effectivement signé.
 
 institutional_terms_available: "yes"  # Les EDP visent explicitement les organisations.
 dpa_available: "yes"               # Un DPA vise explicitement les organisations.
-institutional_use_restricted: "no" # Aucune restriction institutionnelle explicite détectée.
+institutional_use_restricted: unknown # Aucune permission ou restriction explicite n'est figée dans la preuve.
 quebec_higher_ed_license: "yes"   # Un add-on académique Microsoft 365 Copilot est offert.

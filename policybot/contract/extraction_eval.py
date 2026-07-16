@@ -210,7 +210,15 @@ class SnapshotTavilyClient:
         return self._replay(call, {"urls": list(urls), "kwargs": kwargs})
 
 
-def _parse_evidence_file(path: Path) -> FetchedTerms:
+def _parse_evidence_file(path: Path) -> list[FetchedTerms]:
+    """Charge les documents figés d'un cas golden, sans fusionner leurs URL.
+
+    Les anciens golden regroupaient plusieurs pages derrière l'URL déclarée dans
+    l'en-tête du fichier. Cela ne permettait pas de reproduire le contrôle
+    production qui exige qu'une citation soit présente dans *l'URL citée*.
+    Chaque bloc ``URL:`` devient maintenant un document distinct. Un ancien
+    fichier sans bloc reste lisible comme une preuve mono-document.
+    """
     lines = path.read_text(encoding="utf-8").splitlines()
     headers: dict[str, str] = {}
     body_start = 0
@@ -235,13 +243,62 @@ def _parse_evidence_file(path: Path) -> FetchedTerms:
             f"Invalid fetched_at date in {path}: {headers['fetched_at']!r}"
         ) from exc
 
-    text = "\n".join(lines[body_start:]).strip()
+    body = lines[body_start:]
+    if not any(line.strip() for line in body):
+        raise ValueError(f"Evidence body is empty: {path}")
+
+    documents: list[FetchedTerms] = []
+    current_url: str | None = None
+    current_lines: list[str] = []
+
+    def add_document() -> None:
+        nonlocal current_url, current_lines
+        if current_url is None:
+            return
+        content = "\n".join(current_lines).strip()
+        if not content:
+            raise ValueError(f"Evidence document is empty for {current_url} in {path}")
+        documents.append(FetchedTerms(
+            text=content, source_url=current_url, fetched_at=fetched_at,
+        ))
+        current_lines = []
+
+    for line in body:
+        if line.startswith("URL: "):
+            add_document()
+            current_url = line.removeprefix("URL: ").strip()
+            if not current_url:
+                raise ValueError(f"Evidence URL is empty in {path}")
+            continue
+        if current_url is not None:
+            current_lines.append(line)
+        elif line.strip():
+            # Compatibilité des anciennes fixtures mono-document.
+            current_lines.append(line)
+
+    add_document()
+    if documents:
+        return documents
+
+    text = "\n".join(current_lines).strip()
     if not text:
         raise ValueError(f"Evidence body is empty: {path}")
-    return FetchedTerms(
-        text=text,
-        source_url=headers["source"],
-        fetched_at=fetched_at,
+    return [FetchedTerms(text=text, source_url=headers["source"], fetched_at=fetched_at)]
+
+
+def _load_offering(case_dir: Path, tool_name: str) -> ContractOfferingIdentity:
+    """Charge l'identité contractuelle explicite d'une fixture si elle existe."""
+    path = case_dir / "offering.yaml"
+    if path.is_file():
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError(f"Offering identity must be a YAML mapping: {path}")
+        return ContractOfferingIdentity.model_validate(raw)
+
+    entry = lookup_tool(tool_name) or {}
+    return build_offering_identity(
+        tool_name, entry.get("iag_type") or "publique",
+        vendor=entry.get("vendor"),
     )
 
 
@@ -274,15 +331,11 @@ def load_golden_case(case_dir: str | Path) -> GoldenCase:
     terms = _parse_evidence_file(directory / "evidence.txt")
     expected = _load_expected(directory / "expected.yaml")
     tool_name = _TOOL_NAMES.get(directory.name, directory.name.replace("_", " "))
-    entry = lookup_tool(tool_name) or {}
     return GoldenCase(
         tool_slug=directory.name,
-        evidence=ContractEvidence.from_single(terms),
+        evidence=ContractEvidence.from_terms(terms),
         expected=expected,
-        offering=build_offering_identity(
-            tool_name, entry.get("iag_type") or "publique",
-            vendor=entry.get("vendor"),
-        ),
+        offering=_load_offering(directory, tool_name),
     )
 
 

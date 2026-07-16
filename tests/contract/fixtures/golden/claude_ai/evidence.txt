@@ -12,15 +12,13 @@ Deleted conversations are removed from back-end storage within 30 days.
 Conversations allowed for model improvement may be kept up to five years in model-training pipelines.
 
 URL: https://www.anthropic.com/legal/privacy
-Personal data is transferred to Anthropic servers in the United States.
-Anthropic links to information about the third parties it engages to process personal data.
+Personal data may be transferred or disclosed to jurisdictions outside Canada, including the United States
+and the countries listed on Anthropic's Subprocessor List.
 
 URL: https://privacy.anthropic.com/en/articles/10458704-how-does-anthropic-protect-the-personal-data-of-claude-ai-users
 Claude.ai data is automatically encrypted while in transit and while stored at rest.
-Designated Trust and Safety personnel may access data for policy enforcement.
+Conversations flagged for safety review may be used to improve Anthropic's ability to detect harmful content
+and enforce its Usage Policy.
 
 URL: https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account
 Claude supports Google sign-in and secure email login links.
-
-URL: https://www.anthropic.com/news/introducing-claude-for-education
-Claude for Education is a specialized version of Claude tailored for higher education institutions.

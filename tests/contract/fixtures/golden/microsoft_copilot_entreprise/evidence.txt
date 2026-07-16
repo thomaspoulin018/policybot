@@ -14,7 +14,9 @@ URL: https://learn.microsoft.com/en-us/purview/retention-policies-copilot
 Purview retention policies include Copilot user prompts and responses and can retain and delete them.
 
 URL: https://learn.microsoft.com/en-us/microsoft-365/enterprise/m365-dr-service-copilot?view=o365-worldwide
-Customers outside the EU may have queries processed in the US, EU, or other regions.
+The content of interactions is stored at rest in the relevant Local Region Geography.
+Advanced Data Residency requires an eligible tenant, a valid subscription, and that customer data be provisioned
+in the Local Region Geography.
 
 URL: https://download.microsoft.com/download/5/e/0/5e0f9012-9cbc-4796-9930-4b74da918bad/Subprocessors%20and%20Data%20Privacy%20Whitepaper.pdf
 The Microsoft Online Services Subprocessor List discloses authorized suppliers that can process customer data.
