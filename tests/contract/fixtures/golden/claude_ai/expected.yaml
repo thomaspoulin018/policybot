@@ -1,0 +1,20 @@
+trains_on_input: opt_out_available   # Entraînement permis par défaut, avec retrait.
+reentraining_opt_out: "yes"         # Le retrait vise explicitement l'entraînement.
+contract_prohibits_reuse: "no"      # L'entraînement demeure permis sans retrait.
+human_review: "yes"                 # Trust & Safety peut consulter les données pour appliquer les règles.
+
+data_retention: limited              # Délais bornés ou suppression sous 30 jours selon le cas.
+data_residency: us                   # Transfert explicite vers des serveurs américains.
+sub_processors: disclosed           # Anthropic publie une liste des tiers de traitement.
+foreign_vendor_dependency: "yes"   # Fournisseur et serveurs américains.
+
+encryption_standard: strong         # Chiffrement explicite en transit et au repos.
+authentication_support: partial     # Connexion Google/courriel, sans MFA grand public explicite.
+audit_logging: unknown              # Aucun audit institutionnel de prompts/sorties dans ces sources.
+incident_response: unknown          # Aucun délai de notification consommateur documenté ici.
+
+ip_ownership: customer              # Anthropic cède ses droits éventuels sur les Outputs.
+applicable_law: foreign             # Droit californien.
+
+institutional_terms: acceptable     # Les CGU couvrent explicitement les entités.
+quebec_higher_ed_license: "yes"   # Claude for Education vise l'enseignement supérieur.

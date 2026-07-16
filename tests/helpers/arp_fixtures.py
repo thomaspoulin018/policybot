@@ -24,7 +24,7 @@ DEFAULT_EVIDENCE = (
 )
 
 # Extrait effectivement présent dans DEFAULT_EVIDENCE, réutilisé comme citation.
-_DEFAULT_QUOTE = "The vendor's terms of service and privacy policy describe this fact"
+DEFAULT_QUOTE = "The vendor's terms of service and privacy policy describe this fact"
 
 
 def arp_extraction_responses(_url: str = DEFAULT_URL, *, evidence: str | None = None,
@@ -38,9 +38,9 @@ def arp_extraction_responses(_url: str = DEFAULT_URL, *, evidence: str | None = 
     # Une citation garantie présente dans la preuve : un extrait réel de
     # `evidence` si fourni, sinon l'extrait canonique.
     if evidence is not None:
-        quote = " ".join(evidence.split())[:120] or _DEFAULT_QUOTE
+        quote = " ".join(evidence.split())[:120] or DEFAULT_QUOTE
     else:
-        quote = _DEFAULT_QUOTE
+        quote = DEFAULT_QUOTE
 
     responses = []
     for family in FACT_FAMILIES:

@@ -8,10 +8,19 @@ from policybot.contract.families import FACT_FAMILIES
 from policybot.contract.fetcher import FetchedTerms
 from policybot.llm.fake import FakeLLMProvider
 
-from tests.helpers.arp_fixtures import arp_extraction_responses
+from tests.helpers.arp_fixtures import (
+    DEFAULT_EVIDENCE,
+    DEFAULT_QUOTE,
+    arp_extraction_responses,
+)
 
 
-def _evidence(text: str = "Preuve contractuelle.") -> ContractEvidence:
+def _evidence(text: str = DEFAULT_EVIDENCE) -> ContractEvidence:
+    """Preuve par défaut : celle dont `arp_extraction_responses` tire sa citation.
+
+    L'extraction refuse toute valeur dont la citation n'est pas ancrée dans la
+    preuve, donc un test qui vérifie des valeurs doit fournir cette preuve-là.
+    """
     return ContractEvidence.from_single(FetchedTerms(
         text=text, source_url="https://example.test/cgu", fetched_at=date(2026, 7, 14),
     ))
@@ -50,7 +59,8 @@ def test_each_fact_carries_its_url_and_verbatim_quote():
     proof = facts.evidence["trains_on_input"]
     assert proof.value == "yes"
     assert proof.source_url == "https://example.test/evidence"
-    assert proof.quote == "Extrait de preuve pour trains_on_input."
+    assert proof.quote == DEFAULT_QUOTE
+    assert proof.quote in DEFAULT_EVIDENCE
     assert proof.confidence == 0.9
 
 

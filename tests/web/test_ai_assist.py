@@ -9,6 +9,7 @@ from policybot.web.ai_assist import (
 def test_guess_tool_type_returns_valid_iag_type():
     llm = FakeLLMProvider(json_responses=[{"iag_type_guess": "publique", "confidence": 0.8}])
     assert guess_tool_type("Notion AI", llm) == "publique"
+    assert llm.tasks == ["tool_type_detection"]
 
 
 def test_guess_tool_type_returns_none_on_invalid_guess():
@@ -19,6 +20,7 @@ def test_guess_tool_type_returns_none_on_invalid_guess():
 def test_guess_mode_returns_api_when_llm_says_so():
     llm = FakeLLMProvider(json_responses=[{"mode_guess": "api", "confidence": 0.7}])
     assert guess_mode("Intégré à notre CRM via un connecteur", llm) == "api"
+    assert llm.tasks == ["mode_detection"]
 
 
 def test_guess_mode_defaults_to_prompt_on_invalid_guess():
@@ -40,6 +42,7 @@ def test_suggest_options_returns_new_options_from_llm():
         "Renseignements personnels d'étudiants", "Correspondance nominative",
     ]
     assert result[0].description == "Courriels, notes"
+    assert llm.tasks == ["form_suggestions"]
 
 
 def test_suggest_options_filters_out_duplicates_of_existing_options():

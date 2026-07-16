@@ -12,9 +12,23 @@ import logging
 import os
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Any, Mapping
 
-_LOG_PATH = os.environ.get("POLICYBOT_LOG_PATH", os.path.join("logs", "policybot.jsonl"))
+
+def _timestamped_log_path(log_dir: Path, now: datetime | None = None) -> Path:
+    """Return a distinct JSON-lines log path for one application run."""
+    started_at = now or datetime.now()
+    timestamp = started_at.strftime("%Y-%m-%d_%H-%M-%S_%f")
+    return log_dir / f"log_{timestamp}.jsonl"
+
+
+_LOG_PATH = Path(
+    os.environ.get("POLICYBOT_LOG_PATH") or _timestamped_log_path(Path("logs")),
+)
 
 _logger = logging.getLogger("policybot.trace")
 _logger.setLevel(logging.INFO)
@@ -27,9 +41,7 @@ class _JsonLineFormatter(logging.Formatter):
 
 
 def _build_handler() -> logging.Handler:
-    log_dir = os.path.dirname(_LOG_PATH)
-    if log_dir:
-        os.makedirs(log_dir, exist_ok=True)
+    _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
         _LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8",
     )
@@ -48,9 +60,168 @@ _current_interview_id: contextvars.ContextVar[str | None] = contextvars.ContextV
 )
 
 
+@dataclass
+class LLMUsage:
+    """Aggregated OpenRouter usage for one assessment, without prompt content."""
+
+    api_calls: int = 0
+    successful_api_calls: int = 0
+    failed_api_calls: int = 0
+    usage_recorded_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost_usd: float = 0.0
+    cost_available: bool = False
+
+    def as_dict(self) -> dict[str, int | float | bool | None]:
+        return {
+            "api_calls": self.api_calls,
+            "successful_api_calls": self.successful_api_calls,
+            "failed_api_calls": self.failed_api_calls,
+            "usage_recorded_calls": self.usage_recorded_calls,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            # ``None`` means the provider did not return a cost; it is not a free run.
+            "cost_usd": round(self.cost_usd, 8) if self.cost_available else None,
+        }
+
+
+_current_llm_usage: contextvars.ContextVar[LLMUsage | None] = contextvars.ContextVar(
+    "policybot_llm_usage", default=None,
+)
+
+
 def mask_text(text: str) -> dict:
     """The only sanctioned way to let free text influence a log line."""
     return {"len": len(text), "sha256": hashlib.sha256(text.encode()).hexdigest()[:12]}
+
+
+def _as_mapping(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    model_dump = getattr(value, "model_dump", None)
+    return model_dump() if callable(model_dump) else {}
+
+
+def _number(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
+def _cost(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
+def extract_llm_usage(response: Any) -> dict[str, int | float | None]:
+    """Normalize LangChain/OpenRouter usage metadata from a model response.
+
+    OpenRouter may expose the native ``usage`` object either in LangChain's
+    ``usage_metadata`` or in ``response_metadata``.  We deliberately use the
+    provider-reported cost instead of duplicating a mutable pricing table.
+    """
+    response_metadata = _as_mapping(getattr(response, "response_metadata", None))
+    candidates = (
+        _as_mapping(getattr(response, "usage_metadata", None)),
+        _as_mapping(response_metadata.get("usage")),
+        _as_mapping(response_metadata.get("token_usage")),
+    )
+    def first_number(*names: str) -> int | None:
+        for candidate in candidates:
+            for name in names:
+                number = _number(candidate.get(name))
+                if number is not None:
+                    return number
+        return None
+
+    def first_cost(*names: str) -> float | None:
+        for candidate in candidates:
+            for name in names:
+                cost = _cost(candidate.get(name))
+                if cost is not None:
+                    return cost
+        return None
+
+    input_tokens = first_number("input_tokens", "prompt_tokens")
+    output_tokens = first_number("output_tokens", "completion_tokens")
+    total_tokens = first_number("total_tokens")
+    if total_tokens is None and input_tokens is not None and output_tokens is not None:
+        total_tokens = input_tokens + output_tokens
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "cost_usd": first_cost("cost", "total_cost"),
+    }
+
+
+def record_llm_call_started() -> None:
+    if usage := _current_llm_usage.get():
+        usage.api_calls += 1
+
+
+def record_llm_call_failed() -> None:
+    if usage := _current_llm_usage.get():
+        usage.failed_api_calls += 1
+
+
+def record_llm_call_succeeded(usage_data: Mapping[str, int | float | None]) -> None:
+    if usage := _current_llm_usage.get():
+        usage.successful_api_calls += 1
+        values = {name: usage_data.get(name) for name in (
+            "input_tokens", "output_tokens", "total_tokens",
+        )}
+        if any(value is not None for value in values.values()):
+            usage.usage_recorded_calls += 1
+            usage.input_tokens += int(values["input_tokens"] or 0)
+            usage.output_tokens += int(values["output_tokens"] or 0)
+            usage.total_tokens += int(values["total_tokens"] or 0)
+        cost_usd = usage_data.get("cost_usd")
+        if cost_usd is not None:
+            usage.cost_available = True
+            usage.cost_usd += float(cost_usd)
+
+
+@contextmanager
+def collect_llm_usage(interview_id: str):
+    """Collect and emit API-call, token, and billed-cost totals for one run."""
+    usage = LLMUsage()
+    token = _current_llm_usage.set(usage)
+    run_status = "ok"
+    try:
+        yield usage
+    except Exception:
+        run_status = "error"
+        raise
+    finally:
+        _current_llm_usage.reset(token)
+        _emit(interview_id, "llm_usage_summary", run_status, 0.0, **usage.as_dict())
+
+
+def _safe_error_fields(exc: Exception) -> dict:
+    """Return diagnostic metadata without copying exception text to the log.
+
+    HTTP clients commonly expose their response status either on ``response``
+    or directly on the exception. The status distinguishes a bad request, an
+    authentication issue, and a transient provider failure, while the response
+    body/message may contain user-supplied content and must stay masked.
+    """
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status is None:
+        status = getattr(exc, "status_code", None)
+    return {"http_status": status} if isinstance(status, int) else {}
 
 
 def _emit(interview_id: str | None, step: str, status: str, duration_s: float, **fields) -> None:
@@ -80,6 +251,7 @@ def trace_step(interview_id: str | None, step: str, **fields):
     except Exception as exc:
         _emit(iid, step, "error", time.monotonic() - start,
               error=type(exc).__name__, error_message=mask_text(str(exc)),
+              **_safe_error_fields(exc),
               **fields, **extra)
         raise
     else:

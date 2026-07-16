@@ -28,9 +28,27 @@
   </label>
   <div class="foot"><span></span><button class="next" type="submit">Continuer &rarr;</button></div>
 </form>
-<form method="post" action="/wizard/test-prefill" class="test-prefill-form">
-  <button class="test-prefill" type="submit">Remplir un scénario test</button>
-</form>
+<section class="test-scenarios" aria-labelledby="test-scenarios-title">
+  <div class="test-scenarios-heading">
+    <div>
+      <div class="kicker">Mode démonstration</div>
+      <h2 id="test-scenarios-title">Préremplir un scénario de test</h2>
+    </div>
+    <p>Choisis un cas, puis parcours ou modifie les réponses avant de générer le résultat.</p>
+  </div>
+  <div class="test-scenario-grid">
+    {% for scenario in demo_scenarios %}
+    <form method="post" action="/wizard/test-prefill" class="test-prefill-form">
+      <input type="hidden" name="scenario_id" value="{{ scenario.id }}">
+      <button class="test-prefill" type="submit">
+        <strong>{{ scenario.title }}</strong>
+        <span>{{ scenario.description }}</span>
+        <small>{{ scenario.expected_result }}</small>
+      </button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
 {% endblock %}
 
 

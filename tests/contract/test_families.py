@@ -1,10 +1,15 @@
 from datetime import date
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
 
 from policybot.contract.evidence import ContractEvidence
 from policybot.contract.families import (
     ALL_FACT_FIELDS,
     FACT_FAMILIES,
     family_by_name,
+    load_fact_families,
 )
 from policybot.contract.fetcher import FetchedTerms
 from policybot.models import ContractFacts, FactEvidence
@@ -16,6 +21,43 @@ CONTRACT_FACT_FIELDS = {
     "authentication_support", "audit_logging", "institutional_terms",
     "quebec_higher_ed_license", "incident_response",
 }
+
+FACT_FAMILIES_PATH = (
+    Path(__file__).resolve().parents[2] / "configs" / "fact_families.yaml"
+)
+
+
+def test_repository_fact_families_are_loaded_from_yaml():
+    loaded = load_fact_families(FACT_FAMILIES_PATH, env={})
+
+    assert loaded == FACT_FAMILIES
+    assert [family.name for family in loaded] == [
+        "entrainement_reutilisation",
+        "hebergement_retention",
+        "securite_technique",
+        "legal_pi",
+        "termes_institutionnels",
+    ]
+
+
+def test_fact_family_config_rejects_duplicate_fields(tmp_path):
+    path = tmp_path / "fact_families.yaml"
+    path.write_text(
+        """
+version: 1
+families:
+  - name: duplicate
+    query: "{tool} {vendor} terms"
+    fields:
+      - {name: same, allowed_values: [unknown], hint: first}
+      - {name: same, allowed_values: [unknown], hint: second}
+    keywords: [terms]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="globally unique"):
+        load_fact_families(path, env={})
 
 
 def test_families_cover_every_contract_fact_field_exactly_once():

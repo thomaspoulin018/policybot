@@ -3,7 +3,7 @@ from policybot.llm.fake import FakeLLMProvider
 from policybot.contract.fetcher import FetchedTerms
 from policybot.contract.evidence import ContractEvidence
 from policybot.contract.arp import extract_contract_facts, build_arp
-from tests.helpers.arp_fixtures import arp_extraction_responses
+from tests.helpers.arp_fixtures import DEFAULT_EVIDENCE, arp_extraction_responses
 
 
 def _terms():

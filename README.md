@@ -202,12 +202,34 @@ committed. Prompts sent to the LLM are already descriptions/metadata, not the
 sensitive data itself, so traces contain nothing more sensitive than what already
 goes to OpenRouter.
 
+### Configuration des modèles et du cache ARP
+
+La configuration non secrète est centralisée dans `configs/policybot.yaml`.
+Elle définit un modèle OpenRouter et ses paramètres (`reasoning_effort`,
+`max_tokens`, `temperature`, `timeout`) pour chacune des tâches suivantes :
+classification des données, détection du type d'outil, détection du mode,
+suggestions du formulaire et extraction contractuelle/ARP.
+
+Le bloc `cache.arp.mode` accepte quatre comportements :
+
+- `read_write` : réutiliser le cache et enregistrer les nouvelles analyses ;
+- `refresh` : ignorer le cache et le remplacer ;
+- `read_only` : réutiliser le cache sans écrire ;
+- `disabled` : ne lire ni écrire le cache.
+
+Les secrets restent dans `.env`. `POLICYBOT_CONFIG_PATH` sélectionne un autre
+fichier YAML. Les variables `OPENROUTER_*` remplacent toutes les tâches, tandis
+que `POLICYBOT_LLM_<TÂCHE>_*` remplace une tâche précise. La liste complète des
+variables est documentée dans `.env.example`.
+
 ## Traçabilité interne (logs de débogage)
 
 En plus du tracing LangSmith ci-dessus (qui ne couvre que les appels LLM),
 chaque étape du pipeline d'évaluation (`Interview.assess` → classification →
 résolution ARP → appels LLM → évaluation de la grille → synthèse) écrit une
-ligne JSON dans `logs/policybot.jsonl` via `policybot/tracing.py`. Toutes les
+ligne JSON dans un nouveau fichier
+`logs/log_AAAA-MM-JJ_HH-MM-SS_microsecondes.jsonl` à chaque démarrage, via
+`policybot/tracing.py`. Toutes les
 sous-étapes d'une même requête partagent le même `interview_id`, ce qui permet
 de reconstituer le déroulement complet d'un cas en filtrant sur cet identifiant.
 
@@ -220,17 +242,17 @@ renseignements personnels dans un fichier non protégé.
 Consulter les traces en direct :
 
 ```powershell
-Get-Content logs\policybot.jsonl -Wait   # PowerShell
+Get-Content (Get-ChildItem logs\log_*.jsonl | Sort-Object LastWriteTime | Select-Object -Last 1) -Wait
 ```
 
 ```bash
-tail -f logs/policybot.jsonl             # bash
+tail -f "$(ls -t logs/log_*.jsonl | head -n 1)"
 ```
 
 Le chemin du fichier est configurable via la variable d'environnement
 `POLICYBOT_LOG_PATH` (utile pour rediriger vers un fichier temporaire, comme le
 fait `tests/conftest.py` pour que la suite de tests n'écrive jamais dans
-`logs/` du dépôt). Le fichier tourne automatiquement (5 Mo × 5 backups) pour
+`logs/` du dépôt). Chaque fichier tourne automatiquement (5 Mo × 5 backups) pour
 éviter une croissance illimitée.
 
 ## Testing strategy

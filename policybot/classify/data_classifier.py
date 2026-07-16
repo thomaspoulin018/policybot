@@ -2,13 +2,8 @@ from __future__ import annotations
 from pydantic import BaseModel
 from policybot.models import DataClass
 from policybot.llm.provider import LLMProvider
+from policybot.prompts import get_prompt
 
-_SYSTEM = (
-    "Tu analyses la DESCRIPTION de données (jamais les données elles-mêmes) qu'un "
-    "employé veut soumettre à un outil d'IA. Réponds uniquement en JSON avec les "
-    "clés booléennes: already_public, contains_personal_info, strategic_sensitive, "
-    "internal_nonpublic, highly_sensitive_secret, et un flottant confidence (0-1)."
-)
 _CONFIDENCE_FLOOR = 0.6
 
 
@@ -37,9 +32,11 @@ def _decide(sig: dict) -> tuple[DataClass, bool]:
 
 
 def classify_data(description: str, llm: LLMProvider) -> DataClassification:
+    prompt = get_prompt("data_classification")
     sig = llm.complete_json(
-        _SYSTEM, description,
+        prompt.render_system(), prompt.render_user(description=description),
         run_name="classify_data_sensitivity", tags=["data_classification"],
+        task="data_classification",
     )
     level, defaulted = _decide(sig)
     confidence = float(sig.get("confidence", 0.0))

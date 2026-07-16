@@ -1,0 +1,20 @@
+trains_on_input: opt_out_available   # Entraînement par défaut, avec retrait explicite.
+reentraining_opt_out: "yes"         # Le retrait exclut les nouvelles conversations de l'entraînement.
+contract_prohibits_reuse: "no"      # Les CGU permettent l'amélioration et l'entraînement.
+human_review: "yes"                 # Une revue limitée est possible pour surveiller les abus.
+
+data_retention: limited              # Suppression à la demande, normalement sous 30 jours.
+data_residency: us                   # Traitement explicite aux États-Unis, entre autres lieux.
+sub_processors: undisclosed         # Catégories publiées, sans liste nominative grand public applicable.
+foreign_vendor_dependency: "yes"   # Société américaine et traitement hors Canada.
+
+encryption_standard: strong         # Chiffrement explicite au repos et en transit.
+authentication_support: partial     # MFA disponible, sans SSO institutionnel pour ce forfait.
+audit_logging: unknown              # Aucun journal de prompts/sorties accessible à l'organisation.
+incident_response: unknown          # Aucun engagement de notification propre à l'offre grand public.
+
+ip_ownership: customer              # L'utilisateur conserve l'Input et possède l'Output.
+applicable_law: foreign             # Droit californien.
+
+institutional_terms: acceptable     # Une offre institutionnelle universitaire existe explicitement.
+quebec_higher_ed_license: "yes"   # ChatGPT Edu vise les universités.

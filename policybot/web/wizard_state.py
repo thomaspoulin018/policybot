@@ -227,36 +227,164 @@ def compose_description(checked_labels: list[str], free_text: str) -> str:
     parts = list(checked_labels) + ([free_text] if free_text else [])
     return "; ".join(parts)
 
-def demo_wizard_state() -> WizardState:
-    return WizardState(
-        tool_name="ChatGPT",
-        version_plan_tarifaire="Plan Plus",
-        nb_utilisateurs_vises="25",
-        fonctions_roles="conseillers pédagogiques et agents administratifs",
-        niveau_maitrise_ti="intermédiaire",
-        formation_iag_recue="partielle",
-        acces_protege_a_ou_plus="non",
-        data_checked=["Information déjà publique", "Documents internes de travail"],
-        data_free_text="articles publics, notes de travail non sensibles",
-        usage_description="Résumer des documents publics et préparer des brouillons de réponses internes.",
-        mode="prompt",
-        frequence_utilisation="quelques fois par semaine",
-        nb_utilisateurs="8",
-        systemes_api_cibles="aucun système cible pour ce test",
-        result_use_checked=["Aide à la rédaction / diffusion interne"],
-        result_use_free_text="validation humaine avant toute diffusion",
-        automated_decisions=False,
-        besoin_affaires="réduire le temps de préparation des réponses récurrentes",
-        gains_qualitatifs="meilleure cohérence des brouillons et démarrage plus rapide",
-        gains_quantitatifs="environ 3 heures économisées par semaine",
-        alternatives_considerees="gabarits Word existants et recherche manuelle",
-        urgence_percue="modérée",
-        cout_annuel_par_utilisateur="300 $",
-        cout_total_annuel="2400 $",
-        mode_acquisition="achat_direct",
-        duree_contrat="12 mois",
-        responsable_budgetaire="Direction des services administratifs",
-    )
 
+class DemoWizardScenario(BaseModel):
+    id: str
+    title: str
+    description: str
+    expected_result: str
+    state: WizardState
+
+
+def _demo_state(**overrides) -> WizardState:
+    values = {
+        "tool_name": "ChatGPT",
+        "demandeur": "Marie Tremblay",
+        "unite": "Direction des services administratifs",
+        "version_plan_tarifaire": "Plan Plus",
+        "nb_utilisateurs_vises": "25",
+        "fonctions_roles": "conseillers pédagogiques et agents administratifs",
+        "niveau_maitrise_ti": "intermédiaire",
+        "formation_iag_recue": "partielle",
+        "acces_protege_a_ou_plus": "non",
+        "data_checked": ["Information déjà publique"],
+        "data_free_text": "articles et communiqués déjà publiés sur le Web",
+        "usage_description": "Préparer une veille et résumer des sources publiques.",
+        "mode": "prompt",
+        "frequence_utilisation": "quelques fois par semaine",
+        "nb_utilisateurs": "8",
+        "systemes_api_cibles": "aucun système cible pour ce test",
+        "result_use_checked": ["Aide à la rédaction / diffusion interne"],
+        "result_use_free_text": "validation humaine avant toute diffusion",
+        "automated_decisions": False,
+        "besoin_affaires": "réduire le temps de préparation des réponses récurrentes",
+        "gains_qualitatifs": "meilleure cohérence des brouillons et démarrage plus rapide",
+        "gains_quantitatifs": "environ 3 heures économisées par semaine",
+        "alternatives_considerees": "gabarits Word existants et recherche manuelle",
+        "urgence_percue": "modérée",
+        "cout_annuel_par_utilisateur": "300 $",
+        "cout_total_annuel": "2400 $",
+        "mode_acquisition": "achat_direct",
+        "duree_contrat": "12 mois",
+        "responsable_budgetaire": "Direction des services administratifs",
+    }
+    values.update(overrides)
+    return WizardState(**values)
+
+
+def demo_wizard_scenarios() -> list[DemoWizardScenario]:
+    return [
+        DemoWizardScenario(
+            id="public_permitted",
+            title="Usage public — parcours permis",
+            description="ChatGPT traite uniquement des sources déjà publiques.",
+            expected_result="Cible : matrice PERMIS et analyse ARP de l'outil.",
+            state=_demo_state(),
+        ),
+        DemoWizardScenario(
+            id="mcn_blocked",
+            title="Blocage par la matrice MCN",
+            description="Une IAG publique reçoit des données stratégiques et personnelles.",
+            expected_result="Cible : INTERDIT et recommandation Refuser, sans analyse ARP.",
+            state=_demo_state(
+                data_checked=[
+                    "Renseignements personnels",
+                    "Données stratégiques / confidentielles",
+                ],
+                data_free_text=(
+                    "prévisions budgétaires confidentielles avec les noms et coordonnées "
+                    "des personnes responsables"
+                ),
+                usage_description="Résumer des rapports financiers stratégiques internes.",
+                result_use_checked=["Prise de décision"],
+                besoin_affaires="accélérer l'analyse de rapports financiers confidentiels",
+            ),
+        ),
+        DemoWizardScenario(
+            id="arp_closed_circuit",
+            title="Analyse ARP — circuit fermé",
+            description="Copilot Entreprise traite des documents internes Protégé A.",
+            expected_result="Cible : matrice PERMIS, collecte contractuelle et grille ARP.",
+            state=_demo_state(
+                tool_name="Microsoft Copilot Entreprise",
+                version_plan_tarifaire="Licence institutionnelle Entreprise",
+                acces_protege_a_ou_plus="oui",
+                data_checked=["Documents internes de travail"],
+                data_free_text="notes de travail internes non publiques, sans renseignement personnel",
+                usage_description="Résumer des procédures administratives internes.",
+                besoin_affaires="faciliter la consultation des procédures internes",
+                mode_acquisition="contrat_existant",
+            ),
+        ),
+        DemoWizardScenario(
+            id="protege_c_governmental",
+            title="Protégé C — IAG gouvernementale",
+            description="Une plateforme gouvernementale contrôlée traite un secret hautement sensible.",
+            expected_result="Cible : cellule MCN OBLIGATOIRE et ÉFVP-R requise.",
+            state=_demo_state(
+                tool_name="Assistant gouvernemental sécurisé",
+                tool_type_override="gouvernementale",
+                version_plan_tarifaire="Environnement gouvernemental contrôlé",
+                acces_protege_a_ou_plus="oui",
+                data_checked=[
+                    "Renseignements personnels",
+                    "Données stratégiques / confidentielles",
+                ],
+                data_free_text=(
+                    "secrets de sécurité hautement sensibles, clés cryptographiques et "
+                    "renseignements personnels à accès extrêmement restreint"
+                ),
+                usage_description="Analyser un dossier de sécurité hautement sensible.",
+                result_use_checked=["Prise de décision"],
+                besoin_affaires="appuyer une analyse gouvernementale à accès restreint",
+                mode_acquisition="contrat_existant",
+            ),
+        ),
+        DemoWizardScenario(
+            id="automated_decision",
+            title="Décision automatisée",
+            description="Des données publiques alimentent une décision sans révision humaine.",
+            expected_result="Cible : risque élevé et recommandation Escalader.",
+            state=_demo_state(
+                usage_description="Classer automatiquement les demandes reçues selon leur priorité.",
+                result_use_checked=["Prise de décision"],
+                result_use_free_text="déclenchement automatique du prochain traitement",
+                automated_decisions=True,
+                besoin_affaires="réduire le délai de triage des demandes",
+            ),
+        ),
+        DemoWizardScenario(
+            id="multiple_usages",
+            title="Plusieurs usages — pire verdict",
+            description="Un usage public permis et un usage stratégique interdit partagent le même outil.",
+            expected_result="Cible : la synthèse globale conserve Refuser.",
+            state=_demo_state(
+                data_checked=["Données stratégiques / confidentielles"],
+                data_free_text="prévisions financières internes confidentielles",
+                usage_description="Résumer les prévisions budgétaires stratégiques.",
+                result_use_checked=["Prise de décision"],
+                saved_usages=[
+                    WizardUsageDraft(
+                        data_checked=["Information déjà publique"],
+                        data_free_text="communiqués publiés sur le site institutionnel",
+                        usage_description="Préparer une veille à partir de sources publiques.",
+                        mode="prompt",
+                        frequence_utilisation="hebdomadaire",
+                        nb_utilisateurs="8",
+                        result_use_checked=["Aide à la rédaction / diffusion interne"],
+                        result_use_free_text="validation humaine avant diffusion",
+                    )
+                ],
+                besoin_affaires="comparer une veille publique aux prévisions internes",
+            ),
+        ),
+    ]
+
+
+def demo_wizard_state(scenario_id: str = "public_permitted") -> WizardState:
+    for scenario in demo_wizard_scenarios():
+        if scenario.id == scenario_id:
+            return scenario.state.model_copy(deep=True)
+    raise KeyError(scenario_id)
 
 

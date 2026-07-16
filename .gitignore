@@ -229,3 +229,4 @@ __marimo__/
 
 
 configs/*
+!configs/policybot.yaml

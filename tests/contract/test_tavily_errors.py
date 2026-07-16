@@ -103,17 +103,20 @@ def test_search_returns_none_when_all_families_fail(tmp_path):
 
 
 def test_interview_uses_injected_tavily_terms_before_direct_fetch(tmp_path):
+    # La citation de la fixture est tirée de cette preuve : sans cet ancrage,
+    # l'extraction ferait légitimement retomber la valeur à `unknown`.
+    tavily_evidence = "Tavily evidence: customer content is not used for training."
     llm = FakeLLMProvider(json_responses=[
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(trains_on_input="no"),
+        *arp_extraction_responses(trains_on_input="no", evidence=tavily_evidence),
     ])
 
     def tavily_search(tool_name):
         assert tool_name == "ChatGPT"
         return ContractEvidence.from_single(FetchedTerms(
-            text="Tavily evidence: customer content is not used for training.",
+            text=tavily_evidence,
             source_url="https://example.test/tavily",
             fetched_at=date.today(),
         ))

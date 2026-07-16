@@ -1,12 +1,15 @@
 # tests/test_tracing.py
 import json
 import logging
+from datetime import datetime
+from pathlib import Path
+
 import pytest
 from policybot.models import RequestInfo
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
-from policybot.tracing import trace_step
+from policybot.tracing import _timestamped_log_path, trace_step
 from tests.helpers.arp_fixtures import arp_extraction_responses
 
 
@@ -38,6 +41,14 @@ def _make_interview(tmp_path, json_responses):
     llm = FakeLLMProvider(json_responses=json_responses)
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     return Interview(llm=llm, store=store, http_get=_terms_get)
+
+
+def test_default_log_path_is_timestamped():
+    path = _timestamped_log_path(
+        Path("logs"), datetime(2026, 7, 16, 14, 32, 8, 123456),
+    )
+
+    assert path == Path("logs/log_2026-07-16_14-32-08_123456.jsonl")
 
 
 def test_pipeline_steps_share_interview_id(tmp_path, trace_events):
@@ -119,3 +130,18 @@ def test_error_message_is_masked(trace_events):
     assert event["error"] == "RuntimeError"
     assert event["error_message"]["len"] > 0
     assert len(event["error_message"]["sha256"]) == 12
+
+
+def test_http_error_logs_status_without_exposing_message(trace_events):
+    sentinel = "jean.tremblay@example.com"
+
+    class ProviderError(RuntimeError):
+        status_code = 429
+
+    with pytest.raises(ProviderError):
+        with trace_step("test-interview", "llm_call"):
+            raise ProviderError(f"provider rejected request for {sentinel}")
+
+    event = trace_events[-1]
+    assert event["http_status"] == 429
+    assert sentinel not in json.dumps(event)

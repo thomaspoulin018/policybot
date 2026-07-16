@@ -10,6 +10,7 @@ from policybot.models import ContractFacts, ArpRecord, RiskFactor, IagType, Fact
 from policybot.contract.evidence import ContractEvidence
 from policybot.contract.families import FACT_FAMILIES, FactFamily, FactField
 from policybot.llm.provider import LLMProvider
+from policybot.prompts import get_prompt
 from policybot.criteria import ARP_CRITERIA
 from policybot.tracing import trace_step
 
@@ -32,16 +33,6 @@ _MATCH_STRIP = str.maketrans({
 def _normalize_for_match(text: str) -> str:
     """Forme comparable : minuscules, markdown/guillemets neutralisés, espaces écrasés."""
     return re.sub(r"\s+", " ", text.translate(_MATCH_STRIP).lower()).strip()
-
-_SYSTEM = (
-    "You extract normalized contract facts for an AI tool. Return only one JSON "
-    "object. Use only the allowed values listed in the prompt. Answer unknown "
-    "when the evidence does not allow a conclusion. Do not infer guarantees "
-    "that are not written in the evidence. For every field, quote verbatim the "
-    "sentence from the evidence that supports the value, and give the URL of the "
-    "source it came from. If you cannot quote the evidence, answer unknown."
-)
-
 
 class FieldExtraction(BaseModel):
     value: str = "unknown"
@@ -116,20 +107,13 @@ def _select_evidence_text(
 
 
 def _build_family_prompt(family: FactFamily, text: str) -> str:
-    lines = [
-        "Required JSON keys. Each key maps to an object "
-        '{"value": ..., "source_url": ..., "quote": ..., "confidence": 0..1}.',
-    ]
+    fields = []
     for field in family.fields:
-        lines.append(f"- {field.name}: {' | '.join(field.allowed_values)} — {field.hint}")
-    lines.append(
-        "Include every key even when unknown. `quote` must be copied verbatim from "
-        "the evidence; without a quote, answer unknown."
+        fields.append(f"- {field.name}: {' | '.join(field.allowed_values)} — {field.hint}")
+    return get_prompt("contract_extraction").render_user(
+        fields="\n".join(fields),
+        evidence=_select_evidence_text(text, family.keywords),
     )
-    lines.append("")
-    lines.append("Evidence:")
-    lines.append(_select_evidence_text(text, family.keywords))
-    return "\n".join(lines)
 
 
 def _quote_is_anchored(quote: str, evidence_text: str) -> bool:
@@ -196,12 +180,14 @@ def _extract_family(
 
     with trace_step(None, "arp_family_extraction", family=family.name) as extra:
         try:
+            prompt = get_prompt("contract_extraction")
             extracted = llm.complete_structured(
-                _SYSTEM,
+                prompt.render_system(),
                 _build_family_prompt(family, terms.text),
                 family_extraction_model(family),
                 run_name=f"extract_contract_facts:{family.name}",
                 tags=["arp_extraction", family.name],
+                task="contract_extraction",
             )
         except Exception as exc:  # noqa: BLE001 — une famille perdue ne doit pas tuer l'entrevue
             extra["outcome"] = "failed"

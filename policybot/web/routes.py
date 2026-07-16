@@ -23,7 +23,13 @@ from policybot.report.renderer import (
     write_pdf,
 )
 from policybot.web.ai_assist import guess_mode, guess_tool_type, suggest_options, IAG_TYPE_LABELS, LABEL_TO_IAG_TYPE
-from policybot.web.wizard_state import WizardState, WizardUsageDraft, compose_description, demo_wizard_state
+from policybot.web.wizard_state import (
+    WizardState,
+    WizardUsageDraft,
+    compose_description,
+    demo_wizard_scenarios,
+    demo_wizard_state,
+)
 
 _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
@@ -85,6 +91,7 @@ def _render_outil(request: Request, state: WizardState, errors: dict[str, str] |
     return templates.TemplateResponse(request, "wizard_outil.html.j2", {
         "active_step": "outil",
         "known_tools": load_known_tools(),
+        "demo_scenarios": demo_wizard_scenarios(),
         "state": state,
         "errors": errors or {},
     }, status_code=422 if errors else 200)
@@ -141,8 +148,13 @@ def wizard_home(request: Request):
 
 
 @router.post("/wizard/test-prefill", response_class=HTMLResponse)
-def wizard_test_prefill(request: Request):
-    state = demo_wizard_state()
+async def wizard_test_prefill(request: Request):
+    form = _group_form(await request.form())
+    scenario_id = str(form.get("scenario_id") or "public_permitted")
+    try:
+        state = demo_wizard_state(scenario_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Scénario de test inconnu") from None
     return _render_contexte_affaires(request, state)
 
 

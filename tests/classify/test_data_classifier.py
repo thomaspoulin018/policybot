@@ -15,6 +15,7 @@ def test_public_data_is_non_classifie():
     assert out.data_classification == "Non classifié"
     assert out.rens_personnels is False
     assert out.needs_officer_confirmation is False
+    assert llm.tasks == ["data_classification"]
 
 
 def test_personal_info_is_protege_b():

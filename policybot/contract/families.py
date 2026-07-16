@@ -1,12 +1,23 @@
-"""Les 16 faits contractuels, regroupés en familles qui partagent leurs sources.
+"""Contract facts loaded from the centralized YAML configuration.
 
-Donnée pure : une famille = une recherche Tavily + une extraction LLM. Les
-`keywords` ne servent qu'à découper une évidence trop longue pour le prompt
-(cf. arp._select_evidence_text) — ils ne décident de rien.
+One family represents one Tavily search followed by one LLM extraction. The
+``keywords`` only select relevant excerpts from long evidence; they never
+decide a verdict.
 """
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, Mapping
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_FACT_FAMILIES_PATH = _PROJECT_ROOT / "configs" / "fact_families.yaml"
 
 
 @dataclass(frozen=True)
@@ -24,182 +35,104 @@ class FactFamily:
     keywords: tuple[str, ...]
 
 
-FACT_FAMILIES: tuple[FactFamily, ...] = (
-    FactFamily(
-        name="entrainement_reutilisation",
-        query=(
-            "{tool} {vendor} terms customer content prompts used to train models "
-            "opt out reuse confidentiality human review"
-        ),
-        fields=(
-            FactField(
-                name="trains_on_input",
-                allowed_values=("yes", "no", "opt_out_available", "unknown"),
-                hint=(
-                    "opt_out_available quand le contenu soumis sert à l'entraînement "
-                    "par défaut mais qu'un contrôle de retrait est explicitement offert."
-                ),
+class _FactFieldConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    allowed_values: tuple[str, ...] = Field(min_length=1)
+    hint: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_allowed_values(self) -> "_FactFieldConfig":
+        if len(self.allowed_values) != len(set(self.allowed_values)):
+            raise ValueError(f"duplicate allowed value for field {self.name}")
+        if "unknown" not in self.allowed_values:
+            raise ValueError(f"field {self.name} must allow unknown")
+        return self
+
+
+class _FactFamilyConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    query: str = Field(min_length=1)
+    fields: tuple[_FactFieldConfig, ...] = Field(min_length=1)
+    keywords: tuple[str, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_query_and_keywords(self) -> "_FactFamilyConfig":
+        if "{tool}" not in self.query or "{vendor}" not in self.query:
+            raise ValueError(
+                f"family {self.name} query must contain {{tool}} and {{vendor}}"
+            )
+        for keyword in self.keywords:
+            try:
+                re.compile(keyword)
+            except re.error as exc:
+                raise ValueError(
+                    f"invalid keyword regex in family {self.name}: {keyword}"
+                ) from exc
+        return self
+
+
+class _FactFamiliesConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1] = 1
+    families: tuple[_FactFamilyConfig, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_names(self) -> "_FactFamiliesConfig":
+        family_names = [family.name for family in self.families]
+        if len(family_names) != len(set(family_names)):
+            raise ValueError("fact family names must be unique")
+
+        field_names = [
+            field.name for family in self.families for field in family.fields
+        ]
+        if len(field_names) != len(set(field_names)):
+            raise ValueError("fact field names must be globally unique")
+        return self
+
+
+def load_fact_families(
+    path: str | Path | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> tuple[FactFamily, ...]:
+    """Load, validate and freeze the configured contract fact families."""
+    environment = os.environ if env is None else env
+    configured_path = path or environment.get("POLICYBOT_FACT_FAMILIES_PATH")
+    config_path = Path(configured_path) if configured_path else DEFAULT_FACT_FAMILIES_PATH
+    if not config_path.is_absolute():
+        config_path = Path.cwd() / config_path
+    if not config_path.is_file():
+        raise FileNotFoundError(f"PolicyBot fact families file not found: {config_path}")
+
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"PolicyBot fact families must be a YAML mapping: {config_path}")
+    configured = _FactFamiliesConfig.model_validate(raw)
+
+    return tuple(
+        FactFamily(
+            name=family.name,
+            query=family.query,
+            fields=tuple(
+                FactField(
+                    name=field.name,
+                    allowed_values=field.allowed_values,
+                    hint=field.hint,
+                )
+                for field in family.fields
             ),
-            FactField(
-                name="reentraining_opt_out",
-                allowed_values=("yes", "no", "unknown"),
-                hint="yes seulement si un mécanisme empêche le réentraînement sur les entrées et sorties.",
-            ),
-            FactField(
-                name="contract_prohibits_reuse",
-                allowed_values=("yes", "no", "unknown"),
-                hint="yes seulement si le contrat interdit explicitement la réutilisation des données soumises.",
-            ),
-            FactField(
-                name="human_review",
-                allowed_values=("yes", "no", "unknown"),
-                hint="yes si le fournisseur peut faire réviser manuellement les données soumises.",
-            ),
-        ),
-        keywords=(
-            r"train(?:ing)?|model performance|opt[ -]?out|do not train",
-            r"human review|manual review|abuse monitoring|safety review|authorized personnel",
-            r"confidential|reuse|disclosure|data sharing",
-        ),
-    ),
-    FactFamily(
-        name="hebergement_retention",
-        query=(
-            "{tool} {vendor} privacy data retention deletion residency hosting region "
-            "subprocessors service providers"
-        ),
-        fields=(
-            FactField(
-                name="data_retention",
-                allowed_values=("none", "limited", "indefinite", "unknown"),
-                hint=(
-                    "limited quand la rétention existe mais est bornée ou réductible ; "
-                    "indefinite seulement en l'absence de toute limite de suppression."
-                ),
-            ),
-            FactField(
-                name="data_residency",
-                allowed_values=("canada", "us", "eu", "other", "unknown"),
-                hint="où les données soumises sont hébergées ou traitées.",
-            ),
-            FactField(
-                name="sub_processors",
-                allowed_values=("disclosed", "undisclosed", "unknown"),
-                hint="disclosed seulement si la liste des sous-traitants est contractuellement divulguée.",
-            ),
-            FactField(
-                name="foreign_vendor_dependency",
-                allowed_values=("yes", "no", "unknown"),
-                hint="yes si l'usage crée une dépendance envers un fournisseur étranger.",
-            ),
-        ),
-        keywords=(
-            r"data retention|retention|retain|deleted?.{0,80}30 days|within 30 days",
-            r"servers located|various jurisdictions|United States|residen|region|hosting",
-            r"sub[- ]?processors?|service providers?|vendors?",
-        ),
-    ),
-    FactFamily(
-        name="securite_technique",
-        query=(
-            "{tool} {vendor} security encryption in transit at rest SSO SAML MFA "
-            "audit logs incident response breach notification trust center"
-        ),
-        fields=(
-            FactField(
-                name="encryption_standard",
-                allowed_values=("strong", "partial", "none", "unknown"),
-                hint=(
-                    "strong seulement si le chiffrement en transit ET au repos sont "
-                    "explicites ; partial si un seul l'est."
-                ),
-            ),
-            FactField(
-                name="authentication_support",
-                allowed_values=("sso_mfa", "partial", "none", "unknown"),
-                hint=(
-                    "sso_mfa seulement si SSO ou SAML/OIDC ET MFA sont explicites ; "
-                    "partial si un seul l'est."
-                ),
-            ),
-            FactField(
-                name="audit_logging",
-                allowed_values=("prompt_output_accessible", "access_logs_only", "none", "unknown"),
-                hint=(
-                    "prompt_output_accessible seulement si l'auditabilité des prompts et "
-                    "sorties est explicite et accessible à l'organisation ; access_logs_only "
-                    "si seuls les journaux de connexion/admin sont explicites."
-                ),
-            ),
-            FactField(
-                name="incident_response",
-                allowed_values=("documented_with_notice", "documented_no_notice", "none", "unknown"),
-                hint=(
-                    "documented_with_notice seulement si un processus de réponse aux "
-                    "incidents ET un délai de notification sont documentés."
-                ),
-            ),
-        ),
-        keywords=(
-            r"encrypt|encryption|tls|aes",
-            r"sso|single sign-on|saml|oidc|mfa|multi-factor|identity provider",
-            r"audit logs?|access logs?|prompt logs?|output logs?|admin console|organization logs?",
-            r"incident response|security incident|breach notification|notify.{0,80}(hours|days)|sla",
-        ),
-    ),
-    FactFamily(
-        name="legal_pi",
-        query=(
-            "{tool} {vendor} terms of service governing law jurisdiction ownership "
-            "output generated content intellectual property"
-        ),
-        fields=(
-            FactField(
-                name="ip_ownership",
-                allowed_values=("customer", "vendor", "unclear", "unknown"),
-                hint="qui détient le contenu généré et les droits sur le contenu soumis.",
-            ),
-            FactField(
-                name="applicable_law",
-                allowed_values=("quebec_canada", "foreign", "unknown"),
-                hint="foreign quand le droit applicable est hors Québec/Canada.",
-            ),
-        ),
-        keywords=(
-            r"ownership|intellectual property|assign|right, title",
-            r"governing law|California law|jurisdiction",
-        ),
-    ),
-    FactFamily(
-        name="termes_institutionnels",
-        query=(
-            "{tool} {vendor} enterprise institutional education higher education "
-            "public sector license acceptable use DPA terms"
-        ),
-        fields=(
-            FactField(
-                name="institutional_terms",
-                allowed_values=("acceptable", "problematic", "unknown"),
-                hint=(
-                    "problematic si une clause bloque ou restreint matériellement l'usage "
-                    "institutionnel ; sinon unknown sauf acceptabilité explicite."
-                ),
-            ),
-            FactField(
-                name="quebec_higher_ed_license",
-                allowed_values=("yes", "no", "unknown"),
-                hint=(
-                    "yes seulement si l'usage éducatif, entreprise, secteur public ou "
-                    "institutionnel est explicitement permis."
-                ),
-            ),
-        ),
-        keywords=(
-            r"institutional use|enterprise terms|education|higher education|public sector|acceptable use",
-            r"license|licence|government|public sector|education institution|academic",
-        ),
-    ),
-)
+            keywords=family.keywords,
+        )
+        for family in configured.families
+    )
+
+
+FACT_FAMILIES: tuple[FactFamily, ...] = load_fact_families()
 
 ALL_FACT_FIELDS: tuple[FactField, ...] = tuple(
     field for family in FACT_FAMILIES for field in family.fields

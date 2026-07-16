@@ -71,9 +71,18 @@ body.is-loading .loading-overlay{opacity:1;visibility:visible;pointer-events:aut
 .loading-box span{font-size:.84rem;color:var(--muted)}
 @keyframes policybot-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.loading-overlay{transition:none}.loading-logo{animation:none}}
-.test-prefill-form{margin-top:.8rem}
-.test-prefill{background:#fff;color:var(--teal-dark);border:1.5px dashed var(--teal);border-radius:10px;padding:.65rem 1rem;font-size:.88rem;font-weight:700;cursor:pointer}
-.test-prefill:hover{background:#f4fafa}
+.test-scenarios{border-top:1px solid var(--line);margin-top:1.6rem;padding-top:1.4rem}
+.test-scenarios-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:1.2rem;margin-bottom:1rem}
+.test-scenarios-heading .kicker{margin-bottom:.25rem}
+.test-scenarios-heading h2{font-size:1.15rem;line-height:1.25}
+.test-scenarios-heading p{max-width:44ch;color:var(--muted);font-size:.86rem}
+.test-scenario-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
+.test-prefill-form{display:flex}
+.test-prefill{width:100%;display:flex;flex-direction:column;gap:.35rem;text-align:left;background:#fff;color:var(--ink);border:1.5px dashed #a8c9ce;border-radius:12px;padding:.9rem 1rem;font-size:.88rem;cursor:pointer;transition:border-color .18s ease,background .18s ease,transform .18s ease}
+.test-prefill strong{color:var(--teal-dark);font-size:.92rem}
+.test-prefill span{color:var(--muted);line-height:1.4}
+.test-prefill small{color:#7b4c1f;line-height:1.35}
+.test-prefill:hover{background:#f4fafa;border-color:var(--teal);transform:translateY(-1px)}
 .disclaimer{margin-top:1.5rem;text-align:center;font-size:.78rem;color:#a3adba}
 .disclaimer b{color:var(--red)}
 .report{border:1px solid var(--line);border-radius:10px;padding:1.5rem 1.8rem;margin-bottom:1.5rem}
@@ -100,6 +109,8 @@ body.is-loading .loading-overlay{opacity:1;visibility:visible;pointer-events:aut
   .grid{grid-template-columns:1fr}
   .main{padding:1.4rem 1rem 1.8rem}
   .section-card{padding:1rem}
+  .test-scenarios-heading{align-items:flex-start;flex-direction:column}
+  .test-scenario-grid{grid-template-columns:1fr}
   .foot{gap:1rem;align-items:stretch;flex-direction:column-reverse}
   .forward-actions{width:100%;flex-direction:column}
   .next,.back{width:100%}

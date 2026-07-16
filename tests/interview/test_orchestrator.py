@@ -3,15 +3,21 @@ from policybot.models import ArpRecord, ContractFacts, RequestInfo, Qualificatio
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
-from tests.helpers.arp_fixtures import arp_extraction_responses
+from tests.helpers.arp_fixtures import DEFAULT_EVIDENCE, arp_extraction_responses
 
 
 def _terms_get(url):
-    return "<html><body>We may use your content to train our models.</body></html>"
+    # Les CGU simulées incluent DEFAULT_EVIDENCE : l'extraction rejette toute
+    # valeur dont la citation n'est pas ancrée dans la preuve, et c'est de ce
+    # texte que `arp_extraction_responses` tire la sienne.
+    return (
+        "<html><body>We may use your content to train our models. "
+        f"{DEFAULT_EVIDENCE}</body></html>"
+    )
 
 
 def test_protege_b_into_public_tool_is_refused(tmp_path):
-    # LLM calls in order: (1) data classifier signals, (2) ARP contract facts.
+    # A matrix refusal must stop after the data-classifier call.
     llm = FakeLLMProvider(json_responses=[
         {"already_public": False, "contains_personal_info": True,
          "strategic_sensitive": True, "internal_nonpublic": True,
@@ -36,6 +42,8 @@ def test_protege_b_into_public_tool_is_refused(tmp_path):
     assert state.usages[0].matrix_result == "INTERDIT"
     assert state.usages[0].verdict == "Refuser"
     assert state.result_global.recommendation == "Refuser"
+    assert state.tools[0].arp is None
+    assert len(llm.calls) == 1  # Only the data classifier ran.
 
 
 def test_public_data_public_tool_authorised(tmp_path):
@@ -140,6 +148,60 @@ def test_assess_refreshes_stale_cached_arp_record(tmp_path):
     assert state.tools[0].arp.schema_version == 2
     assert state.tools[0].arp.contract_facts.trains_on_input == "no"
     assert store.get_arp("ChatGPT").schema_version == 2
+
+
+@pytest.mark.parametrize(
+    ("mode", "reuses_cached", "replaces_cached"),
+    [
+        ("read_write", True, False),
+        ("read_only", True, False),
+        ("refresh", False, True),
+        ("disabled", False, False),
+    ],
+)
+def test_arp_cache_modes(tmp_path, mode, reuses_cached, replaces_cached):
+    cached = ArpRecord(
+        tool_name="ChatGPT",
+        iag_type="publique",
+        contract_facts=ContractFacts(trains_on_input="yes"),
+        schema_version=2,
+        terms_snapshot="cached-marker",
+    )
+    store = PreApprovedStore(str(tmp_path / "pb.db"))
+    store.save_arp(cached)
+    responses = [] if reuses_cached else arp_extraction_responses()
+    llm = FakeLLMProvider(json_responses=responses)
+    itv = Interview(
+        llm=llm,
+        store=store,
+        http_get=_terms_get,
+        arp_cache_mode=mode,
+    )
+
+    resolved = itv._resolve_arp("ChatGPT", "publique")
+    stored = store.get_arp("ChatGPT")
+
+    assert (resolved.terms_snapshot == "cached-marker") is reuses_cached
+    assert (stored.terms_snapshot != "cached-marker") is replaces_cached
+    expected_tasks = [] if reuses_cached else ["contract_extraction"] * 5
+    assert llm.tasks == expected_tasks
+
+
+def test_read_only_cache_miss_fetches_without_saving(tmp_path):
+    store = PreApprovedStore(str(tmp_path / "pb.db"))
+    llm = FakeLLMProvider(json_responses=arp_extraction_responses())
+    itv = Interview(
+        llm=llm,
+        store=store,
+        http_get=_terms_get,
+        arp_cache_mode="read_only",
+    )
+
+    resolved = itv._resolve_arp("ChatGPT", "publique")
+
+    assert resolved.schema_version == 2
+    assert store.get_arp("ChatGPT") is None
+    assert llm.tasks == ["contract_extraction"] * 5
 
 def test_unregistered_tool_without_override_raises_unknown_tool_error(tmp_path):
     llm = FakeLLMProvider(json_responses=[])

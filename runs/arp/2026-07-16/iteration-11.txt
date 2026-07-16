@@ -1,0 +1,67 @@
+Extraction ARP — rapport du jeu d'évaluation
+
+## chatgpt
+field | expected | got | verdict
+--- | --- | --- | ---
+trains_on_input | opt_out_available | opt_out_available | MATCH
+reentraining_opt_out | yes | yes | MATCH
+contract_prohibits_reuse | no | no | MATCH
+human_review | yes | unknown | WRONG_ABSTAIN
+data_retention | limited | unknown | WRONG_ABSTAIN
+data_residency | us | other | WRONG_VALUE
+sub_processors | undisclosed | unknown | WRONG_ABSTAIN
+foreign_vendor_dependency | yes | yes | MATCH
+encryption_standard | strong | strong | MATCH
+authentication_support | partial | partial | MATCH
+audit_logging | unknown | prompt_output_accessible | WRONG_VALUE
+incident_response | unknown | unknown | MATCH
+ip_ownership | customer | customer | MATCH
+applicable_law | foreign | foreign | MATCH
+institutional_terms | acceptable | unknown | WRONG_ABSTAIN
+quebec_higher_ed_license | yes | unknown | WRONG_ABSTAIN
+
+## claude_ai
+field | expected | got | verdict
+--- | --- | --- | ---
+trains_on_input | opt_out_available | no | WRONG_VALUE
+reentraining_opt_out | yes | unknown | WRONG_ABSTAIN
+contract_prohibits_reuse | no | unknown | WRONG_ABSTAIN
+human_review | yes | yes | MATCH
+data_retention | limited | limited | MATCH
+data_residency | us | unknown | WRONG_ABSTAIN
+sub_processors | disclosed | disclosed | MATCH
+foreign_vendor_dependency | yes | unknown | WRONG_ABSTAIN
+encryption_standard | strong | strong | MATCH
+authentication_support | partial | partial | MATCH
+audit_logging | unknown | unknown | MATCH
+incident_response | unknown | unknown | MATCH
+ip_ownership | customer | customer | MATCH
+applicable_law | foreign | unknown | WRONG_ABSTAIN
+institutional_terms | acceptable | unknown | WRONG_ABSTAIN
+quebec_higher_ed_license | yes | unknown | WRONG_ABSTAIN
+
+## microsoft_copilot_entreprise
+field | expected | got | verdict
+--- | --- | --- | ---
+trains_on_input | no | no | MATCH
+reentraining_opt_out | yes | yes | MATCH
+contract_prohibits_reuse | yes | unknown | WRONG_ABSTAIN
+human_review | no | no | MATCH
+data_retention | limited | limited | MATCH
+data_residency | other | unknown | WRONG_ABSTAIN
+sub_processors | disclosed | disclosed | MATCH
+foreign_vendor_dependency | yes | yes | MATCH
+encryption_standard | strong | unknown | WRONG_ABSTAIN
+authentication_support | sso_mfa | unknown | WRONG_ABSTAIN
+audit_logging | prompt_output_accessible | unknown | WRONG_ABSTAIN
+incident_response | documented_with_notice | unknown | WRONG_ABSTAIN
+ip_ownership | customer | unknown | WRONG_ABSTAIN
+applicable_law | unknown | unknown | MATCH
+institutional_terms | acceptable | unknown | WRONG_ABSTAIN
+quebec_higher_ed_license | yes | yes | MATCH
+
+## Résumé agrégé
+MATCH: 25
+WRONG_ABSTAIN: 20
+WRONG_VALUE: 3
+**Taux WRONG_VALUE: 6.2%**
