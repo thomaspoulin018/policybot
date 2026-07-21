@@ -6,6 +6,7 @@ import unicodedata
 import uuid
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -53,6 +54,28 @@ CONTEXT_FIELDS = {
     "cout_total_annuel", "mode_acquisition", "duree_contrat", "responsable_budgetaire",
 }
 
+_FACT_LABELS = {
+    "training_default": "Utilisation des données pour l’entraînement",
+    "opt_out_available": "Option de retrait de l’entraînement",
+    "opt_out_confirmed_enabled": "Option de retrait confirmée active",
+    "data_retention": "Conservation des données",
+    "data_residency": "Localisation des données",
+    "sub_processors": "Sous-traitants",
+    "provider_human_access": "Accès humain du fournisseur",
+    "encryption_standard": "Chiffrement des données",
+    "ip_ownership": "Propriété intellectuelle",
+    "applicable_law": "Juridiction applicable",
+    "foreign_vendor_dependency": "Dépendance envers un fournisseur étranger",
+    "contract_prohibits_reuse": "Interdiction contractuelle de réutilisation",
+    "authentication_support": "Authentification",
+    "audit_logging": "Journalisation",
+    "institutional_terms_available": "Conditions institutionnelles",
+    "dpa_available": "Accord de traitement des données",
+    "institutional_use_restricted": "Restriction d’usage institutionnel",
+    "quebec_higher_ed_license": "Compatibilité avec l’enseignement supérieur québécois",
+    "incident_response": "Gestion des incidents",
+}
+
 
 def _hidden_fields_for(state: WizardState, current_fields: set[str]) -> list[tuple[str, str]]:
     return [(name, value) for name, value in state.to_hidden_fields() if name not in current_fields]
@@ -85,6 +108,35 @@ def _group_form(form) -> dict:
 
 def _required_text(value: object, message: str) -> str | None:
     return message if not str(value or "").strip() else None
+
+
+def _safe_source_url(value: str | None) -> str | None:
+    """Expose uniquement un lien Web sûr provenant d'une preuve collectée."""
+    if not value:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return value
+
+
+def _contract_evidence_for_user(result_state) -> list[dict[str, str]]:
+    """Prépare les preuves acceptées pour la synthèse lisible par l'employé."""
+    evidence: list[dict[str, str]] = []
+    for tool in result_state.tools:
+        if tool.arp is None:
+            continue
+        for field_name, proof in tool.arp.contract_facts.evidence.items():
+            source_url = _safe_source_url(proof.source_url)
+            if proof.outcome != "accepted" or not proof.quote or not source_url:
+                continue
+            evidence.append({
+                "tool_name": tool.name,
+                "label": _FACT_LABELS.get(field_name, field_name.replace("_", " ")),
+                "quote": proof.quote,
+                "source_url": source_url,
+            })
+    return evidence
 
 
 def _render_outil(request: Request, state: WizardState, errors: dict[str, str] | None = None):
@@ -430,6 +482,8 @@ async def wizard_contexte_affaires_submit(request: Request):
     return templates.TemplateResponse(request, "resultat.html.j2", {
         "active_step": "resultat",
         "report_html": report_html,
+        "recommendation": result_state.result_global.recommendation,
+        "contract_evidence": _contract_evidence_for_user(result_state),
         "pdf_filename": pdf_path.name if pdf_path else None,
         "pdf_error": pdf_error,
         "docx_filename": docx_path.name if docx_path else None,

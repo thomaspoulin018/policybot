@@ -3,6 +3,27 @@
 {% block content %}
 <div class="kicker">Resultat</div>
 <div class="assist"><img src="/static/friendly.png" alt=""> Voici ce que je recommande - l'agent SI aura le dernier mot.</div>
+<section class="recommendation-summary">
+  <h1>Recommandation préliminaire : {{ recommendation }}</h1>
+  <p>PolicyBot formule une recommandation. Seule l’autorité désignée peut autoriser l’usage.</p>
+</section>
+<section class="evidence-summary" aria-labelledby="evidence-title">
+  <h2 id="evidence-title">Sur quoi repose cette recommandation ?</h2>
+  <p>Voici les éléments contractuels vérifiés automatiquement. Chaque conclusion est accompagnée de sa citation et de la source consultée.</p>
+  {% if contract_evidence %}
+  <div class="evidence-list">
+    {% for item in contract_evidence %}
+    <article class="evidence-card">
+      <h3>{{ item.label }}</h3>
+      <blockquote>« {{ item.quote }} »</blockquote>
+      <a href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">{{ item.source_url }}</a>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="evidence-empty">Aucune preuve contractuelle vérifiée n’a été recueillie pour cette évaluation. L’autorité désignée devra confirmer les conditions applicables.</p>
+  {% endif %}
+</section>
 {% if pdf_filename %}
 <div class="export-panel">
   <a class="download" href="/output/pdf/{{ pdf_filename }}" download>Telecharger le PDF</a>

@@ -20,7 +20,7 @@ from policybot.contract.families import FACT_FAMILIES, FactFamily, FactField
 from policybot.llm.provider import LLMProvider
 from policybot.prompts import get_prompt
 from policybot.criteria import ARP_CRITERIA
-from policybot.tracing import trace_step
+from policybot.tracing import mask_text, trace_step
 
 CURRENT_ARP_SCHEMA_VERSION = 3
 
@@ -233,18 +233,77 @@ def _unresolved(
     }
 
 
+def _trace_fact_decision(
+    family: FactFamily,
+    field: FactField,
+    proof: FactEvidence,
+    *,
+    raw: FieldExtraction | None = None,
+    documents: list[EvidenceDocument] = (),
+) -> None:
+    """Log one extraction decision without exposing contract or model text."""
+    source_url = raw.source_url if raw else None
+    quote = (raw.quote or "").strip() if raw else ""
+    source_found = any(document.url == source_url for document in documents)
+    model_value = None
+    invalid_model_value = None
+    if raw is not None:
+        if raw.value in field.allowed_values:
+            model_value = raw.value
+        else:
+            # A free-form model value can contain arbitrary text, so mask it.
+            model_value = "invalid"
+            invalid_model_value = mask_text(raw.value)
+
+    with trace_step(
+        None,
+        "arp_fact_extraction",
+        family=family.name,
+        fact=field.name,
+    ) as extra:
+        extra.update({
+            "model_value": model_value,
+            "invalid_model_value": invalid_model_value,
+            "model_confidence": raw.confidence if raw else None,
+            "citation": mask_text(quote) if quote else None,
+            "source_url_supplied": bool(source_url),
+            "source_url_in_collected_evidence": source_found,
+            "final_value": proof.value,
+            "outcome": proof.outcome,
+            # Notes are controlled PolicyBot messages, never source text.
+            "reason": proof.note,
+        })
+
+
+def _trace_family_decisions(
+    family: FactFamily,
+    proofs: dict[str, FactEvidence],
+    *,
+    raw_extraction: BaseModel | None = None,
+    documents: list[EvidenceDocument] = (),
+) -> dict[str, FactEvidence]:
+    for field in family.fields:
+        raw = getattr(raw_extraction, field.name) if raw_extraction else None
+        _trace_fact_decision(
+            family, field, proofs[field.name], raw=raw, documents=documents,
+        )
+    return proofs
+
+
 def _extract_family(
     family: FactFamily, evidence: ContractEvidence, llm: LLMProvider,
 ) -> dict[str, FactEvidence]:
     if family.name in evidence.failed_families:
-        return _unresolved(
+        proofs = _unresolved(
             family, "collecte Tavily échouée", "collection_failure",
         )
+        return _trace_family_decisions(family, proofs)
     documents = evidence.documents_for_family(family.name)
     if not documents:
-        return _unresolved(
+        proofs = _unresolved(
             family, "aucune évidence collectée", "evidence_missing",
         )
+        return _trace_family_decisions(family, proofs)
 
     with trace_step(None, "arp_family_extraction", family=family.name) as extra:
         try:
@@ -260,15 +319,19 @@ def _extract_family(
         except Exception as exc:  # noqa: BLE001 — une famille perdue ne doit pas tuer l'entrevue
             extra["outcome"] = "failed"
             extra["error"] = type(exc).__name__
-            return _unresolved(
+            proofs = _unresolved(
                 family, "extraction LLM échouée", "llm_failure",
             )
+            return _trace_family_decisions(family, proofs, documents=documents)
         extra["outcome"] = "ok"
 
-    return {
+    proofs = {
         field.name: _accept(field, getattr(extracted, field.name), documents)
         for field in family.fields
     }
+    return _trace_family_decisions(
+        family, proofs, raw_extraction=extracted, documents=documents,
+    )
 
 
 def extract_contract_facts(evidence: ContractEvidence, llm: LLMProvider) -> ContractFacts:
@@ -346,7 +409,7 @@ def build_arp(
     facts: ContractFacts,
     offering: ContractOfferingIdentity | None = None,
 ) -> ArpRecord:
-    """Produce the 8 Partie A criteria PolicyBot can derive automatically."""
+    """Produce the 13 Partie A criteria PolicyBot can derive automatically."""
     criteria: list[RiskFactor] = []
 
     residency_risk = "F" if facts.data_residency == "quebec" else "M"
@@ -390,7 +453,20 @@ def build_arp(
         category="Souveraineté et hébergement des données",
         criterion="Garanties contractuelles de non-divulgation",
         inherent=reuse_risk, residual=reuse_risk, origin="rule",
-        observations=_observation(facts, "contract_prohibits_reuse"),
+        observations=" | ".join((
+            _observation(facts, "contract_prohibits_reuse"),
+            _observation(facts, "provider_human_access"),
+        )),
+    ))
+
+    authentication_risk = {
+        "sso_mfa": "F",
+        "partial": "M",
+    }.get(facts.authentication_support, "E")
+    criteria.append(RiskFactor(
+        category="Sécurité de l'information", criterion="Mécanismes d'authentification",
+        inherent=authentication_risk, residual=authentication_risk, origin="rule",
+        observations=_observation(facts, "authentication_support"),
     ))
 
     encryption_risk = "E" if facts.encryption_standard in ("none", "partial", "unknown") else "F"
@@ -398,6 +474,16 @@ def build_arp(
         category="Sécurité de l'information", criterion="Chiffrement des données",
         inherent=encryption_risk, residual=encryption_risk, origin="rule",
         observations=_observation(facts, "encryption_standard"),
+    ))
+
+    audit_logging_risk = {
+        "prompt_output_accessible": "F",
+        "access_logs_only": "M",
+    }.get(facts.audit_logging, "E")
+    criteria.append(RiskFactor(
+        category="Sécurité de l'information", criterion="Journalisation et traçabilité",
+        inherent=audit_logging_risk, residual=audit_logging_risk, origin="rule",
+        observations=_observation(facts, "audit_logging"),
     ))
 
     opt_out_risk = "F" if training_protected else "E"
@@ -410,11 +496,54 @@ def build_arp(
         )),
     ))
 
+    incident_response_risk = {
+        "documented_with_notice": "F",
+        "documented_no_notice": "M",
+    }.get(facts.incident_response, "E")
+    criteria.append(RiskFactor(
+        category="Sécurité de l'information", criterion="Gestion des incidents",
+        inherent=incident_response_risk, residual=incident_response_risk, origin="rule",
+        observations=_observation(facts, "incident_response"),
+    ))
+
     ip_risk = "E" if facts.ip_ownership in ("vendor", "unclear", "unknown") else "F"
     criteria.append(RiskFactor(
         category="Conformité légale et contractuelle", criterion="Propriété intellectuelle",
         inherent=ip_risk, residual=ip_risk, origin="rule",
         observations=_observation(facts, "ip_ownership"),
+    ))
+
+    if facts.institutional_use_restricted == "yes":
+        acceptable_terms_risk = "E"
+    elif (
+        facts.institutional_terms_available == "yes"
+        and facts.dpa_available == "yes"
+    ):
+        acceptable_terms_risk = "F"
+    elif (
+        facts.institutional_terms_available == "yes"
+        or facts.dpa_available == "yes"
+    ):
+        acceptable_terms_risk = "M"
+    else:
+        acceptable_terms_risk = "E"
+    criteria.append(RiskFactor(
+        category="Conformité légale et contractuelle",
+        criterion="Conditions d'utilisation acceptables",
+        inherent=acceptable_terms_risk, residual=acceptable_terms_risk, origin="rule",
+        observations=" | ".join((
+            _observation(facts, "institutional_terms_available"),
+            _observation(facts, "dpa_available"),
+            _observation(facts, "institutional_use_restricted"),
+        )),
+    ))
+
+    license_risk = "F" if facts.quebec_higher_ed_license == "yes" else "E"
+    criteria.append(RiskFactor(
+        category="Conformité légale et contractuelle",
+        criterion="Compatibilité licence usage gouvernemental",
+        inherent=license_risk, residual=license_risk, origin="rule",
+        observations=_observation(facts, "quebec_higher_ed_license"),
     ))
 
     assert {factor.criterion for factor in criteria} <= {

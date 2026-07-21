@@ -1,4 +1,5 @@
 import re
+from datetime import date
 from html import unescape
 from io import BytesIO
 import zipfile
@@ -6,7 +7,7 @@ import xml.etree.ElementTree as ET
 from policybot.models import InterviewState, RequestInfo, Usage, ToolRef, GlobalResult, ContractFacts, QualificationProfile, ContractOfferingIdentity, FactEvidence
 from policybot.contract.arp import build_arp
 from policybot.grille.engine import evaluate_usage
-from policybot.report.renderer import docx_filename, render_docx, pdf_filename, render_html, write_docx, write_pdf
+from policybot.report.renderer import _auto_observation, docx_filename, render_docx, pdf_filename, render_html, write_docx, write_pdf
 
 _TIMESTAMP = r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}"
 
@@ -34,6 +35,8 @@ def _state():
                 source_url="https://example.test/contracts",
                 quote="The institutional contract explicitly documents this control.",
                 confidence=0.9,
+                source_collected_at=date(2026, 7, 20),
+                source_sha256="should-not-appear-in-observations",
             )
             for field_name, value in {
                 "authentication_support": "sso_mfa",
@@ -129,17 +132,45 @@ def test_render_contains_automated_observations_for_manual_arp_criteria():
     assert "Gestion des incidents" in html
     assert "Conditions d'utilisation acceptables" in html
     assert "Compatibilité licence usage gouvernemental" in html
-    assert "Réponse automatisée: SSO/MFA et intégration IdP documentés." in html
-    assert "Réponse automatisée: Journaux d'accès et audit prompts/sorties accessibles" in html
+    assert "Constat pré-rempli (à valider) : SSO/MFA et intégration IdP documentés." in html
+    assert "Constat pré-rempli (à valider) : Journaux d'accès et audit prompts/sorties accessibles" in html
     assert "restriction d'usage institutionnel détectée" in html
-    assert "Réponse automatisée: À confirmer; preuve insuffisante sur la compatibilité" in html
-    assert "Réponse automatisée: Plan de réponse aux incidents et notification de brèche" in html
-    for field_name in (
-        "authentication_support", "audit_logging", "incident_response",
-        "institutional_terms_available", "quebec_higher_ed_license",
-    ):
-        assert f"citation ({field_name}):" in html
-        assert f"URL ({field_name}): https://example.test/contracts" in html
+    assert "Constat pré-rempli (à valider) : À confirmer; preuve insuffisante sur la compatibilité" in html
+    assert "Constat pré-rempli (à valider) : Plan de réponse aux incidents et notification de brèche" in html
+    assert "The institutional contract explicitly documents this control." in html
+    assert "Source : example.test/contracts — vérifiée le 20 juillet 2026" in html
+    assert "Réponse automatisée" not in html
+    assert "should-not-appear-in-observations" not in html
+
+
+def test_automated_observation_deduplicates_shared_evidence_and_hides_technical_fields():
+    facts = ContractFacts(
+        institutional_terms_available="yes",
+        dpa_available="yes",
+        institutional_use_restricted="no",
+        evidence={
+            field_name: FactEvidence(
+                value="yes",
+                source_url="https://example.test/contracts",
+                quote="One shared contractual proof.",
+                source_collected_at=date(2026, 7, 20),
+                source_sha256="not-for-a-human-reader",
+            )
+            for field_name in (
+                "institutional_terms_available",
+                "dpa_available",
+                "institutional_use_restricted",
+            )
+        },
+    )
+
+    observation = str(_auto_observation("Constat regroupé.", facts, tuple(facts.evidence)))
+
+    assert observation.count("One shared contractual proof.") == 1
+    assert observation.count("Source : example.test/contracts") == 1
+    assert "20 juillet 2026" in observation
+    assert "not-for-a-human-reader" not in observation
+    assert "institutional_terms_available=yes" not in observation
 
 def test_render_contains_partie_c_conditions():
     state = _state()

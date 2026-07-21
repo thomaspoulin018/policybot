@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan : Compléter la Partie A de l'ARP (8 → 13 critères)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.6; color: #1a1a2e;
+    background: #f4f6fb; padding: 2rem;
+  }
+  .container { max-width: 940px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.75rem; font-weight: 700; }
+  header p  { margin-top: .5rem; opacity: .8; font-size: .98rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.1rem; font-size: .85rem; opacity: .7; }
+
+  .section {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+  }
+  .section h2 {
+    font-size: 1.1rem; font-weight: 700; color: #16213e;
+    border-left: 4px solid #4361ee; padding-left: .75rem; margin-bottom: 1rem;
+  }
+  .section h3 { font-size: .98rem; color: #16213e; margin: 1.1rem 0 .5rem; }
+  .section p { margin-bottom: .6rem; }
+
+  ol.steps { padding-left: 1.25rem; }
+  ol.steps li { margin-bottom: .55rem; }
+  ol.steps li strong { color: #4361ee; }
+  ul.plain { padding-left: 1.25rem; }
+  ul.plain li { margin-bottom: .35rem; }
+
+  code, .mono {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: .86rem; background: #f0f2f8; padding: .08rem .35rem; border-radius: 4px;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; margin-top: .5rem; }
+  th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .7rem; vertical-align: top; }
+  td { padding: .5rem .7rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  .badge { display: inline-block; font-size: .74rem; font-weight: 700; padding: .12rem .5rem; border-radius: 99px; }
+  .b-F { background: #dcfce7; color: #15803d; }
+  .b-M { background: #fef9c3; color: #a16207; }
+  .b-E { background: #fee2e2; color: #b91c1c; }
+  .b-new { background: #dbeafe; color: #1d4ed8; margin-left:.4rem; }
+
+  .callout {
+    border-left: 4px solid #4361ee; background: #f0f4ff;
+    padding: .75rem 1rem; border-radius: 0 8px 8px 0; font-size: .9rem; margin-top: .75rem;
+  }
+  .callout.warn { border-color: #f59e0b; background: #fffbeb; }
+  .callout.danger { border-color: #ef4444; background: #fef2f2; }
+
+  .code-block {
+    background: #0f172a; color: #e2e8f0; padding: 1rem 1.2rem; border-radius: 8px;
+    font-family: "SFMono-Regular", Consolas, monospace; font-size: .82rem;
+    white-space: pre; overflow-x: auto; margin-top: .5rem;
+  }
+  .decision { font-size: .82rem; color: #475569; font-style: italic; margin-top: .4rem; }
+  .kv { display:flex; gap:.5rem; flex-wrap:wrap; margin:.3rem 0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Compléter la Partie A de l'ARP</h1>
+    <p>Câbler les 8 faits contractuels inutilisés dans les 5 dernières lignes de la grille : <code>build_arp()</code> passe de 8 à 13 critères officiels.</p>
+    <div class="meta">
+      <span>Date : 2026-07-20</span>
+      <span>Cible : <code>policybot/contract/arp.py</code> · <code>build_arp()</code></span>
+      <span>Approche : TDD</span>
+    </div>
+  </header>
+
+  <!-- OBJECTIF -->
+  <div class="section">
+    <h2>Objectif</h2>
+    <p>Aujourd'hui <code>build_arp()</code> produit <strong>8 lignes</strong> sur les <strong>13 critères ARP officiels</strong> de <code>criteria.py:ARP_CRITERIA</code>. Les 8 faits restants sont bien extraits mais jamais traduits en ligne d'ARP. Cette itération les câble pour atteindre une Partie A complète.</p>
+
+    <h3>Correspondance à implémenter</h3>
+    <table>
+      <tr><th>Critère ARP manquant</th><th>Catégorie</th><th>Fait(s) source</th></tr>
+      <tr><td>Mécanismes d'authentification <span class="badge b-new">NOUVEAU</span></td><td>Sécurité de l'information</td><td><code>authentication_support</code></td></tr>
+      <tr><td>Journalisation et traçabilité <span class="badge b-new">NOUVEAU</span></td><td>Sécurité de l'information</td><td><code>audit_logging</code></td></tr>
+      <tr><td>Gestion des incidents <span class="badge b-new">NOUVEAU</span></td><td>Sécurité de l'information</td><td><code>incident_response</code></td></tr>
+      <tr><td>Conditions d'utilisation acceptables <span class="badge b-new">NOUVEAU</span></td><td>Conformité légale et contractuelle</td><td><code>institutional_terms_available</code>, <code>dpa_available</code>, <code>institutional_use_restricted</code></td></tr>
+      <tr><td>Compatibilité licence usage gouvernemental <span class="badge b-new">NOUVEAU</span></td><td>Conformité légale et contractuelle</td><td><code>quebec_higher_ed_license</code></td></tr>
+    </table>
+    <div class="callout">Le 8<sup>e</sup> fait restant, <code>provider_human_access</code>, n'a pas de critère dédié dans la Grille : il sera ajouté <strong>en observation</strong> sur la ligne existante « Garanties contractuelles de non-divulgation » — sans nouvelle ligne ni changement de niveau.</div>
+  </div>
+
+  <!-- DECISIONS -->
+  <div class="section">
+    <h2>Décisions validées</h2>
+    <table>
+      <tr><th>Sujet</th><th>Décision</th></tr>
+      <tr><td>Portée</td><td>Les 5 critères ajoutés <strong>d'un seul coup</strong> (8 → 13 lignes).</td></tr>
+      <tr><td>Barèmes F/M/E</td><td>Je propose les barèmes ci-dessous (dérivés des valeurs de chaque fait), <strong>à valider ligne par ligne</strong> avant implémentation.</td></tr>
+      <tr><td>Niveau <span class="badge b-M">M</span></td><td>Introduit pour les valeurs intermédiaires. <code>RiskLetter = F | M | E | C</code> l'autorise déjà (<code>models.py:11</code>).</td></tr>
+      <tr><td><code>provider_human_access</code></td><td>En observation sur « Garanties de non-divulgation », pas de ligne dédiée.</td></tr>
+      <tr><td>Tests</td><td><strong>TDD</strong> : tests écrits d'abord, en étendant <code>tests/contract/test_arp.py</code>.</td></tr>
+      <tr><td><code>inherent</code> / <code>residual</code></td><td>Les nouvelles lignes suivent l'existant : <code>residual = inherent</code>, <code>origin = "rule"</code>.</td></tr>
+    </table>
+  </div>
+
+  <!-- BAREMES -->
+  <div class="section">
+    <h2>Barèmes proposés — à valider</h2>
+    <p class="decision">Convention existante : <span class="badge b-F">F</span> Faible · <span class="badge b-M">M</span> Modéré · <span class="badge b-E">E</span> Élevé. La valeur <code>unknown</code> est toujours traitée de façon conservatrice (E).</p>
+
+    <h3>1 · Mécanismes d'authentification — <code>authentication_support</code></h3>
+    <table>
+      <tr><th>Valeur du fait</th><th>Niveau</th><th>Justification</th></tr>
+      <tr><td><code>sso_mfa</code></td><td><span class="badge b-F">F</span></td><td>SSO/SAML/OIDC + MFA explicites, intégrable à l'infra institutionnelle.</td></tr>
+      <tr><td><code>partial</code></td><td><span class="badge b-M">M</span></td><td>Un seul des deux (SSO seul, ou MFA seul).</td></tr>
+      <tr><td><code>none</code> / <code>unknown</code></td><td><span class="badge b-E">E</span></td><td>Aucune authentification forte prouvée.</td></tr>
+    </table>
+
+    <h3>2 · Journalisation et traçabilité — <code>audit_logging</code></h3>
+    <table>
+      <tr><th>Valeur du fait</th><th>Niveau</th><th>Justification</th></tr>
+      <tr><td><code>prompt_output_accessible</code></td><td><span class="badge b-F">F</span></td><td>Audit des entrées (prompts) et sorties accessible à l'organisation.</td></tr>
+      <tr><td><code>access_logs_only</code></td><td><span class="badge b-M">M</span></td><td>Journaux d'accès/admin seulement, sans audit du contenu.</td></tr>
+      <tr><td><code>none</code> / <code>unknown</code></td><td><span class="badge b-E">E</span></td><td>Aucune journalisation prouvée.</td></tr>
+    </table>
+
+    <h3>3 · Gestion des incidents — <code>incident_response</code></h3>
+    <table>
+      <tr><th>Valeur du fait</th><th>Niveau</th><th>Justification</th></tr>
+      <tr><td><code>documented_with_notice</code></td><td><span class="badge b-F">F</span></td><td>Processus documenté + délai de notification de brèche.</td></tr>
+      <tr><td><code>documented_no_notice</code></td><td><span class="badge b-M">M</span></td><td>Processus documenté mais sans délai de notification.</td></tr>
+      <tr><td><code>none</code> / <code>unknown</code></td><td><span class="badge b-E">E</span></td><td>Aucun plan de réponse prouvé.</td></tr>
+    </table>
+
+    <h3>4 · Conditions d'utilisation acceptables — 3 faits agrégés</h3>
+    <p class="decision">Règle validée : une clause bloquante l'emporte, sinon niveau gradué sur la présence de termes institutionnels + DPA.</p>
+    <table>
+      <tr><th>Condition (évaluée dans l'ordre)</th><th>Niveau</th></tr>
+      <tr><td><code>institutional_use_restricted == "yes"</code> (clause bloquante)</td><td><span class="badge b-E">E</span></td></tr>
+      <tr><td>sinon <code>institutional_terms_available == "yes"</code> <strong>ET</strong> <code>dpa_available == "yes"</code></td><td><span class="badge b-F">F</span></td></tr>
+      <tr><td>sinon <code>institutional_terms_available == "yes"</code> <strong>OU</strong> <code>dpa_available == "yes"</code></td><td><span class="badge b-M">M</span></td></tr>
+      <tr><td>sinon (aucun des deux, ou <code>unknown</code>)</td><td><span class="badge b-E">E</span></td></tr>
+    </table>
+    <div class="callout warn">Les 3 faits apparaissent tous dans l'<code>observations</code> (via <code>_observation()</code>), même si un seul détermine le niveau — l'officier voit la preuve complète.</div>
+
+    <h3>5 · Compatibilité licence usage gouvernemental — <code>quebec_higher_ed_license</code></h3>
+    <table>
+      <tr><th>Valeur du fait</th><th>Niveau</th><th>Justification</th></tr>
+      <tr><td><code>yes</code></td><td><span class="badge b-F">F</span></td><td>Usage institutionnel / enseignement supérieur explicitement permis.</td></tr>
+      <tr><td><code>no</code> / <code>unknown</code></td><td><span class="badge b-E">E</span></td><td>Non permis, ou silence contractuel (conservateur).</td></tr>
+    </table>
+
+    <h3>Retouche · Garanties de non-divulgation (ligne existante)</h3>
+    <p>Ajouter <code>provider_human_access</code> à la chaîne d'<code>observations</code> de la ligne existante. Le <strong>niveau reste inchangé</strong> (piloté par <code>contract_prohibits_reuse</code>).</p>
+    <div class="code-block">observations=" | ".join((
+    _observation(facts, "contract_prohibits_reuse"),
+    _observation(facts, "provider_human_access"),
+))</div>
+  </div>
+
+  <!-- PLAN TDD -->
+  <div class="section">
+    <h2>Plan d'exécution (TDD)</h2>
+    <ol class="steps">
+      <li><strong>Étape 0 — Valider les barèmes :</strong> confirmer/corriger les 5 tables ci-dessus. Rien n'est codé avant.</li>
+      <li><strong>Étape 1 — Rouge :</strong> ajouter les tests dans <code>tests/contract/test_arp.py</code> (liste plus bas). Ils échouent (lignes absentes).</li>
+      <li><strong>Étape 2 — Mettre à jour le test verrou :</strong> <code>test_build_arp_generates_eight_criteria_rows</code> attend <code>len == 8</code> et un set figé de 8 noms. Le passer à <strong>13</strong> et compléter le set. <span class="badge b-M">à ne pas oublier</span></li>
+      <li><strong>Étape 3 — Vert :</strong> ajouter les 5 blocs <code>RiskFactor</code> dans <code>build_arp()</code> (<code>arp.py:343</code>) + la retouche « non-divulgation ». Faire passer les tests.</li>
+      <li><strong>Étape 4 — Refactor :</strong> factoriser le mapping valeur→niveau si la répétition le justifie (ex. petit helper <code>_grade(value, {...})</code>), sans changer le comportement.</li>
+      <li><strong>Étape 5 — Vérifier :</strong> suite complète verte + un contrat réel de bout en bout pour lecture des 13 lignes.</li>
+    </ol>
+
+    <h3>Tests TDD à écrire (Étape 1)</h3>
+    <ul class="plain">
+      <li><code>test_build_arp_generates_thirteen_criteria_rows</code> — set complet des 13 noms.</li>
+      <li><code>test_authentication_sso_mfa_is_F</code> · <code>_partial_is_M</code> · <code>_none_is_E</code></li>
+      <li><code>test_audit_logging_prompt_output_is_F</code> · <code>_access_logs_only_is_M</code> · <code>_none_is_E</code></li>
+      <li><code>test_incident_response_with_notice_is_F</code> · <code>_no_notice_is_M</code> · <code>_none_is_E</code></li>
+      <li><code>test_conditions_restricted_is_E</code> · <code>_terms_and_dpa_is_F</code> · <code>_terms_only_is_M</code> · <code>_neither_is_E</code></li>
+      <li><code>test_licence_permise_is_F</code> · <code>_non_permise_is_E</code></li>
+      <li><code>test_defaults_conservative</code> — <code>ContractFacts()</code> vide → les 5 nouvelles lignes en <span class="badge b-E">E</span>.</li>
+      <li><code>test_provider_human_access_in_non_divulgation_observations</code> — la valeur apparaît dans l'observation, le niveau ne change pas.</li>
+    </ul>
+    <div class="callout">Réutiliser le style existant : <code>build_arp("ToolX", "publique", ContractFacts(...))</code> puis <code>by_criterion = {c.criterion: c for c in arp.criteria}</code>.</div>
+  </div>
+
+  <!-- INTERACTION AFFICHAGE UTILISATEUR -->
+  <div class="section">
+    <h2>Interaction avec l'affichage utilisateur (déjà en place)</h2>
+    <p>L'écran de résultat montre désormais, sous la recommandation, un encadré <em>« Sur quoi repose cette recommandation ? »</em> avec la <strong>citation exacte</strong> et l'<strong>URL cliquable</strong> de chaque preuve vérifiée. Cette fonctionnalité est <strong>déjà implémentée et testée</strong> — il n'y a rien à recoder ici.</p>
+    <table>
+      <tr><th>Élément</th><th>État</th></tr>
+      <tr><td><code>resultat.html.j2:10-26</code> — encadré preuves (blockquote + lien)</td><td><span class="badge b-F">en place</span></td></tr>
+      <tr><td><code>routes.py:123</code> — <code>_contract_evidence_for_user()</code> (filtre <code>accepted</code> + <code>_safe_source_url</code>)</td><td><span class="badge b-F">en place</span></td></tr>
+      <tr><td><code>routes.py:57</code> — <code>_FACT_LABELS</code> : les <strong>19 faits</strong> ont un libellé</td><td><span class="badge b-F">en place</span></td></tr>
+      <tr><td><code>style.css:89</code> + <code>test_routes_resultat.py:42</code></td><td><span class="badge b-F">en place</span></td></tr>
+    </table>
+    <div class="callout"><strong>Point clé à retenir :</strong> cet encadré est <strong>découplé de <code>build_arp()</code></strong>. Il itère sur <em>tous</em> les faits de <code>contract_facts.evidence</code> (les 19), pas sur les lignes de la grille. Les preuves des 8 nouveaux faits y remontent donc <strong>déjà</strong> dès qu'elles sont acceptées — <strong>indépendamment</strong> de l'ajout des 5 critères. Le travail ARP affecte la grille/rapport, pas cette surface utilisateur.</div>
+    <div class="callout warn">Vérifié lors de la relecture : les 8 faits nouvellement câblés (<code>authentication_support</code>, <code>audit_logging</code>, <code>incident_response</code>, <code>institutional_terms_available</code>, <code>dpa_available</code>, <code>institutional_use_restricted</code>, <code>quebec_higher_ed_license</code>, <code>provider_human_access</code>) sont <strong>tous</strong> déjà présents dans <code>_FACT_LABELS</code> — aucun ne retombera sur le libellé de repli <code>field_name.replace("_", " ")</code>.</div>
+  </div>
+
+  <!-- FICHIERS -->
+  <div class="section">
+    <h2>Fichiers touchés</h2>
+    <table>
+      <tr><th>Fichier</th><th>Changement</th></tr>
+      <tr><td><code>policybot/contract/arp.py</code></td><td>+5 blocs <code>RiskFactor</code> dans <code>build_arp()</code> ; retouche observation non-divulgation ; helper optionnel.</td></tr>
+      <tr><td><code>tests/contract/test_arp.py</code></td><td>Nouveaux tests + mise à jour du test verrou 8→13.</td></tr>
+      <tr><td><code>policybot/criteria.py</code></td><td><strong>Aucun</strong> — les 13 noms y sont déjà.</td></tr>
+      <tr><td><code>configs/fact_families.yaml</code></td><td><strong>Aucun</strong> — les 8 faits sont déjà extraits.</td></tr>
+    </table>
+    <div class="callout warn">L'assertion <code>arp.py:420</code> (<code>criteria ⊆ ARP_CRITERIA</code>) reste vraie : les 5 noms ajoutés sont copiés <strong>à l'identique</strong> depuis <code>criteria.py</code>. Toute faute de frappe la fera sauter — c'est le garde-fou.</div>
+  </div>
+
+  <!-- RISQUES -->
+  <div class="section">
+    <h2>Risques & points de vigilance</h2>
+    <table>
+      <tr><th>Risque</th><th>Mitigation</th></tr>
+      <tr><td>Test verrou <code>== 8</code> oublié → suite rouge.</td><td>Étape 2 explicite dans le plan.</td></tr>
+      <tr><td>Libellés de critères non identiques → assertion <code>:420</code> échoue.</td><td>Copier-coller depuis <code>criteria.py</code>, ne jamais retaper.</td></tr>
+      <tr><td>Barèmes M/E discutables sur le plan métier.</td><td>Validation Étape 0 avant tout code ; <code>unknown</code> toujours conservateur.</td></tr>
+      <tr><td>Sérialisation / rendu du rapport suppose 8 lignes ailleurs.</td><td>Grep des consommateurs de <code>arp.criteria</code> avant de clore (rendu, PDF, front).</td></tr>
+    </table>
+  </div>
+
+  <!-- SUCCES -->
+  <div class="section">
+    <h2>Critères de « terminé »</h2>
+    <ul class="plain">
+      <li><code>build_arp()</code> retourne <strong>13</strong> <code>RiskFactor</code>, tous <code>origin == "rule"</code>.</li>
+      <li>Chaque nouvelle ligne porte le bon niveau selon les barèmes validés, avec <code>residual == inherent</code>.</li>
+      <li><code>provider_human_access</code> visible dans l'observation « non-divulgation ».</li>
+      <li>Toute la suite <code>tests/contract/</code> est verte (nouveaux tests + verrou mis à jour).</li>
+      <li>Un contrat réel affiche les 13 lignes cohérentes de bout en bout.</li>
+    </ul>
+  </div>
+
+  <!-- SETUP -->
+  <div class="section">
+    <h2>Environnement &amp; lancement</h2>
+    <div class="code-block">cd C:\code\05_Travail\PolicyBot
+python -m venv .venv
+
+# Windows
+.\.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+
+pip install -r requirements.txt
+
+# Lancer les tests ciblés (boucle TDD)
+pytest tests/contract/test_arp.py -v</div>
+    <div class="callout">Toujours activer le venv avant de lancer : <code>.\.venv\Scripts\activate</code> (Windows) ou <code>source .venv/bin/activate</code> (macOS/Linux).</div>
+  </div>
+
+</div>
+</body>
+</html>

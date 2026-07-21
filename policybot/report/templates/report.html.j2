@@ -34,14 +34,13 @@
     {% if table.sources %}
     <h4>Registre des sources contractuelles</h4>
     <table>
-      <tr><th>Classement</th><th>URL</th><th>Date d’effet</th><th>Date de collecte</th><th>SHA-256</th></tr>
+      <tr><th>Classement</th><th>URL</th><th>Date d’effet</th><th>Date de collecte</th></tr>
       {% for source in table.sources %}
       <tr>
         <td>{{ source.source_type }}</td>
         <td>{{ source.url }}</td>
         <td>{{ source.effective_date or "Inconnue" }}</td>
         <td>{{ source.collected_at }}</td>
-        <td>{{ source.sha256 }}</td>
       </tr>
       {% endfor %}
     </table>

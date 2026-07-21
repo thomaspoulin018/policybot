@@ -2,11 +2,13 @@ from __future__ import annotations
 import os
 import zipfile
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
 from itertools import groupby
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from markupsafe import Markup, escape
 from policybot.models import ContractFacts, InterviewState, RiskFactor
 from policybot.criteria import ARP_CRITERIA, USAGE_CRITERIA
 
@@ -110,7 +112,149 @@ footer {
   margin-top: 10mm;
   padding-top: 3mm;
 }
+.automated-observation { line-height: 1.35; }
+.automated-observation .observation-status {
+  color: #667085;
+  font-size: 0.9em;
+  margin: 1mm 0;
+}
+.automated-observation blockquote {
+  border-left: 2pt solid #c9cfdb;
+  color: #475467;
+  font-style: italic;
+  margin: 2mm 0;
+  padding-left: 2mm;
+}
+.automated-observation .observation-source {
+  color: #667085;
+  font-size: 0.88em;
+}
 """
+
+_FRENCH_MONTHS = (
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+)
+
+
+def _format_french_date(value) -> str:
+    """Return a date in the report's reader-friendly French format."""
+    if not value:
+        return ""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value).date()
+        except ValueError:
+            return value
+    return f"{value.day} {_FRENCH_MONTHS[value.month - 1]} {value.year}"
+
+
+def _source_label(url: str) -> str:
+    """Keep a source identifiable without making a narrow table cell unreadable."""
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(url)
+    return f"{parsed.netloc}{parsed.path}".rstrip("/") or url
+
+
+@dataclass(frozen=True)
+class _EvidenceDisplay:
+    quote: str | None
+    source_url: str | None
+    collected_at: object | None
+
+
+@dataclass(frozen=True)
+class _AutomatedObservation:
+    """A pre-filled finding rendered appropriately by HTML and ReportLab."""
+
+    label: str
+    evidence: tuple[_EvidenceDisplay, ...]
+    notes: tuple[str, ...]
+    needs_confirmation: bool
+
+    def _status(self) -> str:
+        return "À confirmer par l'agent SI" if self.needs_confirmation else "À valider par l'agent SI"
+
+    def __str__(self) -> str:
+        parts = [f"Constat pré-rempli (à valider) : {self.label}", self._status()]
+        parts.extend(f"Note : {note}" for note in self.notes)
+        for proof in self.evidence:
+            if proof.quote:
+                parts.append(f"Citation : « {proof.quote} »")
+            else:
+                parts.append("Citation : non disponible")
+            if proof.source_url:
+                source = f"Source : {_source_label(proof.source_url)}"
+                if proof.collected_at:
+                    source += f" — vérifiée le {_format_french_date(proof.collected_at)}"
+                parts.append(source)
+            elif proof.collected_at:
+                parts.append(f"Source vérifiée le {_format_french_date(proof.collected_at)}")
+            else:
+                parts.append("Source : non disponible")
+        return "\n".join(parts)
+
+    def __html__(self) -> Markup:
+        lines = [
+            '<div class="automated-observation">',
+            f"<strong>Constat pré-rempli (à valider) : {escape(self.label)}</strong>",
+            f'<div class="observation-status">{escape(self._status())}</div>',
+        ]
+        lines.extend(
+            f'<div class="observation-status">Note : {escape(note)}</div>'
+            for note in self.notes
+        )
+        for proof in self.evidence:
+            if proof.quote:
+                lines.append(f"<blockquote>« {escape(proof.quote)} »</blockquote>")
+            else:
+                lines.append('<div class="observation-status">Citation non disponible.</div>')
+            if proof.source_url:
+                source = f"Source : {_source_label(proof.source_url)}"
+                if proof.collected_at:
+                    source += f" — vérifiée le {_format_french_date(proof.collected_at)}"
+                lines.append(f'<div class="observation-source">{escape(source)}</div>')
+            elif proof.collected_at:
+                lines.append(
+                    '<div class="observation-source">'
+                    f"Source vérifiée le {escape(_format_french_date(proof.collected_at))}</div>"
+                )
+            else:
+                lines.append('<div class="observation-source">Source non disponible.</div>')
+        lines.append("</div>")
+        return Markup("".join(lines))
+
+    def reportlab_flowables(self, styles):
+        from xml.sax.saxutils import escape as xml_escape
+        from reportlab.platypus import Paragraph
+
+        flowables = [Paragraph(
+            f"<b>Constat pré-rempli (à valider) : {xml_escape(self.label)}</b>",
+            styles["ObservationVerdict"],
+        )]
+        flowables.append(Paragraph(xml_escape(self._status()), styles["ObservationStatus"]))
+        flowables.extend(
+            Paragraph(f"Note : {xml_escape(note)}", styles["ObservationStatus"])
+            for note in self.notes
+        )
+        for proof in self.evidence:
+            if proof.quote:
+                flowables.append(Paragraph(
+                    f"« {xml_escape(proof.quote)} »", styles["ObservationQuote"],
+                ))
+            else:
+                flowables.append(Paragraph("Citation non disponible.", styles["ObservationStatus"]))
+            if proof.source_url:
+                source = f"Source : {_source_label(proof.source_url)}"
+                if proof.collected_at:
+                    source += f" — vérifiée le {_format_french_date(proof.collected_at)}"
+            elif proof.collected_at:
+                source = f"Source vérifiée le {_format_french_date(proof.collected_at)}"
+            else:
+                source = "Source non disponible."
+            flowables.append(Paragraph(xml_escape(source), styles["ObservationSource"]))
+        return flowables
 
 _AUTH_LABELS = {
     "sso_mfa": "SSO/MFA et intégration IdP documentés.",
@@ -156,36 +300,38 @@ def _auto_observation(
     label: str,
     facts: ContractFacts,
     field_names: str | tuple[str, ...],
-) -> str:
-    parts = [f"Réponse automatisée: {label}"]
+) -> _AutomatedObservation:
     names = (field_names,) if isinstance(field_names, str) else field_names
+    evidence: list[_EvidenceDisplay] = []
+    notes: list[str] = []
+    seen_evidence: set[tuple[str | None, str | None]] = set()
     for field_name in names:
         proof = facts.evidence.get(field_name)
-        parts.append(f"{field_name}={getattr(facts, field_name)}")
         if proof is None:
-            parts.extend((
-                f"citation ({field_name}): non disponible",
-                f"URL ({field_name}): non disponible",
-            ))
             continue
         if proof.note:
-            parts.append(proof.note)
-        if proof.quote:
-            parts.append(f"citation ({field_name}): « {proof.quote} »")
-        else:
-            parts.append(f"citation ({field_name}): non disponible")
-        if proof.source_url:
-            parts.append(f"URL ({field_name}): {proof.source_url}")
-        else:
-            parts.append(f"URL ({field_name}): non disponible")
-        if proof.source_collected_at:
-            parts.append(f"collectée le: {proof.source_collected_at}")
-        if proof.source_sha256:
-            parts.append(f"sha256: {proof.source_sha256}")
-    return " — ".join(parts)
+            notes.append(proof.note)
+        key = (proof.quote, proof.source_url)
+        if key not in seen_evidence:
+            seen_evidence.add(key)
+            evidence.append(_EvidenceDisplay(
+                quote=proof.quote,
+                source_url=proof.source_url,
+                collected_at=proof.source_collected_at,
+            ))
+    if not evidence:
+        evidence.append(_EvidenceDisplay(None, None, None))
+    return _AutomatedObservation(
+        label=label,
+        evidence=tuple(evidence),
+        notes=tuple(dict.fromkeys(notes)),
+        needs_confirmation=any(getattr(facts, field_name) == "unknown" for field_name in names),
+    )
 
 
-def _arp_automated_observations(facts: ContractFacts | None) -> dict[str, str]:
+def _arp_automated_observations(
+    facts: ContractFacts | None,
+) -> dict[str, _AutomatedObservation]:
     if facts is None:
         return {}
     return {
@@ -227,7 +373,7 @@ _env = Environment(
 def _merge_rows(
     criteria_table: list[tuple[str, str, str]],
     factors: list[RiskFactor],
-    automated_observations: dict[str, str] | None = None,
+    automated_observations: dict[str, str | _AutomatedObservation] | None = None,
 ) -> list[dict]:
     by_criterion = {factor.criterion: factor for factor in factors}
     automated_observations = automated_observations or {}
@@ -242,7 +388,10 @@ def _merge_rows(
             "mitigation": factor.mitigation if factor else "",
             "residual": factor.residual if factor else None,
             "responsable": factor.responsable if factor else "",
-            "observations": factor.observations if factor else automated_observations.get(criterion, ""),
+            "observations": automated_observations.get(
+                criterion,
+                factor.observations if factor else "",
+            ),
         })
     return rows
 
@@ -642,6 +791,41 @@ def _make_reportlab_styles():
         leading=8.6,
     ))
     base.add(ParagraphStyle(
+        name="ObservationVerdict",
+        parent=base["Small"],
+        fontName="Helvetica-Bold",
+        leading=9.2,
+        spaceAfter=1.5,
+    ))
+    base.add(ParagraphStyle(
+        name="ObservationStatus",
+        parent=base["Small"],
+        fontSize=6.4,
+        leading=7.5,
+        textColor=colors.HexColor("#667085"),
+        spaceAfter=2.5,
+    ))
+    base.add(ParagraphStyle(
+        name="ObservationQuote",
+        parent=base["Small"],
+        fontName="Helvetica-Oblique",
+        textColor=colors.HexColor("#475467"),
+        leftIndent=4,
+        borderLeftWidth=1.2,
+        borderLeftColor=colors.HexColor("#c9cfdb"),
+        borderPadding=3,
+        leading=8.2,
+        spaceBefore=1,
+        spaceAfter=2.5,
+    ))
+    base.add(ParagraphStyle(
+        name="ObservationSource",
+        parent=base["Small"],
+        fontSize=6.2,
+        leading=7.3,
+        textColor=colors.HexColor("#667085"),
+    ))
+    base.add(ParagraphStyle(
         name="Footer",
         parent=base["BodyText"],
         fontSize=7.5,
@@ -686,7 +870,11 @@ def _risk_table(headers: list[str], groups: list[tuple[str, list[dict]]], styles
                 _para(row["mitigation"], styles["Small"]),
                 _para(row["residual"] or "", styles["Small"]),
                 _para(row["responsable"], styles["Small"]),
-                _para(row["observations"], styles["Small"]),
+                (
+                    row["observations"].reportlab_flowables(styles)
+                    if isinstance(row["observations"], _AutomatedObservation)
+                    else _para(row["observations"], styles["Small"])
+                ),
             ])
     widths = [50, 145, 48, 110, 48, 58, 103]
     table = Table(rows, colWidths=widths, hAlign="LEFT", repeatRows=1)
@@ -806,7 +994,7 @@ def _render_reportlab_pdf(state: InterviewState) -> bytes:
             for source in table["sources"]:
                 story.append(_para(
                     f"{source.source_type} | {source.url} | collecte {source.collected_at} | "
-                    f"effet {source.effective_date or 'inconnu'} | sha256 {source.sha256}",
+                    f"effet {source.effective_date or 'inconnu'}",
                     styles["BodyText"],
                 ))
         story.append(_risk_table([

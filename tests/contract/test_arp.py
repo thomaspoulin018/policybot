@@ -118,7 +118,7 @@ def test_extract_maps_institutional_security_fields():
     assert facts.quebec_higher_ed_license == "yes"
     assert facts.incident_response == "documented_with_notice"
 
-def test_build_arp_generates_eight_criteria_rows():
+def test_build_arp_generates_thirteen_criteria_rows():
     from policybot.models import ContractFacts
     arp = build_arp("ChatGPT", "publique", ContractFacts(
         training_default="yes", data_residency="us",
@@ -126,7 +126,7 @@ def test_build_arp_generates_eight_criteria_rows():
         contract_prohibits_reuse="no", encryption_standard="none",
         opt_out_available="no", ip_ownership="vendor",
     ))
-    assert len(arp.criteria) == 8
+    assert len(arp.criteria) == 13
     assert all(c.origin == "rule" for c in arp.criteria)
     criteria_names = {c.criterion for c in arp.criteria}
     assert criteria_names == {
@@ -134,8 +134,11 @@ def test_build_arp_generates_eight_criteria_rows():
         "Dépendance technologique",
         "Données soumises utilisées pour entraînement du modèle",
         "Garanties contractuelles de non-divulgation",
-        "Chiffrement des données", "Utilisation des entrées et des sorties",
-        "Propriété intellectuelle",
+        "Mécanismes d'authentification", "Chiffrement des données",
+        "Journalisation et traçabilité", "Utilisation des entrées et des sorties",
+        "Gestion des incidents", "Propriété intellectuelle",
+        "Conditions d'utilisation acceptables",
+        "Compatibilité licence usage gouvernemental",
     }
 
 
@@ -190,3 +193,85 @@ def test_build_arp_flags_partial_encryption_as_risky():
     arp = build_arp("ToolX", "publique", facts)
     by_criterion = {c.criterion: c for c in arp.criteria}
     assert by_criterion["Chiffrement des données"].inherent == "E"
+
+
+def test_authentication_support_risk_levels():
+    from policybot.models import ContractFacts
+
+    for value, expected in (("sso_mfa", "F"), ("partial", "M"), ("none", "E")):
+        arp = build_arp("ToolX", "publique", ContractFacts(authentication_support=value))
+        by_criterion = {c.criterion: c for c in arp.criteria}
+        assert by_criterion["Mécanismes d'authentification"].inherent == expected
+
+
+def test_audit_logging_risk_levels():
+    from policybot.models import ContractFacts
+
+    for value, expected in (
+        ("prompt_output_accessible", "F"), ("access_logs_only", "M"), ("none", "E"),
+    ):
+        arp = build_arp("ToolX", "publique", ContractFacts(audit_logging=value))
+        by_criterion = {c.criterion: c for c in arp.criteria}
+        assert by_criterion["Journalisation et traçabilité"].inherent == expected
+
+
+def test_incident_response_risk_levels():
+    from policybot.models import ContractFacts
+
+    for value, expected in (
+        ("documented_with_notice", "F"), ("documented_no_notice", "M"), ("none", "E"),
+    ):
+        arp = build_arp("ToolX", "publique", ContractFacts(incident_response=value))
+        by_criterion = {c.criterion: c for c in arp.criteria}
+        assert by_criterion["Gestion des incidents"].inherent == expected
+
+
+def test_acceptable_use_conditions_risk_levels():
+    from policybot.models import ContractFacts
+
+    cases = (
+        ({"institutional_use_restricted": "yes"}, "E"),
+        ({"institutional_terms_available": "yes", "dpa_available": "yes"}, "F"),
+        ({"institutional_terms_available": "yes"}, "M"),
+        ({"dpa_available": "yes"}, "M"),
+        ({}, "E"),
+    )
+    for values, expected in cases:
+        arp = build_arp("ToolX", "publique", ContractFacts(**values))
+        by_criterion = {c.criterion: c for c in arp.criteria}
+        assert by_criterion["Conditions d'utilisation acceptables"].inherent == expected
+
+
+def test_quebec_higher_ed_license_risk_levels():
+    from policybot.models import ContractFacts
+
+    for value, expected in (("yes", "F"), ("no", "E")):
+        arp = build_arp("ToolX", "publique", ContractFacts(quebec_higher_ed_license=value))
+        by_criterion = {c.criterion: c for c in arp.criteria}
+        assert by_criterion["Compatibilité licence usage gouvernemental"].inherent == expected
+
+
+def test_new_criteria_default_to_conservative_risk():
+    from policybot.models import ContractFacts
+
+    arp = build_arp("ToolX", "publique", ContractFacts())
+    by_criterion = {c.criterion: c for c in arp.criteria}
+    for criterion in (
+        "Mécanismes d'authentification", "Journalisation et traçabilité",
+        "Gestion des incidents", "Conditions d'utilisation acceptables",
+        "Compatibilité licence usage gouvernemental",
+    ):
+        assert by_criterion[criterion].inherent == "E"
+        assert by_criterion[criterion].residual == "E"
+
+
+def test_provider_human_access_is_observed_with_non_disclosure_guarantees():
+    from policybot.models import ContractFacts
+
+    arp = build_arp("ToolX", "publique", ContractFacts(
+        contract_prohibits_reuse="yes", provider_human_access="yes",
+    ))
+    by_criterion = {c.criterion: c for c in arp.criteria}
+    non_disclosure = by_criterion["Garanties contractuelles de non-divulgation"]
+    assert non_disclosure.inherent == "F"
+    assert "provider_human_access=yes" in non_disclosure.observations

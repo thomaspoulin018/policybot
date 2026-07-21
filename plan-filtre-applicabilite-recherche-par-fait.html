@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plan : Filtre d'applicabilité + recherche par fait</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px; line-height: 1.6; color: #1a1a2e;
+      background: #f4f6fb; padding: 2rem;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+
+    header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+    }
+    header h1 { font-size: 1.8rem; font-weight: 700; }
+    header p  { margin-top: .4rem; opacity: .8; font-size: .98rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1rem; font-size: .85rem; opacity: .7; }
+
+    .section {
+      background: #fff; border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+      padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+    }
+    .section h2 {
+      font-size: 1.1rem; font-weight: 700; color: #16213e;
+      border-left: 4px solid #4361ee; padding-left: .75rem;
+      margin-bottom: 1rem;
+    }
+    .section h3 {
+      font-size: .98rem; font-weight: 700; color: #1d4ed8;
+      margin: 1.1rem 0 .5rem;
+    }
+    .section p { margin-bottom: .6rem; }
+    .section ul { padding-left: 1.3rem; margin: .3rem 0 .7rem; }
+    .section ul li { margin-bottom: .35rem; }
+
+    ol.steps { padding-left: 1.25rem; }
+    ol.steps li { margin-bottom: .6rem; }
+    ol.steps li strong { color: #4361ee; }
+
+    .badge {
+      display: inline-block; font-size: .72rem; font-weight: 600;
+      padding: .15rem .55rem; border-radius: 99px; margin-right: .3rem;
+    }
+    .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+    .badge-green  { background: #dcfce7; color: #15803d; }
+    .badge-yellow { background: #fef9c3; color: #a16207; }
+    .badge-red    { background: #fee2e2; color: #b91c1c; }
+    .badge-gray   { background: #e5e7eb; color: #374151; }
+
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; margin: .3rem 0; }
+    .table-wrap { overflow-x: auto; }
+    th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .75rem; white-space: nowrap; }
+    td { padding: .5rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+
+    code {
+      background: #eef1f8; color: #b91c1c;
+      padding: .08rem .35rem; border-radius: 4px;
+      font-family: "SF Mono", Consolas, monospace; font-size: .86em;
+    }
+    .code-block {
+      background: #16213e; color: #e6e9f2; border-radius: 8px;
+      padding: 1rem 1.15rem; margin: .6rem 0; overflow-x: auto;
+      font-family: "SF Mono", Consolas, monospace; font-size: .82rem;
+      line-height: 1.5; white-space: pre;
+    }
+    .callout {
+      border-left: 4px solid #4361ee; background: #f0f4ff;
+      padding: .75rem 1rem; border-radius: 0 8px 8px 0;
+      font-size: .9rem; margin-top: .75rem;
+    }
+    .callout.warn { border-color: #f59e0b; background: #fffbeb; }
+    .callout.danger { border-color: #ef4444; background: #fef2f2; }
+    .callout.ok { border-color: #22c55e; background: #f0fdf4; }
+    .file-new { color: #15803d; font-weight: 600; }
+    .file-mod { color: #a16207; font-weight: 600; }
+    .path { font-family: "SF Mono", Consolas, monospace; font-size: .82rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Filtre d'applicabilité (palier) + recherche « par fait »</h1>
+    <p>Écarter les garanties d'un autre palier après extraction, et cibler la collecte fait par fait.</p>
+    <div class="meta">
+      <span>Projet : PolicyBot (UQAM · MCN / IAG)</span>
+      <span>Date : 2026-07-21</span>
+      <span>Portée : contract/ · interview/ · report/</span>
+    </div>
+  </header>
+
+  <div class="section">
+    <h2>Contexte &amp; objectif</h2>
+    <p>La résolution de contrat (Partie A / ARP) collecte des preuves via Tavily
+    <strong>par famille de critères</strong> (5 familles, une requête large chacune), puis extrait les
+    faits par LLM. Un filtre d'applicabilité existe déjà (<code>source_policy.py</code> →
+    <code>source_is_allowed</code>), mais il ne regarde que <strong>l'URL et le titre</strong>.</p>
+    <p>Conséquence : une page de garanties <em>Enterprise / Business / API</em> dont l'URL/titre ne porte
+    aucun marqueur d'offre passe le filtre, et ses garanties se mélangent à celles du palier réellement
+    évalué (ex. <em>ChatGPT Plus</em>). Une requête large par famille aggrave ce mélange
+    consommateur / entreprise.</p>
+    <p>Deux ajouts indépendants et complémentaires :</p>
+    <ul>
+      <li><span class="badge badge-blue">Partie 1</span> <strong>Filtre d'applicabilité post-extraction (LLM dédié)</strong> —
+      juger chaque preuve contre le palier courant en <strong>lisant le contenu extrait</strong>
+      (citation + document). Une preuve qui ne vaut que pour un autre palier est
+      <strong>rejetée</strong> et <strong>signalée à l'officier</strong>.</li>
+      <li><span class="badge badge-blue">Partie 2</span> <strong>Recherche « par fait » optionnelle</strong> —
+      choisir via variable d'environnement entre la méthode « par famille » (conservée) et une méthode
+      « par fait » qui émet une requête ciblée par fait important
+      (ex. <code>site:openai.com "ChatGPT Plus" "data retention"</code>).</li>
+    </ul>
+    <div class="callout ok"><strong>Invariant respecté :</strong> le filtre ne décide
+    <em>aucun</em> verdict. Il n'écarte que des preuves et signale ; la Grille reste seule à trancher.
+    Toute la partie LLM reste testable hors-ligne via <code>FakeLLMProvider</code>, et aucun texte n'est
+    journalisé en clair (<code>mask_text</code>).</div>
+  </div>
+
+  <div class="section">
+    <h2>Décisions verrouillées</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sujet</th><th>Décision</th></tr></thead>
+      <tbody>
+        <tr><td>Preuve non-applicable</td><td><strong>Rejeter</strong> (fait → <code>unknown</code>) <strong>+ drapeau officier</strong></td></tr>
+        <tr><td>Source du palier</td><td><strong>Identité d'offre</strong> déjà chargée (<code>ContractOfferingIdentity</code>)</td></tr>
+        <tr><td>Mécanisme du filtre</td><td><strong>LLM dédié</strong> (un jugement structuré par preuve)</td></tr>
+        <tr><td>Sélection famille / fait</td><td><strong>Variable d'env globale</strong> <code>POLICYBOT_CONTRACT_SEARCH_MODE</code></td></tr>
+        <tr><td>Budget mode « par fait »</td><td><strong>Faits prioritaires seulement</strong> ; le reste reste groupé par famille</td></tr>
+        <tr><td>Déclaration des faits prioritaires</td><td><strong><code>priority</code> + <code>search_term</code> par champ</strong> dans <code>fact_families.yaml</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Partie 1 — Filtre d'applicabilité LLM post-extraction</h2>
+
+    <h3>1.1 &nbsp;Nouveau module <span class="path">policybot/contract/applicability.py</span></h3>
+    <div class="code-block">def filter_by_applicability(
+    facts: ContractFacts,
+    evidence: ContractEvidence,
+    offering: ContractOfferingIdentity,
+    llm: LLMProvider,
+) -> ContractFacts:
+    ...</div>
+    <p>Pour chaque fait dont la preuve est <code>outcome == "accepted"</code> :</p>
+    <ol class="steps">
+      <li><strong>Retrouver le document source</strong> dans <code>evidence</code> via
+      <code>proof.source_url</code> (parcours de <code>evidence.documents_by_family</code>) pour
+      disposer du <strong>contenu extrait</strong>, pas seulement de l'URL/titre.</li>
+      <li><strong>Construire le prompt</strong> : palier courant (<code>offering.display_label()</code>,
+      <code>plan</code>, <code>deployment_mode</code>, <code>contract_type</code>), nom du fait,
+      <strong>citation verbatim</strong> (<code>proof.quote</code>) et une <strong>fenêtre de contexte</strong>
+      autour de la citation dans <code>document.content</code> (réutiliser
+      <code>arp.py::_select_evidence_text</code>).</li>
+      <li><strong>Appel LLM structuré</strong> → <code>applies_to_offering: "yes" | "no" | "unclear"</code>,
+      <code>offer_mentioned</code>, <code>reason</code> ;
+      <code>run_name="filter_applicability:&lt;champ&gt;"</code>, <code>task="contract_applicability"</code>.</li>
+      <li><strong>Décision :</strong>
+        <ul>
+          <li><span class="badge badge-red">no</span> <strong>rejet</strong> : preuve recopiée avec
+          <code>value="unknown"</code>, <code>outcome="applicability_rejected"</code>, <code>note</code>
+          explicite ; champ de <code>ContractFacts</code> remis à <code>"unknown"</code>.</li>
+          <li><span class="badge badge-yellow">unclear</span> <strong>conservé + signalé</strong> :
+          preuve inchangée, fait marqué pour confirmation officier.</li>
+          <li><span class="badge badge-green">yes</span> inchangé.</li>
+        </ul>
+      </li>
+      <li><strong>Robustesse &amp; audit :</strong> journalisation via <code>mask_text</code> (jamais de
+      texte en clair) ; une erreur LLM <strong>dégrade ce seul fait</strong> (conservé + signalé), jamais
+      l'entrevue. <strong>Idempotent</strong> : on ne traite que les preuves <code>accepted</code>.</li>
+    </ol>
+
+    <h3>1.2 &nbsp;Modèles <span class="path">policybot/models.py</span></h3>
+    <ul>
+      <li><code>EvidenceOutcome</code> (l.17-25) : ajouter le membre <code>"applicability_rejected"</code>.</li>
+      <li><code>RiskFactor</code> (l.244-253) : ajouter <code>needs_officer_confirmation: bool = False</code>
+      — matérialise le « drapeau officier » côté Partie A (aligné avec <code>Usage.needs_officer_confirmation</code>).</li>
+    </ul>
+
+    <h3>1.3 &nbsp;Câblage <span class="path">policybot/interview/orchestrator.py</span></h3>
+    <p>Insérer l'appel <strong>entre</strong> l'extraction et <code>build_arp</code> (l.108-109), là où
+    <code>evidence</code>, <code>offering</code> et <code>self._llm</code> sont déjà en portée :</p>
+    <div class="code-block">facts = extract_contract_facts(evidence, self._llm)
+if offering is not None:
+    facts = filter_by_applicability(facts, evidence, offering, self._llm)   # nouveau
+...
+arp = build_arp(tool_name, iag_type, facts, offering)</div>
+    <p>Optionnellement désactivable via <code>POLICYBOT_CONTRACT_APPLICABILITY=off</code> (défaut activé).</p>
+
+    <h3>1.4 &nbsp;Propagation du drapeau (<span class="path">arp.py::build_arp</span>)</h3>
+    <p>Quand la preuve d'un champ porte <code>outcome == "applicability_rejected"</code> (ou fait
+    <code>unclear</code>), positionner <code>needs_officer_confirmation=True</code> sur le
+    <code>RiskFactor</code> correspondant. <code>_observation</code> (arp.py:386-403) affiche déjà
+    <code>proof.note</code> → l'officier lit la raison sans changement de format.</p>
+
+    <h3>1.5 &nbsp;Rendu rapport</h3>
+    <p>Surfacer <code>RiskFactor.needs_officer_confirmation</code> dans
+    <code>report/renderer.py</code> + <code>report/templates/report.html.j2</code> (et
+    <code>web/templates/resultat.html.j2</code> si la Partie A y figure) : un marqueur « à confirmer par
+    l'officier » sur la ligne concernée.</p>
+  </div>
+
+  <div class="section">
+    <h2>Partie 2 — Recherche « par fait » optionnelle (<code>per_fact</code>)</h2>
+    <div class="callout"><span class="badge badge-gray">Par défaut</span> La méthode « par famille »
+    reste inchangée et par défaut. On ajoute un second mode <strong>sélectionnable</strong>.</div>
+
+    <h3>2.1 &nbsp;Déclaration des faits prioritaires</h3>
+    <p><code>fact_families.yaml</code> + <code>families.py</code> (<code>FactField</code> l.23-27 ;
+    <code>_FactFieldConfig</code> l.38-51, <code>extra="forbid"</code>) : ajouter deux champs optionnels</p>
+    <ul>
+      <li><code>priority: bool = False</code></li>
+      <li><code>search_term: str = ""</code> (terme mis entre guillemets dans la requête ciblée)</li>
+      <li>Validation : si <code>priority</code> est vrai, <code>search_term</code> doit être non vide.</li>
+    </ul>
+    <p>Faits importants à marquer (cités par l'utilisateur, liste ajustable) :
+    <code>data_retention</code>, <code>data_residency</code>, <code>sub_processors</code>,
+    <code>authentication_support</code> (SSO), <code>incident_response</code>.</p>
+
+    <h3>2.2 &nbsp;Construction de la requête par fait</h3>
+    <p>À partir du domaine (via <code>source_policy.allowed_domains</code> / <code>include_domains</code>),
+    du label du palier (<code>offering.plan</code>) et de <code>search_term</code> :</p>
+    <div class="code-block">site:openai.com "ChatGPT Plus" "data retention"</div>
+    <p><code>include_domains</code> reste réglé sur le domaine ; l'opérateur <code>site:</code> et les
+    guillemets renforcent le ciblage. Le palier entre guillemets <strong>évite le mélange
+    Enterprise / consommateur</strong> dès la recherche.</p>
+
+    <h3>2.3 &nbsp;Collecte <span class="path">policybot/contract/tavily.py</span></h3>
+    <ul>
+      <li><code>build_contract_search_config</code> (l.76-137) : propager <code>priority</code>/<code>search_term</code>
+      dans les <code>fields</code> de la config générée, et <strong>bumper
+      <code>CONFIG_SCHEMA_VERSION</code> 4 → 5</strong> (l.29) pour régénérer les
+      <code>configs/tavily_contracts/*.yaml</code>.</li>
+      <li><code>collect_evidence_from_tavily</code> (l.339-472) : paramètre
+      <code>mode: "family" | "per_fact"</code>. En <code>per_fact</code>, pour chaque famille : une requête
+      ciblée par champ prioritaire + une requête famille pour les champs restants. Documents routés vers
+      <code>documents_by_family[&lt;famille du champ&gt;]</code> → <code>_extract_family</code> inchangé.
+      Budget Extract round-robin conservé.</li>
+      <li><code>search_contract_terms_with_tavily</code> (l.475-527) : accepter/propager <code>mode</code>.</li>
+    </ul>
+
+    <h3>2.4 &nbsp;Sélection du mode <span class="path">orchestrator.py:88</span></h3>
+    <p>Lire <code>POLICYBOT_CONTRACT_SEARCH_MODE</code> (défaut <code>family</code>) à côté de
+    <code>POLICYBOT_CONTRACT_SEARCH</code>, le passer à <code>search_contract_terms_with_tavily(..., mode=...)</code>.
+    Purger cette variable dans <code>tests/conftest.py</code> (comme <code>POLICYBOT_CONTRACT_SEARCH</code>).</p>
+  </div>
+
+  <div class="section">
+    <h2>Fichiers touchés</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Fichier</th><th>Nature</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td class="path">policybot/contract/applicability.py</td><td><span class="file-new">créé</span></td><td>Filtre LLM post-extraction</td></tr>
+        <tr><td class="path">tests/contract/test_applicability.py</td><td><span class="file-new">créé</span></td><td>Tests du filtre (FakeLLMProvider)</td></tr>
+        <tr><td class="path">policybot/models.py</td><td><span class="file-mod">modifié</span></td><td><code>EvidenceOutcome</code> + <code>applicability_rejected</code> ; <code>RiskFactor.needs_officer_confirmation</code></td></tr>
+        <tr><td class="path">policybot/interview/orchestrator.py</td><td><span class="file-mod">modifié</span></td><td>Appel du filtre ; lecture <code>POLICYBOT_CONTRACT_SEARCH_MODE</code></td></tr>
+        <tr><td class="path">policybot/contract/arp.py</td><td><span class="file-mod">modifié</span></td><td><code>build_arp</code> propage le drapeau ; fenêtrage réutilisé</td></tr>
+        <tr><td class="path">policybot/contract/families.py</td><td><span class="file-mod">modifié</span></td><td><code>FactField</code> / <code>_FactFieldConfig</code> + <code>priority</code>, <code>search_term</code></td></tr>
+        <tr><td class="path">configs/fact_families.yaml</td><td><span class="file-mod">modifié</span></td><td>Marquer les faits prioritaires</td></tr>
+        <tr><td class="path">policybot/contract/tavily.py</td><td><span class="file-mod">modifié</span></td><td><code>mode</code> + requêtes par fait ; schéma 4→5</td></tr>
+        <tr><td class="path">report/renderer.py + templates</td><td><span class="file-mod">modifié</span></td><td>Affichage du drapeau officier</td></tr>
+        <tr><td class="path">tests/conftest.py</td><td><span class="file-mod">modifié</span></td><td>Purge <code>POLICYBOT_CONTRACT_SEARCH_MODE</code></td></tr>
+        <tr><td class="path">policybot/prompts</td><td><span class="file-mod">modifié</span></td><td>Nouveau prompt <code>contract_applicability</code></td></tr>
+        <tr><td class="path">CLAUDE.md / docs specs</td><td><span class="file-mod">modifié</span></td><td>Documenter filtre + mode <code>per_fact</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Environnement &amp; lancement</h2>
+    <div class="code-block">cd C:\code\05_Travail\PolicyBot
+python -m venv .venv
+
+# Windows
+.\.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+
+pip install -e ".[dev]"      # ajouter "[pdf]" pour l'export PDF WeasyPrint
+pytest -v                    # suite complète, hors-ligne et déterministe</div>
+    <div class="callout">Toujours activer le venv avant de lancer le projet :
+    <code>.\.venv\Scripts\activate</code> (Windows) ou <code>source .venv/bin/activate</code> (macOS/Linux).</div>
+  </div>
+
+  <div class="section">
+    <h2>Tests (TDD — écrire le test d'abord)</h2>
+    <ul>
+      <li><strong>Filtre applicabilité</strong> (<code>test_applicability.py</code>) : preuve Enterprise
+      sur palier Plus → rejetée (<code>value="unknown"</code>, <code>outcome="applicability_rejected"</code>,
+      drapeau) ; <code>yes</code> conservée ; <code>unclear</code> conservée + signalée ; erreur LLM →
+      dégradation du seul fait ; idempotence ; aucun texte en clair dans les logs.</li>
+      <li><strong>Familles</strong> (<code>test_families.py</code>) : chargement
+      <code>priority</code>/<code>search_term</code> ; erreur si <code>priority</code> sans <code>search_term</code>.</li>
+      <li><strong>Tavily</strong> (<code>test_tavily_collect.py</code>, <code>test_tavily_config.py</code>) :
+      mode <code>per_fact</code> émet une requête ciblée par fait prioritaire + une requête famille pour le
+      reste ; documents routés vers la bonne famille ; régénération config au schéma 5 ; palier entre
+      guillemets dans la requête.</li>
+      <li><strong>Orchestrateur</strong> (<code>test_orchestrator.py</code>) :
+      <code>POLICYBOT_CONTRACT_SEARCH_MODE</code> respecté ; filtre appelé quand <code>offering</code> présent.</li>
+      <li><strong>Rapport</strong> (<code>test_renderer.py</code>) : le drapeau apparaît.</li>
+      <li><strong>Régression</strong> : <code>tests/test_golden_scenarios.py</code> reste vert (scénario UQAM slide 5).</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Vérification end-to-end</h2>
+    <div class="code-block">pytest -v
+pytest tests/contract/test_applicability.py -v
+pytest tests/contract/test_tavily_collect.py tests/contract/test_families.py -v
+
+# Collecte réelle (nécessite TAVILY_API_KEY) :
+POLICYBOT_CONTRACT_SEARCH_MODE=per_fact python -m policybot.contract.tavily_probe "ChatGPT"</div>
+  </div>
+
+  <div class="section">
+    <h2>Risques &amp; points d'attention</h2>
+    <div class="callout warn"><strong>Coût LLM.</strong> Le filtre ajoute un appel LLM par preuve
+    acceptée (≤ ~19). Acceptable ; désactivable via env. Possibilité de ne filtrer que les faits
+    « importants ».</div>
+    <div class="callout danger"><strong>Faux rejets.</strong> Un <code>no</code> erroné efface une preuve
+    valide. Mitigation : <code>unclear</code> conservé + signalé plutôt que rejeté ; drapeau officier
+    partout ; <code>reason</code>/<code>offer_mentioned</code> visibles dans le rapport.</div>
+    <div class="callout warn"><strong>Régénération config.</strong> Bump
+    <code>CONFIG_SCHEMA_VERSION</code> obligatoire, sinon les <code>*.yaml</code> existants ne reçoivent
+    pas <code>priority</code>/<code>search_term</code>.</div>
+    <div class="callout warn"><strong>Routage par famille en <code>per_fact</code>.</strong> Bien mapper
+    chaque champ prioritaire à sa famille pour ne pas casser <code>_extract_family</code>.</div>
+  </div>
+
+</div>
+</body>
+</html>

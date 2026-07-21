@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 from policybot.models import RequestInfo
+from policybot.contract.arp import extract_contract_facts
+from policybot.contract.evidence import ContractEvidence
+from policybot.contract.fetcher import FetchedTerms
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
@@ -145,3 +148,29 @@ def test_http_error_logs_status_without_exposing_message(trace_events):
     event = trace_events[-1]
     assert event["http_status"] == 429
     assert sentinel not in json.dumps(event)
+
+
+def test_fact_extraction_logs_unknown_reason_without_quote_content(trace_events):
+    secret_quote = "Contract wording that must not be written to logs"
+    responses = arp_extraction_responses(training_default="no")
+    responses[0]["training_default"]["quote"] = secret_quote
+    evidence = ContractEvidence.from_single(FetchedTerms(
+        text="The provider supplies contractual terms.",
+        source_url="https://example.test/terms",
+        fetched_at=datetime(2026, 7, 20).date(),
+    ))
+
+    facts = extract_contract_facts(evidence, FakeLLMProvider(json_responses=responses))
+
+    assert facts.training_default == "unknown"
+    event = next(
+        event for event in trace_events
+        if event["step"] == "arp_fact_extraction"
+        and event["fact"] == "training_default"
+    )
+    assert event["model_value"] == "no"
+    assert event["final_value"] == "unknown"
+    assert event["outcome"] == "citation_rejected"
+    assert event["reason"]
+    assert event["citation"]["len"] == len(secret_quote)
+    assert secret_quote not in json.dumps(trace_events)

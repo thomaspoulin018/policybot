@@ -5,7 +5,12 @@ from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview
 from policybot.api.app import create_app
-from tests.helpers.arp_fixtures import arp_extraction_responses
+from tests.helpers.arp_fixtures import (
+    DEFAULT_EVIDENCE,
+    DEFAULT_QUOTE,
+    DEFAULT_URL,
+    arp_extraction_responses,
+)
 
 
 def _client(tmp_path, json_responses=None):
@@ -31,6 +36,34 @@ def test_final_submit_renders_report_on_success(tmp_path):
     assert resp.status_code == 200
     assert "Rapport de recommandation" in resp.text
     assert "Autoriser" in resp.text
+
+
+def test_final_submit_shows_validated_contract_citation_and_link(tmp_path):
+    llm = FakeLLMProvider(json_responses=[
+        {"already_public": True, "contains_personal_info": False,
+         "strategic_sensitive": False, "internal_nonpublic": False,
+         "highly_sensitive_secret": False, "confidence": 0.9},
+        *arp_extraction_responses(DEFAULT_URL, evidence=DEFAULT_EVIDENCE,
+                                  training_default="no", data_residency="quebec"),
+    ])
+    interview = Interview(
+        llm=llm,
+        store=PreApprovedStore(str(tmp_path / "pb.db")),
+        http_get=lambda url: f"<html><body>{DEFAULT_EVIDENCE}</body></html>",
+    )
+    client = TestClient(create_app(interview))
+
+    resp = client.post("/wizard/contexte-affaires", data={
+        "tool_name": "ChatGPT",
+        "data_checked": "Info déjà publique",
+        "usage_description": "Chercher de l'information publique",
+        "mode": "prompt",
+    })
+
+    assert resp.status_code == 200
+    assert "Sur quoi repose cette recommandation" in resp.text
+    assert DEFAULT_QUOTE in unescape(resp.text)
+    assert f'href="{DEFAULT_URL}"' in resp.text
 
 
 def test_golden_scenario_chatgpt_protege_b_is_refused(tmp_path):

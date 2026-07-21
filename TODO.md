@@ -73,6 +73,13 @@ Mise à jour : **2026-07-16**
 
 - [ ] Évaluer la mise en cache des classifications de données, suggestions du
   formulaire, décisions préapprouvées et résultats Tavily bruts.
+- [ ] **Hors périmètre MVP, mais piste très intéressante :** constituer un
+  registre de sources contractuelles canoniques par offre (p. ex. ChatGPT Plus,
+  Business et Edu), puis n'utiliser Tavily ou un autre moteur que pour trouver
+  des sources complémentaires. Valider ensuite que chaque document s'applique
+  bien au plan évalué avant d'en extraire un fait, afin d'empêcher qu'une
+  garantie Enterprise soit attribuée à une offre grand public.
+
 - [ ] Ajouter le tableau de revue/back-office pour l'agent responsable.
 - [ ] Ajouter le rafraîchissement planifié des ARP arrivées à expiration.
 - [ ] Ajouter la thématisation PDF selon l'identité visuelle UQAM.

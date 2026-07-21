@@ -89,7 +89,7 @@ def test_assess_attaches_arp_record_to_tool_ref(tmp_path):
                        "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
     )
     assert state.tools[0].arp is not None
-    assert len(state.tools[0].arp.criteria) == 8
+    assert len(state.tools[0].arp.criteria) == 13
 
 
 def test_assess_reuses_cached_arp_record_on_second_call(tmp_path):
