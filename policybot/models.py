@@ -21,6 +21,7 @@ EvidenceOutcome = Literal[
     "llm_failure",
     "model_abstention",
     "citation_rejected",
+    "declared_source_url_rejected",
     "invalid_value",
 ]
 
@@ -94,6 +95,7 @@ class FactEvidence(BaseModel):
     """
     value: str = "unknown"
     source_url: Optional[str] = None
+    declared_source_url: Optional[str] = None
     quote: Optional[str] = None
     confidence: float = 0.0
     note: Optional[str] = None
@@ -246,7 +248,8 @@ class RiskFactor(BaseModel):
     criterion: str
     inherent: RiskLetter
     mitigation: str = ""
-    residual: RiskLetter
+    # The residual rating is deliberately left to the reviewing officer.
+    residual: Optional[RiskLetter] = None
     responsable: str = ""
     observations: str = ""
     origin: Literal["rule", "llm_proposed"]

@@ -4,7 +4,7 @@ from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview
 from policybot.report.renderer import render_html
-from tests.helpers.arp_fixtures import arp_extraction_responses
+from tests.helpers.arp_fixtures import exa_evidence
 
 
 _GOLDEN_TERMS = (
@@ -23,13 +23,12 @@ def test_slide5_chatgpt_protege_b_is_refused_and_report_flags_it(tmp_path):
         {"already_public": False, "contains_personal_info": True,
          "strategic_sensitive": True, "internal_nonpublic": True,
          "highly_sensitive_secret": False, "confidence": 0.95},
-        *arp_extraction_responses(
-            training_default="yes", data_retention="indefinite", data_residency="us",
-            sub_processors="undisclosed", provider_human_access="no",
-        ),
     ])
     itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
-                    http_get=_terms_get)
+                    exa_search=lambda tool_name, offering: exa_evidence(
+                        training_default="yes", data_retention="indefinite", data_residency="us",
+                        sub_processors="undisclosed", provider_human_access="no",
+                    ))
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-006", demandeur="VRAF", unite="Finances"),
         tool_name="ChatGPT Pro",
@@ -62,14 +61,14 @@ def test_golden_chatgpt_public_offer_keeps_opt_out_as_unconfirmed(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.95},
-        *arp_extraction_responses(
+    ])
+    state = Interview(
+        llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
+        exa_search=lambda tool_name, offering: exa_evidence(
             evidence=_GOLDEN_TERMS,
             training_default="yes", opt_out_available="yes",
             opt_out_confirmed_enabled="unknown", data_residency="multi_region",
         ),
-    ])
-    state = Interview(
-        llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")), http_get=_terms_get,
     ).assess(
         request=RequestInfo(numero="IAG-2026-007"),
         tool_name="ChatGPT Pro",

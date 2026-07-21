@@ -1,5 +1,5 @@
 # tests/grille/test_engine.py
-from policybot.models import Usage, ContractFacts
+from policybot.models import Usage, ContractFacts, QualificationProfile
 from policybot.grille.engine import evaluate_usage, synthesize
 
 
@@ -47,6 +47,55 @@ def test_partie_b_training_criterion_reflects_r07():
     out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
     by_criterion = {c.criterion: c for c in out.partie_b}
     assert by_criterion["Utilisation de données pour entraînement"].inherent == "E"
+    assert by_criterion["Utilisation de données pour entraînement"].residual is None
+    assert "Aucune garantie active" in by_criterion["Utilisation de données pour entraînement"].observations
+    assert by_criterion["Utilisation de données pour entraînement"].observations.endswith("(R-07B)")
+
+
+def test_partie_b_observations_explain_classification_and_default_risk():
+    out = evaluate_usage(
+        Usage(data_classification="Protégé B"),
+        ContractFacts(training_default="no", data_residency="quebec", sub_processors="disclosed"),
+        iag_type="circuit_ferme",
+    )
+
+    by_criterion = {factor.criterion: factor for factor in out.partie_b}
+    assert by_criterion["Fuite de données confidentielles"].observations == (
+        "Coté Modéré car les données sont classées Protégé B."
+    )
+    assert by_criterion["Compatibilité avec la LAI/PRP"].observations == (
+        "Aucune règle de la grille déclenchée — risque inhérent de base (Faible)."
+    )
+
+
+def test_partie_b_observations_combine_rules_and_list_their_ids():
+    from policybot.grille.rules import Rule
+
+    rules = [
+        Rule(id="R-100", when={}, then={
+            "criterion": "Mauvaise classification des données",
+            "risk_level": "Modéré",
+            "conditions": ["Première condition."],
+        }),
+        Rule(id="R-101", when={}, then={
+            "criterion": "Mauvaise classification des données",
+            "risk_level": "Élevé",
+            "conditions": ["Deuxième condition."],
+        }),
+    ]
+
+    out = evaluate_usage(
+        Usage(data_classification="Non classifié"), ContractFacts(),
+        iag_type="publique", rules=rules,
+    )
+
+    factor = next(
+        row for row in out.partie_b if row.criterion == "Mauvaise classification des données"
+    )
+    assert factor.inherent == "E"
+    assert factor.observations == (
+        "Coté Élevé car Première condition. | Deuxième condition. (R-100, R-101)"
+    )
 
 
 def test_available_opt_out_is_not_treated_as_enabled():
@@ -131,22 +180,33 @@ def test_facts_dict_contains_only_usage_and_relevant_contract_semantics(monkeypa
 
     monkeypatch.setattr(engine_module, "evaluate_rules", spy)
 
-    usage = Usage(data_classification="Non classifié", rens_personnels=True,
-                  needs_officer_confirmation=True)
+    usage = Usage(
+        data_classification="Non classifié",
+        rens_personnels=True,
+        needs_officer_confirmation=True,
+        mode=["api"],
+        result_use=["Prise de décision", "Publication"],
+    )
     facts = ContractFacts(
         training_default="no", opt_out_available="yes",
         opt_out_confirmed_enabled="yes", sub_processors="disclosed",
         data_retention="none", provider_human_access="yes",
         encryption_standard="strong", ip_ownership="customer",
     )
-    evaluate_usage(usage, facts, iag_type="publique")
+    evaluate_usage(
+        usage,
+        facts,
+        iag_type="publique",
+        qualification=QualificationProfile(formation_iag_recue="partielle"),
+    )
 
     assert set(captured.keys()) == {
         "data_classification", "automated_decisions", "training_default",
         "opt_out_available", "opt_out_confirmed_enabled",
         "data_residency", "sub_processors", "data_retention",
         "encryption_standard", "ip_ownership", "rens_personnels",
-        "needs_officer_confirmation",
+        "needs_officer_confirmation", "result_used_for_decision",
+        "result_published", "api_integration", "formation_iag_recue",
     }
     assert "provider_human_access" not in captured
 
@@ -310,3 +370,113 @@ def test_fixed_advisories_always_present_and_dont_affect_verdict():
     joined = " ".join(out.conditions).lower()
     for keyword in ("hallucination", "biais", "formation", "dépendance", "réputation"):
         assert keyword in joined
+
+
+def test_personal_information_in_quebec_requires_lai_prp_controls():
+    usage = Usage(data_classification="Protégé A", rens_personnels=True)
+    facts = ContractFacts(
+        training_default="no",
+        data_residency="quebec",
+        sub_processors="disclosed",
+        encryption_standard="strong",
+    )
+
+    out = evaluate_usage(usage, facts, iag_type="circuit_ferme")
+
+    factor = next(
+        row for row in out.partie_b if row.criterion == "Compatibilité avec la LAI/PRP"
+    )
+    assert factor.inherent == "M"
+    assert out.verdict == "Autoriser_avec_conditions"
+    assert any("éfvp-r" in condition.lower() for condition in out.conditions)
+
+
+def test_decision_support_strengthens_ethics_rules():
+    usage = Usage(
+        data_classification="Non classifié",
+        result_use=["Prise de décision"],
+    )
+
+    out = evaluate_usage(
+        usage,
+        ContractFacts(training_default="no"),
+        iag_type="publique",
+    )
+
+    by_criterion = {factor.criterion: factor for factor in out.partie_b}
+    assert by_criterion["Hallucinations et erreurs factuelles"].inherent == "E"
+    assert by_criterion["Biais algorithmiques"].inherent == "E"
+    assert by_criterion["Supervision humaine insuffisante"].inherent == "E"
+    assert out.verdict == "Autoriser_avec_conditions"
+
+
+def test_publication_strengthens_output_and_reputation_rules():
+    usage = Usage(
+        data_classification="Non classifié",
+        result_use=["Publication"],
+    )
+
+    out = evaluate_usage(
+        usage,
+        ContractFacts(training_default="no"),
+        iag_type="publique",
+    )
+
+    by_criterion = {factor.criterion: factor for factor in out.partie_b}
+    assert by_criterion["Hallucinations et erreurs factuelles"].inherent == "M"
+    assert by_criterion["Propriété intellectuelle du contenu généré"].inherent == "M"
+    assert by_criterion["Image et réputation institutionnelle"].inherent == "M"
+    assert out.verdict == "Autoriser_avec_conditions"
+
+
+def test_missing_iag_training_requires_training_before_use():
+    usage = Usage(data_classification="Non classifié")
+
+    out = evaluate_usage(
+        usage,
+        ContractFacts(training_default="no"),
+        iag_type="publique",
+        qualification=QualificationProfile(formation_iag_recue="aucune"),
+    )
+
+    factor = next(
+        row for row in out.partie_b if row.criterion == "Formation insuffisante du personnel"
+    )
+    assert factor.inherent == "E"
+    assert out.verdict == "Autoriser_avec_conditions"
+    assert any("formation préalable" in condition.lower() for condition in out.conditions)
+
+
+def test_partial_iag_training_requires_completion_before_deployment():
+    usage = Usage(data_classification="Non classifié")
+
+    out = evaluate_usage(
+        usage,
+        ContractFacts(training_default="no"),
+        iag_type="publique",
+        qualification=QualificationProfile(formation_iag_recue="partielle"),
+    )
+
+    factor = next(
+        row for row in out.partie_b if row.criterion == "Formation insuffisante du personnel"
+    )
+    assert factor.inherent == "M"
+    assert out.verdict == "Autoriser_avec_conditions"
+    assert any("compléter les modules" in condition.lower() for condition in out.conditions)
+
+
+def test_api_integration_requires_dependency_controls():
+    usage = Usage(data_classification="Non classifié", mode=["api"])
+
+    out = evaluate_usage(
+        usage,
+        ContractFacts(training_default="no"),
+        iag_type="publique",
+    )
+
+    factor = next(
+        row for row in out.partie_b if row.criterion == "Dépendance technologique"
+    )
+    assert factor.inherent == "M"
+    assert out.verdict == "Autoriser_avec_conditions"
+    assert any("plan de continuité" in condition.lower() for condition in out.conditions)

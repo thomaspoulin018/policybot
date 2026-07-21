@@ -15,7 +15,7 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "pyyaml>=6.0",
     "python-multipart>=0.0.9",
-    "tavily-python>=0.5",
+    "exa-py>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +28,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["policybot*"]
+
+[tool.setuptools.data-files]
+"configs/recherche_des_faits" = ["configs/recherche_des_faits/*.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

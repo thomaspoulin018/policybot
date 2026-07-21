@@ -10,13 +10,18 @@ from tests.helpers.arp_fixtures import (
     DEFAULT_QUOTE,
     DEFAULT_URL,
     arp_extraction_responses,
+    exa_evidence,
 )
 
 
 def _client(tmp_path, json_responses=None):
     llm = FakeLLMProvider(json_responses=json_responses or [])
-    itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
-                    http_get=lambda url: "<html><body>ok</body></html>")
+    itv = Interview(
+        llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
+        exa_search=lambda tool_name, offering: exa_evidence(
+            training_default="no", data_residency="quebec",
+        ),
+    )
     return TestClient(create_app(itv))
 
 
@@ -43,13 +48,14 @@ def test_final_submit_shows_validated_contract_citation_and_link(tmp_path):
         {"already_public": True, "contains_personal_info": False,
          "strategic_sensitive": False, "internal_nonpublic": False,
          "highly_sensitive_secret": False, "confidence": 0.9},
-        *arp_extraction_responses(DEFAULT_URL, evidence=DEFAULT_EVIDENCE,
-                                  training_default="no", data_residency="quebec"),
     ])
     interview = Interview(
         llm=llm,
         store=PreApprovedStore(str(tmp_path / "pb.db")),
-        http_get=lambda url: f"<html><body>{DEFAULT_EVIDENCE}</body></html>",
+        exa_search=lambda tool_name, offering: exa_evidence(
+            DEFAULT_URL, evidence=DEFAULT_EVIDENCE,
+            training_default="no", data_residency="quebec",
+        ),
     )
     client = TestClient(create_app(interview))
 

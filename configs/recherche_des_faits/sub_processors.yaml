@@ -1,0 +1,24 @@
+version: 1
+fact: sub_processors
+category_arp: "Souveraineté et hébergement des données"
+allowed_values: ["disclosed", "undisclosed", "unknown"]
+hint: "disclosed seulement si une liste de sous-traitants est contractuellement publiée."
+exa:
+  query: "{tool} {vendor} subprocessor list data processing agreement"
+  type: auto
+  num_results: 5
+  include_domains: []
+  contents:
+    text: {max_characters: 8000}
+    highlights: {query: "subprocessor service provider list", num_sentences: 3}
+    summary:
+      query: "Are the service's subprocessors contractually disclosed?"
+      schema:
+        type: object
+        additionalProperties: false
+        required: [value, quote, source_url]
+        properties:
+          value: {type: string, enum: ["disclosed", "undisclosed", "unknown"]}
+          quote: {type: string}
+          source_url: {type: string}
+selection: {strategy: source_rank, require_declared_source_url: true}

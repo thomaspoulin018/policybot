@@ -45,10 +45,10 @@ def test_a_fact_without_evidence_keeps_the_bare_observation():
 
 def test_an_annotated_unknown_explains_itself_to_the_officer():
     facts = ContractFacts(evidence={"applicable_law": FactEvidence(
-        value="unknown", note="collecte Tavily échouée",
+        value="unknown", note="collecte Exa échouée",
     )})
 
     arp = build_arp("ChatGPT", "publique", facts)
 
     observations = _criterion(arp, "Juridiction applicable").observations
-    assert observations == "applicable_law=unknown — collecte Tavily échouée"
+    assert observations == "applicable_law=unknown — collecte Exa échouée"

@@ -62,29 +62,65 @@ _current_interview_id: contextvars.ContextVar[str | None] = contextvars.ContextV
 
 @dataclass
 class LLMUsage:
-    """Aggregated OpenRouter usage for one assessment, without prompt content."""
+    """Aggregated LLM and Exa usage for one assessment, without content."""
 
     api_calls: int = 0
     successful_api_calls: int = 0
     failed_api_calls: int = 0
     usage_recorded_calls: int = 0
+    cost_recorded_api_calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
     cost_usd: float = 0.0
     cost_available: bool = False
+    exa_search_calls: int = 0
+    exa_successful_search_calls: int = 0
+    exa_failed_search_calls: int = 0
+    exa_priced_search_calls: int = 0
+    exa_estimated_cost_usd: float = 0.0
+
+    def _openrouter_cost(self) -> float | None:
+        if self.successful_api_calls == 0:
+            return 0.0
+        if self.cost_available and self.successful_api_calls == self.cost_recorded_api_calls:
+            return round(self.cost_usd, 8)
+        return None
+
+    def _exa_cost(self) -> float | None:
+        if self.exa_successful_search_calls == 0:
+            return 0.0
+        if self.exa_successful_search_calls == self.exa_priced_search_calls:
+            return round(self.exa_estimated_cost_usd, 8)
+        return None
 
     def as_dict(self) -> dict[str, int | float | bool | None]:
+        openrouter_cost = self._openrouter_cost()
+        exa_cost = self._exa_cost()
+        total_cost = (
+            round(openrouter_cost + exa_cost, 8)
+            if openrouter_cost is not None and exa_cost is not None
+            else None
+        )
         return {
             "api_calls": self.api_calls,
             "successful_api_calls": self.successful_api_calls,
             "failed_api_calls": self.failed_api_calls,
             "usage_recorded_calls": self.usage_recorded_calls,
+            "cost_recorded_api_calls": self.cost_recorded_api_calls,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "total_tokens": self.total_tokens,
-            # ``None`` means the provider did not return a cost; it is not a free run.
-            "cost_usd": round(self.cost_usd, 8) if self.cost_available else None,
+            # Retained for existing log consumers; it is the total for the run.
+            "cost_usd": total_cost,
+            "openrouter_cost_usd": openrouter_cost,
+            "exa_search_calls": self.exa_search_calls,
+            "exa_successful_search_calls": self.exa_successful_search_calls,
+            "exa_failed_search_calls": self.exa_failed_search_calls,
+            "exa_priced_search_calls": self.exa_priced_search_calls,
+            # Estimated from Exa's public per-request pricing, not supplied by Exa.
+            "exa_estimated_cost_usd": exa_cost,
+            "total_cost_usd": total_cost,
         }
 
 
@@ -191,12 +227,31 @@ def record_llm_call_succeeded(usage_data: Mapping[str, int | float | None]) -> N
         cost_usd = usage_data.get("cost_usd")
         if cost_usd is not None:
             usage.cost_available = True
+            usage.cost_recorded_api_calls += 1
             usage.cost_usd += float(cost_usd)
+
+
+def record_exa_search_started() -> None:
+    if usage := _current_llm_usage.get():
+        usage.exa_search_calls += 1
+
+
+def record_exa_search_failed() -> None:
+    if usage := _current_llm_usage.get():
+        usage.exa_failed_search_calls += 1
+
+
+def record_exa_search_succeeded(estimated_cost_usd: float | None) -> None:
+    if usage := _current_llm_usage.get():
+        usage.exa_successful_search_calls += 1
+        if estimated_cost_usd is not None:
+            usage.exa_priced_search_calls += 1
+            usage.exa_estimated_cost_usd += estimated_cost_usd
 
 
 @contextmanager
 def collect_llm_usage(interview_id: str):
-    """Collect and emit API-call, token, and billed-cost totals for one run."""
+    """Collect and emit LLM and Exa API usage totals for one run."""
     usage = LLMUsage()
     token = _current_llm_usage.set(usage)
     run_status = "ok"

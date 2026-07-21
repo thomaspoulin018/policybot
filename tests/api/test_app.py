@@ -13,8 +13,7 @@ def _client(tmp_path):
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
-    itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
-                    http_get=lambda url: "<html><body>ok</body></html>")
+    itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")))
     return TestClient(create_app(itv))
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 from policybot.models import (
     Usage, ContractFacts, IagType, GlobalResult, RiskFactor,
+    QualificationProfile,
 )
 from policybot.criteria import USAGE_CRITERIA
 from policybot.grille.matrix import evaluate_matrix
@@ -10,6 +11,7 @@ from policybot.grille.rules import Rule, load_rules, evaluate_rules, highest_ris
 _REC_ORDER = {"Autoriser": 0, "Autoriser_avec_conditions": 1, "Escalader": 2, "Refuser": 3}
 _LETTER_FROM_LEVEL = {"Faible": "F", "Modéré": "M", "Élevé": "E", "Critique": "C"}
 _LETTER_ORDER = {"F": 0, "M": 1, "E": 2, "C": 3}
+_LEVEL_FROM_LETTER = {"F": "Faible", "M": "Modéré", "E": "Élevé", "C": "Critique"}
 _BASE_RISK_BY_CLASSIFICATION = {
     "Non classifié": "F",
     "Protégé A": "F",
@@ -19,28 +21,52 @@ _BASE_RISK_BY_CLASSIFICATION = {
 
 
 def _build_partie_b(usage: Usage, triggered: list[Rule]) -> list[RiskFactor]:
-    by_criterion: dict[str, list[str]] = {}
+    by_criterion: dict[str, list[Rule]] = {}
     for rule in triggered:
         criterion = rule.then.get("criterion")
         if criterion is None:
             continue
-        level = rule.then.get("risk_level")
-        letter = _LETTER_FROM_LEVEL[level] if level else "M"
-        by_criterion.setdefault(criterion, []).append(letter)
+        by_criterion.setdefault(criterion, []).append(rule)
 
     rows: list[RiskFactor] = []
     for category, criterion, _description in USAGE_CRITERIA:
         if criterion == "Fuite de données confidentielles":
             letter = _BASE_RISK_BY_CLASSIFICATION[usage.data_classification]
+            observations = (
+                f"Coté {_LEVEL_FROM_LETTER[letter]} car les données sont classées "
+                f"{usage.data_classification}."
+            )
         else:
-            letters = by_criterion.get(criterion, [])
+            criterion_rules = by_criterion.get(criterion, [])
+            letters = [
+                _LETTER_FROM_LEVEL[rule.then["risk_level"]]
+                if rule.then.get("risk_level") else "M"
+                for rule in criterion_rules
+            ]
             letter = max(letters, key=lambda value: _LETTER_ORDER[value]) if letters else "F"
+            if criterion_rules:
+                conditions = [
+                    condition
+                    for rule in criterion_rules
+                    for condition in rule.then.get("conditions", [])
+                ]
+                rule_ids = ", ".join(rule.id for rule in criterion_rules)
+                reason = " | ".join(conditions) or "Règle de la grille déclenchée."
+                observations = (
+                    f"Coté {_LEVEL_FROM_LETTER[letter]} car {reason} ({rule_ids})"
+                )
+            else:
+                observations = (
+                    "Aucune règle de la grille déclenchée — risque inhérent de base "
+                    "(Faible)."
+                )
         rows.append(RiskFactor(
             category=category,
             criterion=criterion,
             inherent=letter,
-            residual=letter,
+            residual=None,
             origin="rule",
+            observations=observations,
         ))
     return rows
 
@@ -50,6 +76,7 @@ def evaluate_usage(
     contract_facts: ContractFacts,
     iag_type: IagType,
     rules: list[Rule] | None = None,
+    qualification: QualificationProfile | None = None,
 ) -> Usage:
     out = usage.model_copy(deep=True)
     out.efvpr_required = out.rens_personnels
@@ -76,6 +103,14 @@ def evaluate_usage(
         "ip_ownership": contract_facts.ip_ownership,
         "rens_personnels": out.rens_personnels,
         "needs_officer_confirmation": out.needs_officer_confirmation,
+        "result_used_for_decision": "Prise de décision" in out.result_use,
+        "result_published": "Publication" in out.result_use,
+        "api_integration": "api" in out.mode,
+        "formation_iag_recue": (
+            qualification.formation_iag_recue
+            if qualification is not None and qualification.formation_iag_recue is not None
+            else "unknown"
+        ),
     }
     triggered = evaluate_rules(facts, rules if rules is not None else load_rules())
 

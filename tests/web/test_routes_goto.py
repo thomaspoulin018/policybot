@@ -7,8 +7,7 @@ from policybot.api.app import create_app
 
 def _client(tmp_path, json_responses=None):
     llm = FakeLLMProvider(json_responses=json_responses or [])
-    itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
-                    http_get=lambda url: "<html><body>ok</body></html>")
+    itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")))
     return TestClient(create_app(itv))
 
 

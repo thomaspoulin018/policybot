@@ -7,12 +7,21 @@ from pathlib import Path
 import pytest
 from policybot.models import RequestInfo
 from policybot.contract.arp import extract_contract_facts
-from policybot.contract.evidence import ContractEvidence
-from policybot.contract.fetcher import FetchedTerms
+from policybot.contract.exa import collect_evidence_from_exa
+from policybot.contract.fact_search import FACT_SEARCH_BY_NAME
+from policybot.contract.offering import build_offering_identity
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
-from policybot.tracing import _timestamped_log_path, trace_step
+from policybot.tracing import (
+    _timestamped_log_path,
+    collect_llm_usage,
+    record_exa_search_started,
+    record_exa_search_succeeded,
+    record_llm_call_started,
+    record_llm_call_succeeded,
+    trace_step,
+)
 from tests.helpers.arp_fixtures import arp_extraction_responses
 
 
@@ -43,7 +52,7 @@ def _terms_get(url):
 def _make_interview(tmp_path, json_responses):
     llm = FakeLLMProvider(json_responses=json_responses)
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    return Interview(llm=llm, store=store, http_get=_terms_get)
+    return Interview(llm=llm, store=store)
 
 
 def test_default_log_path_is_timestamped():
@@ -78,6 +87,37 @@ def test_pipeline_steps_share_interview_id(tmp_path, trace_events):
 
     interview_ids = {e["interview_id"] for e in trace_events}
     assert interview_ids == {state.interview_id}
+
+
+def test_llm_usage_summary_reports_total_run_cost(trace_events):
+    with collect_llm_usage("costed-run"):
+        record_llm_call_started()
+        record_llm_call_succeeded({
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "total_tokens": 120,
+            "cost_usd": 0.00125,
+        })
+        record_llm_call_started()
+        record_llm_call_succeeded({
+            "input_tokens": 50,
+            "output_tokens": 10,
+            "total_tokens": 60,
+            "cost_usd": 0.00075,
+        })
+        record_exa_search_started()
+        record_exa_search_succeeded(0.012)
+
+    summary = trace_events[-1]
+    assert summary["interview_id"] == "costed-run"
+    assert summary["step"] == "llm_usage_summary"
+    assert summary["status"] == "ok"
+    assert summary["api_calls"] == 2
+    assert summary["total_tokens"] == 180
+    assert summary["openrouter_cost_usd"] == 0.002
+    assert summary["exa_estimated_cost_usd"] == 0.012
+    assert summary["total_cost_usd"] == 0.014
+    assert summary["cost_usd"] == 0.014
 
 
 def test_no_raw_text_leaks_into_logs(tmp_path, trace_events):
@@ -150,27 +190,32 @@ def test_http_error_logs_status_without_exposing_message(trace_events):
     assert sentinel not in json.dumps(event)
 
 
-def test_fact_extraction_logs_unknown_reason_without_quote_content(trace_events):
+def test_exa_fact_rejection_logs_no_quote_content(trace_events):
     secret_quote = "Contract wording that must not be written to logs"
-    responses = arp_extraction_responses(training_default="no")
-    responses[0]["training_default"]["quote"] = secret_quote
-    evidence = ContractEvidence.from_single(FetchedTerms(
-        text="The provider supplies contractual terms.",
-        source_url="https://example.test/terms",
-        fetched_at=datetime(2026, 7, 20).date(),
-    ))
+    class FakeExa:
+        def search(self, query, **kwargs):
+            return {"results": [{
+                "url": "https://example.test/legal/terms",
+                "text": "The provider supplies contractual terms.",
+                "summary": {
+                    "value": "no", "quote": secret_quote,
+                    "source_url": "https://example.test/legal/terms",
+                },
+            }]}
 
-    facts = extract_contract_facts(evidence, FakeLLMProvider(json_responses=responses))
+    offering = build_offering_identity("ToolX", "publique", vendor="Vendor")
+    evidence = collect_evidence_from_exa(
+        "ToolX", "Vendor", offering, FakeExa(),
+        definitions=(FACT_SEARCH_BY_NAME["training_default"],), max_workers=1,
+    )
+    facts = extract_contract_facts(evidence)
 
     assert facts.training_default == "unknown"
     event = next(
         event for event in trace_events
-        if event["step"] == "arp_fact_extraction"
+        if event["step"] == "exa_fact_search"
         and event["fact"] == "training_default"
     )
-    assert event["model_value"] == "no"
-    assert event["final_value"] == "unknown"
     assert event["outcome"] == "citation_rejected"
-    assert event["reason"]
-    assert event["citation"]["len"] == len(secret_quote)
+    assert event["query"]["len"] > 0
     assert secret_quote not in json.dumps(trace_events)

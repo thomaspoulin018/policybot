@@ -1,5 +1,4 @@
 from __future__ import annotations
-import os
 from datetime import date
 import inspect
 from typing import Callable, Optional
@@ -13,7 +12,6 @@ from policybot.preapproved.store import PreApprovedStore
 from policybot.classify.data_classifier import classify_data
 from policybot.classify.tool_type import classify_tool_type
 from policybot.classify.tool_registry import lookup_tool
-from policybot.contract.fetcher import fetch_offering_terms
 from policybot.contract.evidence import ContractEvidence
 from policybot.contract.offering import build_offering_identity
 from policybot.contract.arp import CURRENT_ARP_SCHEMA_VERSION, extract_contract_facts, build_arp
@@ -41,13 +39,11 @@ class UnknownToolError(ValueError):
 
 class Interview:
     def __init__(self, llm: LLMProvider, store: PreApprovedStore,
-                 http_get: Optional[Callable[[str], str]] = None,
-                 tavily_search: Optional[Callable[[str], "ContractEvidence | None"]] = None,
+                 exa_search: Optional[Callable[[str], "ContractEvidence | None"]] = None,
                  arp_cache_mode: ArpCacheMode = "read_write"):
         self._llm = llm
         self._store = store
-        self._http_get = http_get
-        self._tavily_search = tavily_search
+        self._exa_search = exa_search
         self._arp_cache_mode = arp_cache_mode
 
     @property
@@ -78,34 +74,26 @@ class Interview:
                 extra["cache"] = "miss"
             with trace_step(None, "resolve_arp_fetch", tool_name=tool_name) as fetch_extra:
                 evidence = None
-                if self._tavily_search is not None:
-                    parameters = inspect.signature(self._tavily_search).parameters
+                if self._exa_search is not None:
+                    parameters = inspect.signature(self._exa_search).parameters
                     if "offering" in parameters:
-                        evidence = self._tavily_search(tool_name, offering=offering)
+                        evidence = self._exa_search(tool_name, offering=offering)
                     else:
-                        evidence = self._tavily_search(tool_name)
-                    fetch_extra["source"] = "tavily" if evidence is not None else "tavily_miss"
-                elif os.environ.get("POLICYBOT_CONTRACT_SEARCH", "").strip().lower() == "tavily":
-                    from policybot.contract.tavily import search_contract_terms_with_tavily
+                        evidence = self._exa_search(tool_name)
+                    fetch_extra["source"] = "exa_injected" if evidence is not None else "exa_miss"
+                else:
+                    from policybot.contract.exa import search_contract_facts_with_exa
 
-                    evidence = search_contract_terms_with_tavily(
+                    evidence = search_contract_facts_with_exa(
                         tool_name, offering=offering,
                     )
-                    fetch_extra["source"] = "tavily" if evidence is not None else "tavily_miss"
-                if evidence is None:
-                    terms = fetch_offering_terms(
-                        tool_name, offering, http_get=self._http_get,
-                    )
-                    fetch_extra.setdefault("source", "direct_terms")
-                    evidence = (
-                        ContractEvidence.from_terms(terms) if terms else None
-                    )
+                    fetch_extra["source"] = "exa" if evidence is not None else "exa_miss"
                 fetch_extra["found"] = evidence is not None
                 if evidence is None:
-                    facts = ContractFacts()  # manual-paste fallback handled by the UI layer
+                    facts = ContractFacts()
                 else:
-                    fetch_extra["families"] = len(evidence.by_family)
-                    facts = extract_contract_facts(evidence, self._llm)
+                    fetch_extra["facts"] = len(evidence.facts)
+                    facts = extract_contract_facts(evidence)
             arp = build_arp(tool_name, iag_type, facts, offering)
             if self._arp_cache_mode in ("read_write", "refresh"):
                 self._store.save_arp(arp)
@@ -174,7 +162,7 @@ class Interview:
                     evaluate_matrix(classification.data_classification, iag_type) == "INTERDIT"
                     for _, classification in classifications
                 ):
-                    # A matrix refusal is final; ARP/Tavily data cannot override it.
+                    # A matrix refusal is final; ARP evidence cannot override it.
                     facts = ContractFacts()
                 else:
                     arp = self._resolve_arp(tool_name, iag_type, offering)
@@ -198,7 +186,12 @@ class Interview:
                         automated_decisions=item.get("automated_decisions", False),
                     )
                     with trace_step(None, "evaluate_usage", usage_index=i) as extra:
-                        evaluated = evaluate_usage(usage, facts, iag_type)
+                        evaluated = evaluate_usage(
+                            usage,
+                            facts,
+                            iag_type,
+                            qualification=state.qualification,
+                        )
                         extra.update(
                             matrix_result=evaluated.matrix_result,
                             risk_level=evaluated.risk_level,

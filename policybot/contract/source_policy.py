@@ -6,6 +6,7 @@ import re
 from urllib.parse import urlparse
 
 from policybot.contract.evidence import SourceType
+from policybot.classify.tool_registry import lookup_tool
 from policybot.models import ContractOfferingIdentity
 
 
@@ -33,10 +34,16 @@ def build_source_policy(
     *,
     terms_url: str = "",
     priority_urls: list[str] | None = None,
+    source_urls: list[str] | None = None,
 ) -> dict:
-    domain = urlparse(terms_url).netloc.lower()
-    if domain.startswith("www."):
-        domain = domain[4:]
+    known_urls = list(dict.fromkeys(source_urls or priority_urls or ([terms_url] if terms_url else [])))
+    domains = []
+    for url in known_urls:
+        domain = urlparse(url).netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        if domain:
+            domains.append(domain)
 
     contract = offering.contract_type.casefold()
     if "institution" in contract or "enterprise" in offering.plan.casefold():
@@ -56,22 +63,32 @@ def build_source_policy(
     if "éducation" in plan_terms:
         plan_terms.extend(["education", "edu"])
     return {
-        "priority_urls": list(dict.fromkeys(
-            priority_urls or ([terms_url] if terms_url else [])
-        )),
-        "allowed_domains": [domain] if domain else [],
+        "priority_urls": list(dict.fromkeys(priority_urls or known_urls)),
+        "allowed_domains": list(dict.fromkeys(domains)),
         "excluded_domains": [
             value for value in (
-                f"community.{domain}" if domain else "",
-                f"forum.{domain}" if domain else "",
-                f"forums.{domain}" if domain else "",
-            ) if value
+                prefix + domain for domain in domains
+                for prefix in ("community.", "forum.", "forums.")
+            )
         ],
         "allowed_path_prefixes": ["/"],
         "excluded_path_patterns": list(_FORUM_OR_ARCHIVE_PATTERNS),
         "required_offer_terms": plan_terms,
         "excluded_offer_terms": excluded_offer_terms,
     }
+
+
+def contract_source_urls(
+    tool_name: str,
+    offering: ContractOfferingIdentity,
+) -> list[str]:
+    """Return official URLs scoped to the assessed offering, if the registry has them."""
+    entry = lookup_tool(tool_name) or {}
+    source_sets = entry.get("contract_sources") or {}
+    urls = list(source_sets.get(offering.contract_type) or ())
+    if not urls and entry.get("terms_url"):
+        urls.append(str(entry["terms_url"]))
+    return list(dict.fromkeys(url for url in urls if url))
 
 
 def classify_source(url: str) -> SourceType:
@@ -133,13 +150,9 @@ def source_is_allowed(result: dict, policy: dict | None) -> bool:
     return True
 
 
-def source_sort_key(result: dict, policy: dict | None) -> tuple[int, int, float]:
+def source_sort_key(result: dict, policy: dict | None) -> tuple[int, float, str]:
+    """Option A: source type first, then Exa relevance, then a stable URL tie-break."""
     url = str(result.get("url") or "")
-    priority_urls = list((policy or {}).get("priority_urls") or [])
-    try:
-        priority = priority_urls.index(url)
-    except ValueError:
-        priority = len(priority_urls) + 1
     type_order = {
         "contractual": 0,
         "dpa": 1,
@@ -151,7 +164,7 @@ def source_sort_key(result: dict, policy: dict | None) -> tuple[int, int, float]
         score = -float(result.get("score", 0.0))
     except (TypeError, ValueError):
         score = 0.0
-    return priority, type_order[classify_source(url)], score
+    return type_order[classify_source(url)], score, url
 
 
 def source_effective_date(result: dict) -> date | None:

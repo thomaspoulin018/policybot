@@ -27,6 +27,15 @@ def test_riskfactor_requires_origin_and_proposed():
     assert rf.proposed is True
 
 
+def test_riskfactor_residual_defaults_to_empty_for_officer_review():
+    rf = RiskFactor(
+        category="Gestion des données", criterion="Fuite de données",
+        inherent="E", origin="rule",
+    )
+
+    assert rf.residual is None
+
+
 def test_interviewstate_starts_empty():
     st = InterviewState(interview_id="abc", request=RequestInfo(numero="IAG-2026-001"))
     assert st.status == "in_progress"

@@ -17,7 +17,6 @@ def test_repository_config_declares_all_llm_tasks_and_cache_mode():
     assert config.llm.tasks.tool_type_detection.model
     assert config.llm.tasks.mode_detection.model
     assert config.llm.tasks.form_suggestions.model
-    assert config.llm.tasks.contract_extraction.model
     assert config.cache.arp.mode == "read_write"
 
 

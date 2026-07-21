@@ -4,10 +4,11 @@ from html import unescape
 from io import BytesIO
 import zipfile
 import xml.etree.ElementTree as ET
-from policybot.models import InterviewState, RequestInfo, Usage, ToolRef, GlobalResult, ContractFacts, QualificationProfile, ContractOfferingIdentity, FactEvidence
+import pytest
+from policybot.models import ContractSource, InterviewState, RequestInfo, Usage, ToolRef, GlobalResult, ContractFacts, QualificationProfile, ContractOfferingIdentity, FactEvidence
 from policybot.contract.arp import build_arp
 from policybot.grille.engine import evaluate_usage
-from policybot.report.renderer import _auto_observation, docx_filename, render_docx, pdf_filename, render_html, write_docx, write_pdf
+from policybot.report.renderer import _arp_automated_observations, _auto_observation, _citation_target_url, _reportlab_observation_source_markup, _source_reference_label, _unique_contract_sources, docx_filename, render_docx, render_pdf, pdf_filename, render_html, write_docx, write_pdf
 
 _TIMESTAMP = r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}"
 
@@ -48,6 +49,12 @@ def _state():
                 "quebec_higher_ed_license": "unknown",
             }.items()
         },
+        sources=[ContractSource(
+            url="https://example.test/contracts",
+            source_type="conditions d'utilisation",
+            collected_at=date(2026, 7, 20),
+            sha256="source-hash-must-not-be-rendered",
+        )],
     )
     arp = build_arp("ChatGPT", "publique", facts)
     usage = evaluate_usage(
@@ -124,6 +131,13 @@ def test_render_contains_all_eleven_usage_criteria():
         assert criterion in html, f"missing usage criterion: {criterion}"
 
 
+def test_render_keeps_residual_risk_cells_empty_and_renders_partie_b_observations():
+    html = unescape(render_html(_state()))
+
+    assert "<td></td>" in html
+    assert "Aucune règle de la grille déclenchée — risque inhérent de base (Faible)." in html
+
+
 def test_render_contains_automated_observations_for_manual_arp_criteria():
     html = unescape(render_html(_state()))
 
@@ -138,9 +152,12 @@ def test_render_contains_automated_observations_for_manual_arp_criteria():
     assert "Constat pré-rempli (à valider) : À confirmer; preuve insuffisante sur la compatibilité" in html
     assert "Constat pré-rempli (à valider) : Plan de réponse aux incidents et notification de brèche" in html
     assert "The institutional contract explicitly documents this control." in html
-    assert "Source : example.test/contracts — vérifiée le 20 juillet 2026" in html
+    assert "Source : <a href=\"https://example.test/contracts#:~:text=" in html
+    assert ">example.test</a> — vérifiée le 20 juillet 2026" in html
     assert "Réponse automatisée" not in html
     assert "should-not-appear-in-observations" not in html
+    assert "SHA-256" not in html
+    assert "source-hash-must-not-be-rendered" not in html
 
 
 def test_automated_observation_deduplicates_shared_evidence_and_hides_technical_fields():
@@ -167,10 +184,117 @@ def test_automated_observation_deduplicates_shared_evidence_and_hides_technical_
     observation = str(_auto_observation("Constat regroupé.", facts, tuple(facts.evidence)))
 
     assert observation.count("One shared contractual proof.") == 1
-    assert observation.count("Source : example.test/contracts") == 1
+    assert observation.count("Source : example.test") == 1
     assert "20 juillet 2026" in observation
     assert "not-for-a-human-reader" not in observation
     assert "institutional_terms_available=yes" not in observation
+
+
+def test_non_disclosure_observation_is_formatted_without_hash_or_technical_fields():
+    facts = ContractFacts(
+        contract_prohibits_reuse="unknown",
+        provider_human_access="no",
+        evidence={
+            "contract_prohibits_reuse": FactEvidence(
+                value="unknown",
+                source_url="https://learn.microsoft.com/en-us/microsoft-365/copilot/privacy",
+                quote="Prompts and responses are not used to train the foundation model.",
+                source_collected_at=date(2026, 7, 21),
+                source_sha256="3c8671da6a7e329048ecf451b8c37316b3ef9122225f8f4cf2bb1db27fdbcaf2",
+            ),
+            "provider_human_access": FactEvidence(
+                value="no",
+                source_url="https://learn.microsoft.com/en-us/microsoft-365/copilot/privacy",
+                quote="The service has opted out of human content review.",
+                source_collected_at=date(2026, 7, 21),
+                source_sha256="3c8671da6a7e329048ecf451b8c37316b3ef9122225f8f4cf2bb1db27fdbcaf2",
+            ),
+        },
+    )
+
+    observation = str(_arp_automated_observations(facts)[
+        "Garanties contractuelles de non-divulgation"
+    ])
+
+    assert "Interdiction contractuelle de réutilisation à confirmer." in observation
+    assert "Aucun accès humain du fournisseur n'est documenté." in observation
+    assert "contract_prohibits_reuse=unknown" not in observation
+    assert "provider_human_access=no" not in observation
+    assert "3c8671da6a7e329048ecf451b8c37316b3ef9122225f8f4cf2bb1db27fdbcaf2" not in observation
+    assert observation.count("Source : learn.microsoft.com") == 1
+
+
+def test_source_register_uses_compact_links_and_deduplicates_urls():
+    state = _state()
+    state.tools.append(ToolRef(
+        name="ChatGPT duplicata", iag_type="publique", arp=state.tools[0].arp,
+    ))
+
+    sources = _unique_contract_sources(state)
+
+    assert len(sources) == 1
+    assert _source_reference_label(sources[0].url) == "example.test / contracts"
+
+
+def test_partie_a_source_markup_links_to_the_full_url():
+    markup = _reportlab_observation_source_markup(
+        "https://example.test/contracts",
+        date(2026, 7, 20),
+    )
+
+    assert '<link href="https://example.test/contracts">' in markup
+    assert "<u>example.test</u>" in markup
+    assert "vérifiée le 20 juillet 2026" in markup
+
+
+def test_citation_link_targets_the_verbatim_quote_and_preserves_page_anchor():
+    target = _citation_target_url(
+        "https://fr.wikipedia.org/wiki/Intelligence_artificielle#Définition",
+        "Elle vise à résoudre des problèmes à forte complexité logique ou algorithmique.",
+    )
+
+    assert target == (
+        "https://fr.wikipedia.org/wiki/Intelligence_artificielle#Définition"
+        ":~:text=Elle%20vise%20%C3%A0%20r%C3%A9soudre%20des%20probl%C3%A8mes"
+        "%20%C3%A0%20forte%20complexit%C3%A9%20logique%20ou%20algorithmique."
+    )
+
+
+def test_partie_a_citation_and_source_use_a_text_fragment_link():
+    quote = "The institutional contract explicitly documents this control."
+    markup = _reportlab_observation_source_markup(
+        "https://example.test/contracts",
+        date(2026, 7, 20),
+        quote,
+    )
+    html = unescape(render_html(_state()))
+
+    expected_target = (
+        "https://example.test/contracts#:~:text="
+        "The%20institutional%20contract%20explicitly%20documents%20this%20control."
+    )
+    assert f'<link href="{expected_target}">' in markup
+    assert f'href="{expected_target}"' in html
+
+
+def test_pdf_embeds_a_link_to_the_cited_text_fragment():
+    pytest.importorskip("reportlab")
+    pypdf = pytest.importorskip("pypdf")
+
+    reader = pypdf.PdfReader(BytesIO(render_pdf(_state())))
+    targets = []
+    for page in reader.pages:
+        for annotation_ref in page.get("/Annots", []):
+            annotation = annotation_ref.get_object()
+            action = annotation.get("/A")
+            if action and action.get("/URI"):
+                targets.append(str(action["/URI"]))
+
+    assert (
+        "https://example.test/contracts#:~:text="
+        "The%20institutional%20contract%20explicitly%20documents%20this%20control."
+    ) in targets
+
 
 def test_render_contains_partie_c_conditions():
     state = _state()

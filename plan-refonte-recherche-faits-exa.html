@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plan : Refonte de la recherche des faits (Exa)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px; line-height: 1.6; color: #1a1a2e;
+      background: #f4f6fb; padding: 2rem;
+    }
+    .container { max-width: 920px; margin: 0 auto; }
+
+    header {
+      background: linear-gradient(135deg, #10143a 0%, #1f2a6b 100%);
+      color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+    }
+    header h1 { font-size: 1.75rem; font-weight: 700; }
+    header p  { margin-top: .5rem; opacity: .8; font-size: .98rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.1rem; font-size: .82rem; opacity: .7; }
+
+    .section {
+      background: #fff; border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+      padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+    }
+    .section h2 {
+      font-size: 1.1rem; font-weight: 700; color: #16213e;
+      border-left: 4px solid #4361ee; padding-left: .75rem; margin-bottom: 1rem;
+    }
+    .section h3 { font-size: .98rem; color: #1f2a6b; margin: 1.1rem 0 .5rem; }
+    .section p { margin-bottom: .6rem; }
+    ul, ol { padding-left: 1.3rem; }
+    li { margin-bottom: .45rem; }
+    ol.steps li strong { color: #4361ee; }
+    code {
+      background: #eef1fb; color: #2a3170; padding: .1rem .35rem;
+      border-radius: 4px; font-size: .85em;
+      font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+    }
+
+    .badge {
+      display: inline-block; font-size: .72rem; font-weight: 700;
+      padding: .12rem .55rem; border-radius: 99px; margin-right: .3rem; vertical-align: middle;
+    }
+    .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+    .badge-green  { background: #dcfce7; color: #15803d; }
+    .badge-yellow { background: #fef9c3; color: #a16207; }
+    .badge-red    { background: #fee2e2; color: #b91c1c; }
+    .badge-grey   { background: #e5e7eb; color: #374151; }
+
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; margin-top: .4rem; }
+    th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .7rem; }
+    td { padding: .5rem .7rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+
+    .code-block {
+      background: #10143a; color: #e7ebff; border-radius: 8px;
+      padding: 1rem 1.15rem; font-size: .82rem; line-height: 1.55;
+      font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+      white-space: pre; overflow-x: auto; margin: .6rem 0;
+    }
+    .code-block .c { color: #8b95d6; }
+    .code-block .k { color: #ffd479; }
+    .code-block .s { color: #9ff0b0; }
+
+    .callout {
+      border-left: 4px solid #4361ee; background: #f0f4ff;
+      padding: .75rem 1rem; border-radius: 0 8px 8px 0; font-size: .9rem; margin: .75rem 0;
+    }
+    .callout.warn   { border-color: #f59e0b; background: #fffbeb; }
+    .callout.danger { border-color: #ef4444; background: #fef2f2; }
+    .callout.ok     { border-color: #22c55e; background: #f0fdf4; }
+
+    .flow {
+      background: #0d1030; color: #cdd6ff; border-radius: 8px; padding: 1.1rem 1.2rem;
+      font-family: "SF Mono", "Cascadia Code", Consolas, monospace; font-size: .8rem;
+      line-height: 1.5; white-space: pre; overflow-x: auto;
+    }
+    .pill-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .3rem; }
+    .pill { background: #eef1fb; border: 1px solid #d7ddf5; border-radius: 6px;
+            padding: .3rem .6rem; font-size: .8rem; font-family: "SF Mono", Consolas, monospace; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 680px) { .grid2 { grid-template-columns: 1fr; } }
+    .lock { font-size: .82rem; }
+    .lock td:first-child { font-weight: 600; color: #1f2a6b; white-space: nowrap; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Refonte de la recherche des faits — passage à Exa</h1>
+    <p>Une recherche web <strong>par fait</strong>, pilotée par une config YAML par recherche, avec structured output Exa et vérification par ancrage de la citation.</p>
+    <div class="meta">
+      <span>Date : 2026-07-21</span>
+      <span>Projet : PolicyBot (UQAM)</span>
+      <span>Portée : couche <code>contract/</code> — collecte &amp; extraction des faits ARP</span>
+      <span>Type : plan d'architecture</span>
+    </div>
+  </header>
+
+  <!-- OBJECTIF -->
+  <div class="section">
+    <h2>1 — Objectif</h2>
+    <p>Remplacer entièrement le pipeline Tavily actuel (une recherche + une extraction LLM <em>par famille</em> de 5 familles) par un pipeline <strong>Exa</strong> où <strong>chaque fait contractuel a sa propre recherche web</strong>, décrite par un fichier YAML dédié.</p>
+    <p>Le <strong>structured output d'Exa</strong> (schéma JSON passé dans <code>contents.summary</code>) renvoie directement, pour chaque fait, une <strong>valeur</strong> et une <strong>citation verbatim</strong>. PolicyBot <strong>vérifie</strong> ensuite cette citation en l'ancrant dans le texte réellement récupéré de la source&nbsp;: une citation non ancrée fait retomber le fait à <code>unknown</code>. Le but de la refonte est la <strong>vérifiabilité fait par fait</strong>.</p>
+    <div class="callout ok">
+      <strong>Validé côté API Exa</strong> — <code>/search</code> accepte <code>contents.summary.schema</code> (JSON Schema → structured output) et renvoie par résultat&nbsp;: <code>url</code>, <code>title</code>, <code>text</code>, <code>highlights</code> (extraits <em>verbatim</em> + scores) et <code>summary</code>. On tient donc à la fois la valeur structurée <em>et</em> la matière verbatim pour l'ancrer.
+    </div>
+  </div>
+
+  <!-- DECISIONS VERROUILLEES -->
+  <div class="section">
+    <h2>2 — Décisions verrouillées <span class="badge badge-green">confirmées</span></h2>
+    <table class="lock">
+      <tr><td>Migration</td><td><strong>Remplacement complet.</strong> Tavily, la notion de « famille » et le repli page-directe (<code>fetch_terms</code>) sont retirés. Exa est l'unique source des faits.</td></tr>
+      <tr><td>Rôle du LLM</td><td><strong>Aucune extraction LLM.</strong> Exa renvoie <code>{value, quote, source_url}</code>. La vérification est <strong>déterministe</strong> (ancrage textuel).</td></tr>
+      <tr><td>Configs</td><td><strong>24 gabarits génériques</strong>, un YAML par fait, templés <code>{tool}</code>/<code>{vendor}</code> au runtime.</td></tr>
+      <tr><td>Emplacement</td><td><code>configs/recherche_des_faits/</code> (sans espace ni accent dans le chemin). <strong>Aucun repli</strong>&nbsp;: un fait non prouvé → <code>unknown</code>.</td></tr>
+      <tr><td>Vérification</td><td><strong>Ancrage textuel seul</strong>&nbsp;: la citation doit être un extrait littéral du contenu réellement récupéré (logique <code>_quote_is_anchored</code> conservée).</td></tr>
+      <tr><td>Coût / latence</td><td><strong>Cache SQLite</strong> (<code>PreApprovedStore</code>, <code>ArpRecord</code> avec péremption) + <strong>24 recherches en parallèle</strong> à froid.</td></tr>
+    </table>
+  </div>
+
+  <!-- ARCHITECTURE CIBLE -->
+  <div class="section">
+    <h2>3 — Architecture cible</h2>
+    <div class="flow">Outil identifié (registre) + Offering (plan / mode / version)
+        │
+        ▼
+ policybot/contract/exa.py
+  ┌─────────────────────────────────────────────────────────────┐
+  │  Pour CHAQUE fait (≈24) — configs/recherche_des_faits/*.yaml │
+  │                                                             │
+  │   1. Templer la query + les domaines  ({tool},{vendor})     │
+  │   2. Exa /search  ── contents.text + highlights + summary   │
+  │                      summary.schema = {value, quote, url}   │
+  │   3. Ancrage déterministe : quote ⊂ text|highlights ?       │
+  │        oui → FactEvidence(accepted)                         │
+  │        non → FactEvidence(unknown, outcome=citation_rejected)│
+  └─────────────────────────────────────────────────────────────┘
+        │   (ThreadPool — 24 recherches concurrentes à froid)
+        ▼
+ ContractFacts  ── assemblage des 24 FactEvidence (arp.py)
+        │
+        ▼
+ build_arp() → ArpRecord  ── inchangé (Partie A / 13 critères)
+        │
+        ▼
+ PreApprovedStore (SQLite)  ── cache avec péremption</div>
+
+    <div class="grid2" style="margin-top:1rem;">
+      <div>
+        <h3>À créer</h3>
+        <ul>
+          <li><span class="badge badge-green">NEW</span> <code>policybot/contract/exa.py</code> — client Exa, exécution par fait, ancrage, parallélisme.</li>
+          <li><span class="badge badge-green">NEW</span> <code>configs/recherche_des_faits/*.yaml</code> — ≈24 configs, une par fait.</li>
+          <li><span class="badge badge-green">NEW</span> <code>policybot/contract/fact_search.py</code> — schéma Pydantic + chargement/validation d'une config de fait.</li>
+          <li><span class="badge badge-green">NEW</span> <code>FakeExaClient</code> (tests) — réponses Exa en file, offline &amp; déterministe.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>À supprimer</h3>
+        <ul>
+          <li><span class="badge badge-red">DEL</span> <code>contract/tavily.py</code>, <code>tavily_probe.py</code></li>
+          <li><span class="badge badge-red">DEL</span> <code>contract/families.py</code> + <code>configs/fact_families.yaml</code></li>
+          <li><span class="badge badge-red">DEL</span> <code>configs/tavily_contracts/</code> (configs générées par outil)</li>
+          <li><span class="badge badge-red">DEL</span> <code>contract/fetcher.py</code> (repli page-directe) + <code>tests/contract/fixtures/</code> HTML associés</li>
+          <li><span class="badge badge-red">DEL</span> Notion de « famille » dans <code>evidence.py</code> et <code>arp.py</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>À adapter</h3>
+    <table>
+      <thead><tr><th>Fichier</th><th>Changement</th></tr></thead>
+      <tbody>
+        <tr><td><code>contract/evidence.py</code></td><td>Passer d'un index <em>par famille</em> à un index <em>par fait</em> (<code>documents_by_fact</code>). <code>EvidenceDocument</code> conservé (url, text, sha256, dates). Retirer <code>from_single</code>/<code>from_terms</code> (repli disparu).</td></tr>
+        <tr><td><code>contract/arp.py</code></td><td><code>extract_contract_facts</code> n'appelle plus le LLM&nbsp;: il assemble les <code>FactEvidence</code> déjà produites/ancrées par <code>exa.py</code>. La boucle « par famille » devient « par fait ». <code>build_arp</code> et le calcul des 13 critères Partie A restent <strong>inchangés</strong>.</td></tr>
+        <tr><td><code>contract/source_policy.py</code></td><td>Conservé/simplifié&nbsp;: sert à trier/départager plusieurs résultats Exa pour un même fait (source contractuelle &gt; DPA &gt; technique &gt; secondaire). <em>Voir question ouverte Q1.</em></td></tr>
+        <tr><td><code>api/deps.py</code> · <code>interview/orchestrator.py</code></td><td>Câbler Exa au lieu de Tavily. <code>EXA_API_KEY</code> remplace <code>TAVILY_API_KEY</code>. Sans clé → <code>unknown</code> sur tous les faits (dégradation propre, comme aujourd'hui sans clé Tavily).</td></tr>
+        <tr><td><code>prompts/</code></td><td>Retirer le prompt <code>contract_extraction</code> (plus d'extraction LLM). Le « prompt » devient le <code>summary.query</code> par fait, vécu dans le YAML.</td></tr>
+        <tr><td><code>CLAUDE.md</code> · <code>README.md</code></td><td>Documenter le nouveau flux et l'invariant (voir Risque R4).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ANATOMIE CONFIG -->
+  <div class="section">
+    <h2>4 — Anatomie d'une config de fait <span class="badge badge-blue">une recherche = un YAML</span></h2>
+    <p>Chaque fichier décrit intégralement <strong>une</strong> recherche Exa&nbsp;: la requête, les domaines à cibler, et le <strong>schéma structured output</strong> qui impose la forme <code>{value, quote}</code>. Exemple pour <code>training_default</code>&nbsp;:</p>
+    <div class="code-block"><span class="c"># configs/recherche_des_faits/training_default.yaml</span>
+<span class="k">version</span>: 1
+<span class="k">fact</span>: training_default
+<span class="k">category_arp</span>: <span class="s">"Souveraineté et hébergement des données"</span>   <span class="c"># informatif</span>
+<span class="k">allowed_values</span>: [<span class="s">"yes"</span>, <span class="s">"no"</span>, <span class="s">"unknown"</span>]
+<span class="k">hint</span>: >-
+  yes si le contenu soumis sert à l'entraînement par défaut ; no seulement si
+  l'offre évaluée le désactive par défaut.
+
+<span class="k">exa</span>:
+  <span class="k">query</span>: <span class="s">"{tool} {vendor} terms: is customer content used to train models by default"</span>
+  <span class="k">type</span>: auto              <span class="c"># neural | keyword | auto</span>
+  <span class="k">num_results</span>: 5
+  <span class="k">include_domains</span>: []      <span class="c"># injecté depuis le registre outil si dispo</span>
+  <span class="k">contents</span>:
+    <span class="k">text</span>: { max_characters: 8000 }
+    <span class="k">highlights</span>:
+      query: <span class="s">"training on customer data / opt out"</span>
+      num_sentences: 3
+    <span class="k">summary</span>:
+      query: <span class="s">"Does the assessed offering use submitted data to train models by default?"</span>
+      <span class="k">schema</span>:            <span class="c"># ← STRUCTURED OUTPUT — forme appréciée par Exa</span>
+        description: <span class="s">"Preuve d'un fait contractuel PolicyBot"</span>
+        type: object
+        additionalProperties: false
+        required: [value, quote, source_url]
+        properties:
+          value:      { type: string, enum: [<span class="s">"yes"</span>, <span class="s">"no"</span>, <span class="s">"unknown"</span>],
+                        description: <span class="s">"La valeur du fait, strictement dans la liste permise"</span> }
+          quote:      { type: string, description: <span class="s">"Phrase verbatim de la page prouvant la valeur"</span> }
+          source_url: { type: string, description: <span class="s">"URL exacte de la page d'où provient la citation"</span> }</div>
+    <div class="callout">
+      <strong>Ancrage (le cœur de la vérif).</strong> Exa renvoie <code>value</code> + <code>quote</code>. On accepte le fait <em>seulement si</em> <code>quote</code> se retrouve, à la mise en forme près, dans le <code>text</code> ou les <code>highlights</code> réellement récupérés pour ce résultat — la fonction <code>_quote_is_anchored</code> existante est réutilisée telle quelle. Sinon → <code>unknown</code> / <code>outcome=citation_rejected</code>. C'est ce qui distingue « Exa l'a dit » de « c'est écrit dans la source, à cette URL ».
+    </div>
+    <p><span class="badge badge-grey">≈24 fichiers</span> Un YAML pour chacun des faits actuels&nbsp;: <span class="pill-row"></p>
+    <div class="pill-row">
+      <span class="pill">training_default</span><span class="pill">opt_out_available</span><span class="pill">opt_out_confirmed_enabled</span>
+      <span class="pill">contract_prohibits_reuse</span><span class="pill">provider_human_access</span><span class="pill">data_retention</span>
+      <span class="pill">data_residency</span><span class="pill">sub_processors</span><span class="pill">foreign_vendor_dependency</span>
+      <span class="pill">encryption_standard</span><span class="pill">authentication_support</span><span class="pill">audit_logging</span>
+      <span class="pill">incident_response</span><span class="pill">ip_ownership</span><span class="pill">applicable_law</span>
+      <span class="pill">institutional_terms_available</span><span class="pill">dpa_available</span><span class="pill">institutional_use_restricted</span>
+      <span class="pill">quebec_higher_ed_license</span><span class="pill">…</span>
+    </div>
+    <p style="margin-top:.7rem;"><em>Les valeurs permises et les <code>hint</code> sont repris à l'identique de <code>fact_families.yaml</code> — la refonte change la <strong>collecte</strong>, pas la sémantique des faits ni les 13 critères Partie A.</em></p>
+  </div>
+
+  <!-- FLUX & PARALLELISME -->
+  <div class="section">
+    <h2>5 — Exécution, parallélisme &amp; cache</h2>
+    <ol class="steps">
+      <li><strong>Cache d'abord</strong> — <code>PreApprovedStore</code> renvoie l'<code>ArpRecord</code> si présent et non périmé. Aucune recherche Exa n'est lancée.</li>
+      <li><strong>À froid : 24 recherches concurrentes</strong> — un <code>ThreadPoolExecutor</code> borné (ex. 8 workers) lance les recherches par fait. Latence perçue ≈ une seule recherche.</li>
+      <li><strong>Dégradation par fait</strong> — une recherche Exa qui échoue (réseau/quota) marque <em>ce</em> fait <code>unknown</code> (<code>outcome=collection_failure</code>) sans jamais interrompre l'entrevue. Distinction <code>auth</code> / <code>quota</code> / <code>network</code> conservée pour la traçabilité.</li>
+      <li><strong>Assemblage</strong> — les 24 <code>FactEvidence</code> forment <code>ContractFacts</code> ; <code>build_arp</code> en dérive les 13 critères ; l'<code>ArpRecord</code> est mis en cache.</li>
+    </ol>
+    <div class="callout warn">
+      <strong>Garde-fou de traçabilité (non négociable).</strong> <code>tracing.py</code> ne journalise jamais de texte libre en clair. Les requêtes, citations et contenus de page restent masqués (<code>mask_text</code> — longueur + hash SHA-256 tronqué). Tout nouveau point de trace dans <code>exa.py</code> doit respecter cette règle. L'artefact d'audit Markdown (équivalent de la sortie <code>output/tavily/</code>) devient <code>output/exa/</code> et n'est pas une trace.
+    </div>
+  </div>
+
+  <!-- ENV / SETUP -->
+  <div class="section">
+    <h2>6 — Environnement &amp; lancement</h2>
+    <div class="code-block">cd C:\code\05_Travail\PolicyBot
+python -m venv .venv
+
+<span class="c"># Windows</span>
+.\.venv\Scripts\activate
+
+<span class="c"># macOS / Linux</span>
+source .venv/bin/activate
+
+pip install -e ".[dev]"          <span class="c"># + ".[pdf]" pour l'export PDF</span>
+pip install exa-py               <span class="c"># nouveau client — à déclarer dans pyproject.toml</span>
+
+<span class="c"># clé Exa (remplace TAVILY_API_KEY) — dans .env, jamais commité</span>
+<span class="c"># EXA_API_KEY=exa_...</span>
+
+pytest -v                        <span class="c"># suite complète, offline (FakeExaClient)</span>
+pytest tests/contract -v         <span class="c"># cible la couche refactorée</span>
+python -m policybot.contract.exa_probe "ChatGPT"   <span class="c"># sonde manuelle (remplace tavily_probe)</span></div>
+    <div class="callout">Toujours activer le venv avant de lancer&nbsp;: <code>.\.venv\Scripts\activate</code> (Windows) ou <code>source .venv/bin/activate</code> (macOS/Linux). <code>pytest</code> reste l'unique porte de qualité, offline et déterministe (<code>tests/conftest.py</code> neutralise le traçage et redirige les logs).</div>
+  </div>
+
+  <!-- RISQUES -->
+  <div class="section">
+    <h2>7 — Risques &amp; mitigations</h2>
+    <table>
+      <thead><tr><th>#</th><th>Risque</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>R1</td>
+          <td><strong>Le structured output d'Exa est produit par un LLM interne</strong> — la <code>value</code> et la <code>quote</code> peuvent être hallucinées.</td>
+          <td>Ancrage déterministe obligatoire&nbsp;: <code>quote</code> non retrouvée dans <code>text</code>/<code>highlights</code> → <code>unknown</code>. C'est exactement le principe « rien de dérivé n'est silencieusement digne de confiance ».</td>
+        </tr>
+        <tr>
+          <td>R2</td>
+          <td><strong>Faux négatifs d'ancrage</strong> — Exa peut reformuler la citation (paraphrase, ponctuation) et casser le <code>in</code> textuel.</td>
+          <td>Ancrer aussi contre <code>highlights</code> (extraits verbatim par construction), garder la normalisation existante (markdown/guillemets/espaces), seuil minimal de longueur. Régler <code>num_sentences</code> des highlights pour couvrir la phrase-preuve.</td>
+        </tr>
+        <tr>
+          <td>R3</td>
+          <td><strong>Coût &amp; rate-limit</strong> — 24 recherches × <code>contents(text+summary schema)</code> par outil, en parallèle.</td>
+          <td>Cache SQLite (la majorité des cas), pool borné (ex. 8 workers), <code>num_results</code> bas, <code>include_domains</code> ciblés par fait, <code>max_characters</code> plafonné. Surveiller la facturation Exa lors du 1<sup>er</sup> passage réel.</td>
+        </tr>
+        <tr>
+          <td>R4</td>
+          <td class="badge-yellow" style="background:none;"><strong>Invariant architectural</strong> — le summary d'Exa <em>est</em> une extraction « type LLM ». Risque de brouiller la règle « le LLM ne décide jamais du verdict ».</td>
+          <td>Documenter explicitement&nbsp;: la valeur Exa reste une <strong>proposition vérifiée</strong> (<code>origin=llm_proposed</code>/ancrée), jamais un verdict. Seuls la matrice MCN et <code>grille.yaml</code> décident. Mettre à jour le tableau d'invariants de <code>CLAUDE.md</code>.</td>
+        </tr>
+        <tr>
+          <td>R5</td>
+          <td><strong>Régression du scénario doré</strong> — le e2e UQAM (ChatGPT + Protégé B → <code>INTERDIT</code>/<code>Refuser</code>) ne doit pas bouger.</td>
+          <td>Le verdict vient de la matrice, pas des faits Exa&nbsp;: garder <code>tests/test_golden_scenarios.py</code> vert avec un <code>FakeExaClient</code> scénarisé. C'est le filet de sécurité de la migration.</td>
+        </tr>
+        <tr>
+          <td>R6</td>
+          <td><strong>Empaquetage</strong> — le nouveau dossier <code>configs/recherche_des_faits/</code> doit être livré dans le wheel.</td>
+          <td>Le déclarer comme <em>package data</em> dans <code>pyproject.toml</code> (dette d'empaquetage déjà connue à corriger au passage).</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- DEPARTAGE MULTI-SOURCES -->
+  <div class="section">
+    <h2>8 — Départage multi-sources <span class="badge badge-yellow">piste à trancher</span></h2>
+    <p><strong>Le problème.</strong> Pour un fait, Exa <code>/search</code> renvoie <em>N</em> résultats (ex. 5), et le <code>summary.schema</code> s'applique <strong>par résultat</strong> — soit jusqu'à <em>N</em> candidats <code>{value, quote, source_url}</code>. Après ancrage, il peut en rester plusieurs, éventuellement <strong>avec des valeurs contradictoires</strong>. Il faut en retenir un.</p>
+    <p style="margin-top:.5rem;"><em>Note&nbsp;: comme le summary est par résultat, la source d'un candidat est intrinsèquement connue (l'URL du résultat). Le champ <code>source_url</code> du schéma est ce que le LLM d'Exa <strong>déclare</strong>&nbsp;; il sert de garde-fou (piste D), pas de source de vérité.</em></p>
+
+    <table>
+      <thead><tr><th>Piste</th><th>Mécanique</th><th>Bilan</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>A — Rang par type de source</strong><br><span class="badge badge-green">recommandée</span><br><span class="badge badge-grey">0 LLM</span></td>
+          <td>Chaque candidat est ancré contre le texte de <em>son</em> résultat. Parmi les candidats ancrés, tri par <code>source_policy</code> (contractuel &gt; DPA &gt; technique officielle &gt; commercial &gt; secondaire), puis par score de pertinence Exa. Le 1<sup>er</sup> gagne.</td>
+          <td>➕ Déterministe, respecte la décision « LLM supprimé », auditable.<br>➖ Ne raisonne pas sur une contradiction de fond entre deux sources également fiables.</td>
+        </tr>
+        <tr>
+          <td><strong>B — Consensus + drapeau de conflit</strong><br><span class="badge badge-green">recommandée</span><br><span class="badge badge-grey">0 LLM</span></td>
+          <td>Comme A, mais si des candidats ancrés portent des <strong>valeurs différentes</strong>, on retient la source la plus autoritaire <strong>et</strong> on pose <code>needs_officer_confirmation</code> sur le fait (avec les deux citations conservées pour l'officier).</td>
+          <td>➕ Conservateur « quand on hésite, on signale », fidèle aux principes PolicyBot.<br>➖ Un peu plus de logique + un champ de conflit à faire remonter au rapport.</td>
+        </tr>
+        <tr>
+          <td><strong>C — Arbitre LLM</strong><br><span class="badge badge-blue">ton idée</span><br><span class="badge badge-yellow">réintroduit 1 LLM</span></td>
+          <td>On rassemble les candidats <strong>déjà ancrés</strong> (<code>quote</code> + <code>url</code>) et on demande à un petit LLM de <strong>désigner l'URL</strong> qui répond le mieux, en la choisissant <em>dans la liste fournie</em>. Sa réponse (une URL) est re-validée contre la liste&nbsp;; il n'invente ni valeur ni citation.</td>
+          <td>➕ Gère finement les cas ambigus, garde le LLM « cantonné » (il choisit, il n'extrait pas).<br>➖ Tension avec la décision verrouillée « Exa extrait, LLM supprimé »&nbsp;; latence/coût par fait contesté. <strong>À n'activer que sur conflit</strong> (rare) pour borner le coût.</td>
+        </tr>
+        <tr>
+          <td><strong>D — <code>source_url</code> comme garde-fou</strong><br><span class="badge badge-grey">complément gratuit</span></td>
+          <td>Puisque le schéma fait déclarer <code>source_url</code> au LLM d'Exa, on exige qu'il <strong>coïncide avec l'URL du résultat traité</strong>. Une divergence est un signal d'hallucination → on écarte le candidat.</td>
+          <td>➕ Anti-hallucination gratuit, se combine avec A/B/C.<br>➖ Ce n'est pas un départage à lui seul.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout ok">
+      <strong>Recommandation.</strong> Partir sur <strong>A + B + D</strong> (entièrement déterministe, conforme aux décisions verrouillées, aucun LLM). Garder <strong>C en option activable uniquement sur conflit</strong> si, à l'usage, A/B se révèlent trop grossiers. Ton intuition « faire dire au LLM d'où vient la citation » est donc doublement présente&nbsp;: en <strong>garde-fou passif</strong> (piste D, sans appel LLM supplémentaire) et en <strong>arbitre actif optionnel</strong> (piste C).
+    </div>
+  </div>
+
+  <!-- QUESTIONS OUVERTES -->
+  <div class="section">
+    <h2>9 — Questions ouvertes</h2>
+    <ul>
+      <li><strong>Q1 — <code>include_domains</code> par fait.</strong> Injecte-t-on automatiquement les domaines de <code>contract_sources</code> du registre outil dans chaque config de fait, ou laisse-t-on la recherche ouverte&nbsp;? <em>Proposition&nbsp;: injecter si connu, sinon ouvert.</em></li>
+      <li><strong>Q2 — <code>extraction_confidence</code> global.</strong> Le champ <code>confidence</code> par fait est <strong>retiré</strong> du schéma Exa. <em>Proposition&nbsp;: recalculer <code>extraction_confidence</code> comme la <strong>proportion de faits portant une citation ancrée</strong> (part d'<code>accepted</code>) — un signal de couverture, pas une probabilité.</em></li>
+      <li><strong>Q3 — Parallélisme réel.</strong> <code>ThreadPoolExecutor</code> suffit (I/O réseau) — confirmer le nombre de workers et le comportement sous rate-limit Exa (backoff&nbsp;?).</li>
+      <li><strong>Q4 — Activation de l'arbitre (piste C).</strong> Le laisse-t-on désactivé par défaut, activable par flag, ou l'écarte-t-on complètement pour préserver strictement « 0 LLM »&nbsp;?</li>
+    </ul>
+  </div>
+
+  <!-- CRITERES DE SUCCES -->
+  <div class="section">
+    <h2>10 — Critères de succès (« done »)</h2>
+    <ul>
+      <li>✅ <code>pytest -v</code> vert, entièrement offline via <code>FakeExaClient</code> (aucun appel réseau en test).</li>
+      <li>✅ Aucune référence à Tavily ni à « famille » dans le code (<code>grep</code> propre).</li>
+      <li>✅ ≈24 configs YAML valides sous <code>configs/recherche_des_faits/</code>, une par fait, chargées &amp; templées <code>{tool}/{vendor}</code>, validées par schéma Pydantic (<code>extra="forbid"</code>).</li>
+      <li>✅ Chaque <code>FactEvidence</code> <code>accepted</code> porte une citation <strong>ancrée</strong> dans la source Exa correspondante&nbsp;; toute citation non ancrée → <code>unknown</code>.</li>
+      <li>✅ Scénario doré UQAM inchangé (<code>INTERDIT</code> / <code>Refuser</code>).</li>
+      <li>✅ Traçabilité préservée&nbsp;: aucun texte libre en clair dans <code>logs/policybot.jsonl</code>.</li>
+      <li>✅ <code>CLAUDE.md</code> / <code>README.md</code> à jour&nbsp;; <code>configs/recherche_des_faits/</code> déclaré en package data.</li>
+    </ul>
+    <div class="callout ok"><strong>Substance de la refonte&nbsp;:</strong> le <em>verdict</em> ne change pas (matrice + grille), mais chaque fait ARP devient <strong>traçable jusqu'à une phrase précise d'une page précise</strong> — c'est ce que la migration vers Exa + ancrage achète.</div>
+  </div>
+
+  <p style="text-align:center; color:#8b95d6; font-size:.8rem; margin:1.5rem 0;">PolicyBot recommande&nbsp;; il n'autorise jamais. — Plan d'architecture, 2026-07-21</p>
+
+</div>
+</body>
+</html>

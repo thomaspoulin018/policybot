@@ -17,8 +17,7 @@ def test_graph_runs_full_pipeline(tmp_path):
          "highly_sensitive_secret": False, "confidence": 0.9},
         *arp_extraction_responses(training_default="no", data_residency="quebec"),
     ])
-    itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")),
-                    http_get=_terms_get)
+    itv = Interview(llm=llm, store=PreApprovedStore(str(tmp_path / "pb.db")))
     state = run_graph(itv, RequestInfo(numero="IAG-2026-003"), "ChatGPT",
                       [{"description": "info publique", "data_description": "info publique",
                         "automated_decisions": False, "mode": ["prompt"], "result_use": []}])

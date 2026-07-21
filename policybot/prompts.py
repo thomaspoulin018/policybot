@@ -40,7 +40,6 @@ class PromptTasks(BaseModel):
     tool_type_detection: PromptDefinition
     mode_detection: PromptDefinition
     form_suggestions: PromptDefinition
-    contract_extraction: PromptDefinition
 
 
 class PromptConfig(BaseModel):

@@ -9,7 +9,7 @@ from itertools import groupby
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup, escape
-from policybot.models import ContractFacts, InterviewState, RiskFactor
+from policybot.models import ContractFacts, ContractSource, InterviewState, RiskFactor
 from policybot.criteria import ARP_CRITERIA, USAGE_CRITERIA
 
 _TEMPLATES = os.path.join(os.path.dirname(__file__), "templates")
@@ -125,6 +125,11 @@ footer {
   margin: 2mm 0;
   padding-left: 2mm;
 }
+.automated-observation blockquote .citation-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: #98a2b3;
+}
 .automated-observation .observation-source {
   color: #667085;
   font-size: 0.88em;
@@ -150,11 +155,109 @@ def _format_french_date(value) -> str:
 
 
 def _source_label(url: str) -> str:
-    """Keep a source identifiable without making a narrow table cell unreadable."""
+    """Keep a source identifiable without making a narrow table cell unreadable.
+
+    The full address remains in the source register; the observation cell only
+    needs a compact reference to it.
+    """
     from urllib.parse import urlsplit
 
     parsed = urlsplit(url)
-    return f"{parsed.netloc}{parsed.path}".rstrip("/") or url
+    return parsed.netloc or url
+
+
+def _source_reference_label(url: str) -> str:
+    """Give a compact, distinguishable label to a clickable source link."""
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(url)
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if parsed.netloc and path_parts:
+        return f"{parsed.netloc} / {path_parts[-1]}"
+    return parsed.netloc or url
+
+
+def _citation_target_url(source_url: str | None, quote: str | None) -> str | None:
+    """Return a source URL that targets and highlights a verified citation.
+
+    Text fragments are an optional browser enhancement: a browser that does not
+    support them, or a page whose text has changed, still opens the source URL.
+    Existing page anchors are preserved and any old text directive is replaced.
+    """
+    if not source_url:
+        return None
+    normalized_quote = " ".join((quote or "").split())
+    if not normalized_quote:
+        return source_url
+
+    from urllib.parse import quote as url_quote, urlsplit, urlunsplit
+
+    parsed = urlsplit(source_url)
+    if parsed.scheme not in {"http", "https"}:
+        return source_url
+    page_fragment = parsed.fragment.split(":~:", 1)[0]
+    text_directive = f":~:text={url_quote(normalized_quote, safe='')}"
+    return urlunsplit(parsed._replace(fragment=f"{page_fragment}{text_directive}"))
+
+
+def _html_quote_markup(quote: str, source_url: str | None) -> Markup:
+    """Make the visible quotation a safe link to its text fragment when possible."""
+    target_url = _citation_target_url(source_url, quote)
+    visible_quote = escape(f"« {quote} »")
+    if not target_url:
+        return Markup(visible_quote)
+    return Markup(
+        f'<a class="citation-link" href="{escape(target_url)}">{visible_quote}</a>'
+    )
+
+
+def _reportlab_quote_markup(quote: str, source_url: str | None) -> str:
+    """Make a ReportLab quotation a clickable text-fragment link."""
+    from xml.sax.saxutils import escape
+
+    target_url = _citation_target_url(source_url, quote)
+    visible_quote = f"« {escape(quote)} »"
+    if not target_url:
+        return visible_quote
+    url = escape(target_url, {'"': "&quot;"})
+    return f'<link href="{url}"><u>{visible_quote}</u></link>'
+
+
+def _reportlab_observation_source_markup(
+    source_url: str,
+    collected_at: object | None,
+    quote: str | None = None,
+) -> str:
+    """Build the compact, clickable source line used inside an ARP observation."""
+    from xml.sax.saxutils import escape
+
+    url = escape(_citation_target_url(source_url, quote) or source_url, {'"': "&quot;"})
+    label = escape(_source_label(source_url))
+    collected = (
+        f" — vérifiée le {escape(_format_french_date(collected_at))}"
+        if collected_at else ""
+    )
+    return f'Source : <link href="{url}"><u>{label}</u></link>{collected}'
+
+
+def _source_type_label(source_type: str) -> str:
+    return {
+        "contractual": "Contractuelle",
+        "official_technical": "Technique officielle",
+        "secondary": "Secondaire",
+    }.get(source_type, source_type.replace("_", " ").capitalize())
+
+
+def _unique_contract_sources(state: InterviewState) -> list[ContractSource]:
+    """Collect each URL once, in report order, across every evaluated tool."""
+    seen_urls: set[str] = set()
+    sources: list[ContractSource] = []
+    for tool in state.tools:
+        for source in tool.arp.contract_facts.sources if tool.arp else []:
+            if source.url not in seen_urls:
+                seen_urls.add(source.url)
+                sources.append(source)
+    return sources
 
 
 @dataclass(frozen=True)
@@ -162,6 +265,7 @@ class _EvidenceDisplay:
     quote: str | None
     source_url: str | None
     collected_at: object | None
+    source_is_shared: bool = False
 
 
 @dataclass(frozen=True)
@@ -184,14 +288,14 @@ class _AutomatedObservation:
                 parts.append(f"Citation : « {proof.quote} »")
             else:
                 parts.append("Citation : non disponible")
-            if proof.source_url:
+            if proof.source_url and not proof.source_is_shared:
                 source = f"Source : {_source_label(proof.source_url)}"
                 if proof.collected_at:
                     source += f" — vérifiée le {_format_french_date(proof.collected_at)}"
                 parts.append(source)
-            elif proof.collected_at:
+            elif proof.collected_at and not proof.source_is_shared:
                 parts.append(f"Source vérifiée le {_format_french_date(proof.collected_at)}")
-            else:
+            elif not proof.source_is_shared:
                 parts.append("Source : non disponible")
         return "\n".join(parts)
 
@@ -207,20 +311,23 @@ class _AutomatedObservation:
         )
         for proof in self.evidence:
             if proof.quote:
-                lines.append(f"<blockquote>« {escape(proof.quote)} »</blockquote>")
+                lines.append(
+                    f"<blockquote>{_html_quote_markup(proof.quote, proof.source_url)}</blockquote>"
+                )
             else:
                 lines.append('<div class="observation-status">Citation non disponible.</div>')
-            if proof.source_url:
-                source = f"Source : {_source_label(proof.source_url)}"
+            if proof.source_url and not proof.source_is_shared:
+                source_url = _citation_target_url(proof.source_url, proof.quote)
+                source = f'Source : <a href="{escape(source_url)}">{escape(_source_label(proof.source_url))}</a>'
                 if proof.collected_at:
                     source += f" — vérifiée le {_format_french_date(proof.collected_at)}"
-                lines.append(f'<div class="observation-source">{escape(source)}</div>')
-            elif proof.collected_at:
+                lines.append(f'<div class="observation-source">{source}</div>')
+            elif proof.collected_at and not proof.source_is_shared:
                 lines.append(
                     '<div class="observation-source">'
                     f"Source vérifiée le {escape(_format_french_date(proof.collected_at))}</div>"
                 )
-            else:
+            elif not proof.source_is_shared:
                 lines.append('<div class="observation-source">Source non disponible.</div>')
         lines.append("</div>")
         return Markup("".join(lines))
@@ -241,19 +348,26 @@ class _AutomatedObservation:
         for proof in self.evidence:
             if proof.quote:
                 flowables.append(Paragraph(
-                    f"« {xml_escape(proof.quote)} »", styles["ObservationQuote"],
+                    _reportlab_quote_markup(proof.quote, proof.source_url),
+                    styles["ObservationQuote"],
                 ))
             else:
                 flowables.append(Paragraph("Citation non disponible.", styles["ObservationStatus"]))
-            if proof.source_url:
-                source = f"Source : {_source_label(proof.source_url)}"
-                if proof.collected_at:
-                    source += f" — vérifiée le {_format_french_date(proof.collected_at)}"
-            elif proof.collected_at:
+            if proof.source_url and not proof.source_is_shared:
+                source = _reportlab_observation_source_markup(
+                    proof.source_url,
+                    proof.collected_at,
+                    proof.quote,
+                )
+            elif proof.collected_at and not proof.source_is_shared:
                 source = f"Source vérifiée le {_format_french_date(proof.collected_at)}"
-            else:
+            elif not proof.source_is_shared:
                 source = "Source non disponible."
-            flowables.append(Paragraph(xml_escape(source), styles["ObservationSource"]))
+            else:
+                source = ""
+            if source:
+                source_markup = source if proof.source_url else xml_escape(source)
+                flowables.append(Paragraph(source_markup, styles["ObservationSource"]))
         return flowables
 
 _AUTH_LABELS = {
@@ -295,6 +409,96 @@ _INCIDENT_LABELS = {
     "unknown": "À confirmer; preuve insuffisante sur la réponse aux incidents ou la notification de brèche.",
 }
 
+_FIELD_LABELS = {
+    "data_residency": {
+        "quebec": "Hébergement des données au Québec documenté.",
+        "canada_outside_quebec": "Hébergement au Canada, hors Québec, documenté.",
+        "us": "Hébergement aux États-Unis documenté.",
+        "eu": "Hébergement dans l'Union européenne documenté.",
+        "multi_region": "Hébergement multi-région documenté.",
+        "configurable": "Hébergement configurable; la région retenue doit être confirmée.",
+        "unknown": "Lieu d'hébergement à confirmer.",
+    },
+    "applicable_law": {
+        "quebec_canada": "Droit québécois ou canadien applicable documenté.",
+        "foreign": "Droit étranger applicable documenté.",
+        "unknown": "Droit applicable à confirmer.",
+    },
+    "foreign_vendor_dependency": {
+        "yes": "Dépendance envers un fournisseur étranger documentée.",
+        "no": "Aucune dépendance envers un fournisseur étranger documentée.",
+        "unknown": "Dépendance envers un fournisseur étranger à confirmer.",
+    },
+    "training_default": {
+        "yes": "Entraînement sur les contenus activé par défaut.",
+        "no": "Aucun entraînement sur les contenus par défaut documenté.",
+        "unknown": "Entraînement sur les contenus à confirmer.",
+    },
+    "opt_out_available": {
+        "yes": "Option de retrait disponible.",
+        "no": "Aucune option de retrait documentée.",
+        "unknown": "Disponibilité d'une option de retrait à confirmer.",
+    },
+    "opt_out_confirmed_enabled": {
+        "yes": "Option de retrait activée et confirmée.",
+        "no": "Option de retrait non activée.",
+        "unknown": "Activation effective de l'option de retrait à confirmer.",
+    },
+    "contract_prohibits_reuse": {
+        "yes": "Le contrat interdit la réutilisation des données soumises.",
+        "no": "Le contrat n'interdit pas explicitement la réutilisation des données soumises.",
+        "unknown": "Interdiction contractuelle de réutilisation à confirmer.",
+    },
+    "provider_human_access": {
+        "yes": "Le fournisseur peut accéder au contenu par revue humaine.",
+        "no": "Aucun accès humain du fournisseur n'est documenté.",
+        "unknown": "Accès humain du fournisseur à confirmer.",
+    },
+    "authentication_support": _AUTH_LABELS,
+    "encryption_standard": {
+        "strong": "Chiffrement fort documenté.",
+        "partial": "Chiffrement partiel documenté.",
+        "none": "Aucun chiffrement documenté.",
+        "unknown": "Chiffrement à confirmer.",
+    },
+    "audit_logging": _AUDIT_LABELS,
+    "incident_response": _INCIDENT_LABELS,
+    "ip_ownership": {
+        "customer": "La propriété intellectuelle des contenus est attribuée au client.",
+        "vendor": "La propriété intellectuelle est attribuée au fournisseur.",
+        "unclear": "Propriété intellectuelle à clarifier.",
+        "unknown": "Propriété intellectuelle à confirmer.",
+    },
+    "institutional_terms_available": _TERMS_AVAILABLE_LABELS,
+    "dpa_available": _DPA_LABELS,
+    "institutional_use_restricted": _INSTITUTIONAL_RESTRICTION_LABELS,
+    "quebec_higher_ed_license": _LICENSE_LABELS,
+}
+
+_ARP_OBSERVATION_FIELDS = {
+    "Localisation des serveurs": ("data_residency",),
+    "Juridiction applicable": ("applicable_law",),
+    "Dépendance technologique": ("foreign_vendor_dependency",),
+    "Données soumises utilisées pour entraînement du modèle": (
+        "training_default", "opt_out_available", "opt_out_confirmed_enabled",
+    ),
+    "Garanties contractuelles de non-divulgation": (
+        "contract_prohibits_reuse", "provider_human_access",
+    ),
+    "Mécanismes d'authentification": ("authentication_support",),
+    "Chiffrement des données": ("encryption_standard",),
+    "Journalisation et traçabilité": ("audit_logging",),
+    "Utilisation des entrées et des sorties": (
+        "opt_out_available", "opt_out_confirmed_enabled",
+    ),
+    "Gestion des incidents": ("incident_response",),
+    "Propriété intellectuelle": ("ip_ownership",),
+    "Conditions d'utilisation acceptables": (
+        "institutional_terms_available", "dpa_available", "institutional_use_restricted",
+    ),
+    "Compatibilité licence usage gouvernemental": ("quebec_higher_ed_license",),
+}
+
 
 def _auto_observation(
     label: str,
@@ -305,6 +509,7 @@ def _auto_observation(
     evidence: list[_EvidenceDisplay] = []
     notes: list[str] = []
     seen_evidence: set[tuple[str | None, str | None]] = set()
+    seen_sources: set[tuple[str, object | None]] = set()
     for field_name in names:
         proof = facts.evidence.get(field_name)
         if proof is None:
@@ -314,13 +519,16 @@ def _auto_observation(
         key = (proof.quote, proof.source_url)
         if key not in seen_evidence:
             seen_evidence.add(key)
+            source_key = (proof.source_url, proof.source_collected_at)
+            source_is_shared = bool(proof.source_url) and source_key in seen_sources
+            if proof.source_url:
+                seen_sources.add(source_key)
             evidence.append(_EvidenceDisplay(
                 quote=proof.quote,
                 source_url=proof.source_url,
                 collected_at=proof.source_collected_at,
+                source_is_shared=source_is_shared,
             ))
-    if not evidence:
-        evidence.append(_EvidenceDisplay(None, None, None))
     return _AutomatedObservation(
         label=label,
         evidence=tuple(evidence),
@@ -335,33 +543,12 @@ def _arp_automated_observations(
     if facts is None:
         return {}
     return {
-        "Mécanismes d'authentification": _auto_observation(
-            _AUTH_LABELS[facts.authentication_support], facts, "authentication_support",
-        ),
-        "Journalisation et traçabilité": _auto_observation(
-            _AUDIT_LABELS[facts.audit_logging], facts, "audit_logging",
-        ),
-        "Gestion des incidents": _auto_observation(
-            _INCIDENT_LABELS[facts.incident_response], facts, "incident_response",
-        ),
-        "Conditions d'utilisation acceptables": _auto_observation(
-            "; ".join((
-                _TERMS_AVAILABLE_LABELS[facts.institutional_terms_available],
-                _DPA_LABELS[facts.dpa_available],
-                _INSTITUTIONAL_RESTRICTION_LABELS[facts.institutional_use_restricted],
-            )),
+        criterion: _auto_observation(
+            "; ".join(_FIELD_LABELS[field_name][getattr(facts, field_name)] for field_name in fields),
             facts,
-            (
-                "institutional_terms_available",
-                "dpa_available",
-                "institutional_use_restricted",
-            ),
-        ),
-        "Compatibilité licence usage gouvernemental": _auto_observation(
-            _LICENSE_LABELS[facts.quebec_higher_ed_license],
-            facts,
-            "quebec_higher_ed_license",
-        ),
+            fields,
+        )
+        for criterion, fields in _ARP_OBSERVATION_FIELDS.items()
     }
 
 _env = Environment(
@@ -408,7 +595,6 @@ def render_html(state: InterviewState) -> str:
         {
             "tool_name": tool.name,
             "offering": tool.offering or (tool.arp.offering if tool.arp else None),
-            "sources": tool.arp.contract_facts.sources if tool.arp else [],
             "groups": _group_by_category(
                 _merge_rows(
                     ARP_CRITERIA,
@@ -826,6 +1012,13 @@ def _make_reportlab_styles():
         textColor=colors.HexColor("#667085"),
     ))
     base.add(ParagraphStyle(
+        name="SourceLink",
+        parent=base["Small"],
+        fontSize=6.8,
+        leading=8.2,
+        textColor=colors.HexColor("#1d4ed8"),
+    ))
+    base.add(ParagraphStyle(
         name="Footer",
         parent=base["BodyText"],
         fontSize=7.5,
@@ -851,6 +1044,37 @@ def _basic_table(rows: list[list[object]], styles, col_widths=None):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     return table
+
+
+def _source_link(source: ContractSource, styles):
+    from xml.sax.saxutils import escape
+    from reportlab.platypus import Paragraph
+
+    url = escape(source.url, {'"': "&quot;"})
+    label = escape(_source_reference_label(source.url))
+    return Paragraph(f'<link href="{url}"><u>{label}</u></link>', styles["SourceLink"])
+
+
+def _source_register(sources: list[ContractSource], styles):
+    rows = [[
+        _para("Type", styles["Small"]),
+        _para("Source", styles["Small"]),
+        _para("Collectée le", styles["Small"]),
+        _para("Date d'effet", styles["Small"]),
+    ]]
+    rows.extend([
+        [
+            _para(_source_type_label(source.source_type), styles["Small"]),
+            _source_link(source, styles),
+            _para(_format_french_date(source.collected_at), styles["Small"]),
+            _para(
+                _format_french_date(source.effective_date) if source.effective_date else "Non précisée",
+                styles["Small"],
+            ),
+        ]
+        for source in sources
+    ])
+    return _basic_table(rows, styles, [108, 398, 105, 89])
 
 
 def _risk_table(headers: list[str], groups: list[tuple[str, list[dict]]], styles):
@@ -989,14 +1213,6 @@ def _render_reportlab_pdf(state: InterviewState) -> bytes:
                 f"Identite de l'offre contractuelle : {table['offering'].display_label()}",
                 styles["BodyText"],
             ))
-        if table["sources"]:
-            story.append(_para("Sources contractuelles retenues :", styles["BodyText"]))
-            for source in table["sources"]:
-                story.append(_para(
-                    f"{source.source_type} | {source.url} | collecte {source.collected_at} | "
-                    f"effet {source.effective_date or 'inconnu'}",
-                    styles["BodyText"],
-                ))
         story.append(_risk_table([
             "Critere", "Description / question", "Risque inherent", "Mesures de mitigation",
             "Risque residuel", "Responsable", "Observations / constats",
@@ -1035,6 +1251,14 @@ def _render_reportlab_pdf(state: InterviewState) -> bytes:
         [_para("Recommandation preliminaire", styles["BodyText"]), _para(state.result_global.recommendation, styles["BodyText"])],
         [_para("Conditions / restrictions proposees", styles["BodyText"]), _para(conditions, styles["BodyText"])],
     ], styles, [190, 510]))
+    sources = _unique_contract_sources(state)
+    if sources:
+        story.append(_para("Sources contractuelles consultées", styles["Heading2"]))
+        story.append(_para(
+            "Liens consultés pour l'analyse ARP. Chaque source est affichée une seule fois.",
+            styles["BodyText"],
+        ))
+        story.append(_source_register(sources, styles))
     story.append(Spacer(1, 10))
     story.append(_para(
         "Recommandation generee par PolicyBot - requiert validation et autorisation par l'autorite designee.",

@@ -144,10 +144,18 @@ def test_usage_and_cost_are_aggregated_from_openrouter_response(monkeypatch):
         "successful_api_calls": 1,
         "failed_api_calls": 0,
         "usage_recorded_calls": 1,
+        "cost_recorded_api_calls": 1,
         "input_tokens": 125,
         "output_tokens": 25,
         "total_tokens": 150,
         "cost_usd": 0.00125,
+        "openrouter_cost_usd": 0.00125,
+        "exa_search_calls": 0,
+        "exa_successful_search_calls": 0,
+        "exa_failed_search_calls": 0,
+        "exa_priced_search_calls": 0,
+        "exa_estimated_cost_usd": 0.0,
+        "total_cost_usd": 0.00125,
     }
 
 

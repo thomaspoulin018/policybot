@@ -1,0 +1,24 @@
+version: 1
+fact: data_residency
+category_arp: "Souveraineté et hébergement des données"
+allowed_values: ["quebec", "canada_outside_quebec", "us", "eu", "multi_region", "configurable", "unknown"]
+hint: "quebec exige une région Québec explicite; configurable ne prouve pas la région active."
+exa:
+  query: "{tool} {vendor} data residency hosting region Quebec Canada terms"
+  type: auto
+  num_results: 5
+  include_domains: []
+  contents:
+    text: {max_characters: 8000}
+    highlights: {query: "data residency hosting region", num_sentences: 3}
+    summary:
+      query: "Where is data hosted for the assessed offering? Use only the configured residency category."
+      schema:
+        type: object
+        additionalProperties: false
+        required: [value, quote, source_url]
+        properties:
+          value: {type: string, enum: ["quebec", "canada_outside_quebec", "us", "eu", "multi_region", "configurable", "unknown"]}
+          quote: {type: string}
+          source_url: {type: string}
+selection: {strategy: source_rank, require_declared_source_url: true}

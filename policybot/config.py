@@ -13,7 +13,6 @@ LLMTask: TypeAlias = Literal[
     "tool_type_detection",
     "mode_detection",
     "form_suggestions",
-    "contract_extraction",
 ]
 ArpCacheMode: TypeAlias = Literal[
     "read_write",
@@ -27,7 +26,6 @@ LLM_TASKS: tuple[LLMTask, ...] = (
     "tool_type_detection",
     "mode_detection",
     "form_suggestions",
-    "contract_extraction",
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -51,7 +49,6 @@ class LLMTasksConfig(BaseModel):
     tool_type_detection: ModelTaskConfig
     mode_detection: ModelTaskConfig
     form_suggestions: ModelTaskConfig
-    contract_extraction: ModelTaskConfig
 
 
 class LLMConfig(BaseModel):

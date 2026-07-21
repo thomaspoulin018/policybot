@@ -1,0 +1,24 @@
+version: 1
+fact: foreign_vendor_dependency
+category_arp: "Souveraineté et hébergement des données"
+allowed_values: ["yes", "no", "unknown"]
+hint: "yes lorsque l'usage crée une dépendance à un fournisseur étranger."
+exa:
+  query: "{tool} {vendor} provider company headquarters foreign vendor dependency"
+  type: auto
+  num_results: 5
+  include_domains: []
+  contents:
+    text: {max_characters: 8000}
+    highlights: {query: "provider company country foreign", num_sentences: 3}
+    summary:
+      query: "Does use of this offering create a dependency on a foreign provider?"
+      schema:
+        type: object
+        additionalProperties: false
+        required: [value, quote, source_url]
+        properties:
+          value: {type: string, enum: ["yes", "no", "unknown"]}
+          quote: {type: string}
+          source_url: {type: string}
+selection: {strategy: source_rank, require_declared_source_url: true}

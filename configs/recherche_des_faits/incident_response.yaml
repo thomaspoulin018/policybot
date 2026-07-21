@@ -1,0 +1,24 @@
+version: 1
+fact: incident_response
+category_arp: "Sécurité de l'information"
+allowed_values: ["documented_with_notice", "documented_no_notice", "none", "unknown"]
+hint: "documented_with_notice exige un processus et un délai de notification documentés."
+exa:
+  query: "{tool} {vendor} security incident response breach notification terms"
+  type: auto
+  num_results: 5
+  include_domains: []
+  contents:
+    text: {max_characters: 8000}
+    highlights: {query: "security incident breach notification", num_sentences: 3}
+    summary:
+      query: "What documented incident-response category applies, including any notice obligation?"
+      schema:
+        type: object
+        additionalProperties: false
+        required: [value, quote, source_url]
+        properties:
+          value: {type: string, enum: ["documented_with_notice", "documented_no_notice", "none", "unknown"]}
+          quote: {type: string}
+          source_url: {type: string}
+selection: {strategy: source_rank, require_declared_source_url: true}

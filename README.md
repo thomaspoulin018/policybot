@@ -24,7 +24,7 @@ This README summarizes both against what's actually implemented.
 | | Decides the verdict? | Role |
 |---|---|---|
 | **Deterministic Python** (matrix + `grille.yaml` rules) | ✅ Yes | The only source of a verdict. Pure functions, exhaustively unit-tested. |
-| **LLM** (via a swappable `LLMProvider`) | ❌ Never | Phrases questions, proposes answer options, extracts facts from tool terms, drafts narrative prose. |
+| **LLM** (via a swappable `LLMProvider`) | ❌ Never | Phrases questions, proposes answer options, classifies descriptions, and drafts narrative prose. |
 
 Two guardrails make this concrete:
 
@@ -52,8 +52,8 @@ Interview Orchestrator  ── holds InterviewState, drives the pipeline below
   ┌─────┼───────────┬──────────────┬───────────┬────────────┐
   LLM   Classifiers  Pre-approved   Contract     Grille        → Report (PDF)
   layer (data, tool  DB (SQLite)    analyzer     engine
-  (swap) type)       ArpRecord +    (fetch terms (matrix gate
-                     PreApproved    → extract    + grille.yaml
+  (swap) type)       ArpRecord +    (Exa search   (matrix gate
+                     PreApproved    → anchored    + grille.yaml
                                     ContractFacts rules)
                                     → Partie A)
 ```
@@ -69,10 +69,14 @@ For one tool + one or more usages, the pipeline (`Interview.assess`) runs:
    (`tool_type_question()`).
 2. **Resolve the tool's contract facts (Partie A / ARP), once per tool.**
    - Check the SQLite `PreApprovedStore` for a cached `ArpRecord` first (reuse).
-   - Otherwise fetch the tool's terms of use (`TermsFetcher`: registry URL →
-     HTML → stripped text), have the LLM extract normalized `ContractFacts`
-     (training on input? retention? data residency? sub-processors? human
-     review?), and cache the resulting `ArpRecord`.
+   - Otherwise Exa runs one structured search per contract fact from
+     `configs/recherche_des_faits/*.yaml`. A value is kept only when its
+     verbatim quote is anchored in that result's retrieved text. Multiple
+     candidates are selected deterministically by source type then Exa
+     relevance; the YAML can require the declared `source_url` to match the
+     result URL (option D). A fact that cannot be proved stays `unknown`.
+   - Set `selection.require_declared_source_url: true` in a fact YAML to activate
+     option D. The shipped definitions enable it for every fact.
 3. **For each usage, classify the data.** The employee describes the data in
    plain language (never the data itself); the LLM returns structured signals
    (`already_public`, `contains_personal_info`, `strategic_sensitive`, …); a
@@ -118,8 +122,9 @@ policybot/
                   FakeLLMProvider (tests) + OpenRouterProvider (Gemma, POC)
   classify/       data_classifier.py (LLM signals → decision tree),
                   tool_type.py + tool_registry.py (known-tool lookup)
-  contract/       fetcher.py (terms URL → text), arp.py (LLM extraction →
-                  ContractFacts + Partie A RiskFactors)
+  contract/       exa.py (one search per fact, anchoring and deterministic
+                  selection), fact_search.py (YAML schema/loader), arp.py
+                  (ContractFacts assembly + Partie A RiskFactors)
   grille/         matrix.py (hard gate), rules.py + grille.yaml (rule engine,
                   data not code), engine.py (per-usage verdict + synthesis)
   preapproved/    store.py — SQLite cache of ArpRecord and PreApprovedRecord,
@@ -153,10 +158,8 @@ llm = FakeLLMProvider(json_responses=[
     {"already_public": True, "contains_personal_info": False,
      "strategic_sensitive": False, "internal_nonpublic": False,
      "highly_sensitive_secret": False, "confidence": 0.9},
-    {"trains_on_input": "no", "data_residency": "canada", "extraction_confidence": 0.9},
 ])
-itv = Interview(llm=llm, store=PreApprovedStore("policybot.db"),
-                http_get=lambda url: "<html><body>ok</body></html>")
+itv = Interview(llm=llm, store=PreApprovedStore("policybot.db"))
 state = itv.assess(
     request=RequestInfo(numero="IAG-2026-001"),
     tool_name="ChatGPT",
@@ -164,7 +167,7 @@ state = itv.assess(
                    "data_description": "information publique sur le web",
                    "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
 )
-print(state.result_global.recommendation)  # "Autoriser"
+print(state.result_global.recommendation)  # conservative if EXA_API_KEY is absent
 ```
 
 A real run swaps in `OpenRouterProvider` (see `policybot/llm/openrouter.py`);
@@ -173,13 +176,12 @@ behind an integration-test flag.
 
 ## Traceability (LangSmith)
 
-Every LLM-assisted step (data classification, ARP fact extraction, and any
-future drafting) is traced in [LangSmith](https://smith.langchain.com) for
+Every LLM-assisted step (data classification and any future drafting) is traced in [LangSmith](https://smith.langchain.com) for
 debugging. `OpenRouterProvider` is built on `langchain_openai.ChatOpenAI`
 pointed at OpenRouter's OpenAI-compatible endpoint, so tracing comes for free
 and stays consistent with the LangGraph interview graph, whose nodes trace
 through the same environment variables. Each call site is tagged
-(`data_classification`, `arp_extraction`) so traces are distinguishable at a
+(`data_classification`, for example) so traces are distinguishable at a
 glance in the UI.
 
 Tracing is **off unless you opt in**, so tests and CI never emit traces. To
@@ -208,7 +210,8 @@ La configuration non secrète est centralisée dans `configs/policybot.yaml`.
 Elle définit un modèle OpenRouter et ses paramètres (`reasoning_effort`,
 `max_tokens`, `temperature`, `timeout`) pour chacune des tâches suivantes :
 classification des données, détection du type d'outil, détection du mode,
-suggestions du formulaire et extraction contractuelle/ARP.
+suggestions du formulaire. La recherche des faits contractuels ne passe pas par
+un fournisseur LLM PolicyBot.
 
 Le bloc `cache.arp.mode` accepte quatre comportements :
 
@@ -226,7 +229,7 @@ variables est documentée dans `.env.example`.
 
 En plus du tracing LangSmith ci-dessus (qui ne couvre que les appels LLM),
 chaque étape du pipeline d'évaluation (`Interview.assess` → classification →
-résolution ARP → appels LLM → évaluation de la grille → synthèse) écrit une
+résolution ARP → collecte Exa → évaluation de la grille → synthèse) écrit une
 ligne JSON dans un nouveau fichier
 `logs/log_AAAA-MM-JJ_HH-MM-SS_microsecondes.jsonl` à chaque démarrage, via
 `policybot/tracing.py`. Toutes les
@@ -259,10 +262,12 @@ fait `tests/conftest.py` pour que la suite de tests n'écrive jamais dans
 
 - **Grille engine — pure unit tests, priority.** All 16 matrix cells and every
   `grille.yaml` rule are tested; deterministic, no I/O.
-- **LLM-touching components** (classifiers, ARP extraction, orchestrator) are
+- **LLM-touching components** (classifiers and orchestrator) are
   tested against `FakeLLMProvider`, which returns queued canned JSON/text and
   records every call — fully offline and deterministic.
-- **TermsFetcher** is tested against saved HTML fixtures, never the live web.
+- **Exa collection** is tested against a queued fake client: no unit test calls
+  the network. Tests cover quote anchoring, source ranking (option A), and the
+  configurable declared-URL guardrail (option D).
 - **Golden scenario** (planned, Task 16): the real UQAM slide-5 example —
   ChatGPT/Perplexity + Protégé B strategic/financial data ⇒ `INTERDIT` /
   `Refuser` — as the canonical end-to-end acceptance test.
@@ -271,14 +276,15 @@ Run everything with `pytest -v`.
 
 ## Status against the plan
 
-The plan (`docs/superpowers/plans/2026-07-02-policybot.md`) defines 16
-TDD tasks. **All 16 are complete** on this branch, with 64 passing tests:
+The original plan (`docs/superpowers/plans/2026-07-02-policybot.md`) defines 16
+TDD tasks. The current suite has grown beyond that historical count; run
+`python -m pytest -v` for the live result.
 
 | Done | Task |
 |---|---|
 | ✅ | 1–6: scaffolding, domain models, matrix, rule engine, per-usage grille engine, LLM provider (+fake +OpenRouter) |
-| ✅ | 7–9: data classifier, tool-type classifier + registry, terms fetcher |
-| ✅ | 10–12: ARP extractor, SQLite pre-approved store, HTML report renderer (+ optional PDF + filled Word fiche) |
+| ✅ | 7–9: data classifier, tool-type classifier + registry, Exa fact search |
+| ✅ | 10–12: ARP assembly, SQLite pre-approved store, HTML report renderer (+ optional PDF + filled Word fiche) |
 | ✅ | 13: interview orchestrator (`Interview.assess`) — full deterministic pipeline |
 | ✅ | 14: LangGraph state machine wrapping the orchestrator (`policybot/interview/graph.py`) |
 | ✅ | 15: FastAPI app exposing `POST /assess` and `POST /report` (`policybot/api/app.py`) |
@@ -289,16 +295,11 @@ TDD tasks. **All 16 are complete** on this branch, with 64 passing tests:
 The backend pipeline is done; two things stand between it and a production
 deployment:
 
-1. **Web UI.** Only the backend (API + pipeline) exists. The interface that
-   renders each `QuestionSpec`, collects answers, and displays the report is
-   not yet built.
-2. **Real `grille.yaml` rules.** Seed the rule engine with the officers' actual
+1. **Real `grille.yaml` rules.** Continue validating the rule engine with the officers' actual
    rules of thumb; only three starter rules ship today.
 
 **Deferred beyond MVP** (per spec §14): an officer review/back-office
 dashboard, scheduled re-fetching of stale ARPs, and UQAM visual-identity PDF
 theming.
 
-**Known packaging debt:** `grille.yaml` and the report templates are not yet
-included in the built wheel (they work in an editable install) — add
-`package-data`/`include_package_data` to `pyproject.toml`.
+The fact-search YAML files are declared as wheel data in `pyproject.toml`.

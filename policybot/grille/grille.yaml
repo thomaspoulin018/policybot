@@ -124,3 +124,93 @@
     category: "Risques organisationnels"
     criterion: "Image et réputation institutionnelle"
     conditions: ["Rappel : valider que tout contenu généré associé à l'UQAM respecte les standards d'image et de qualité institutionnels, essentiels pour la réputation de l'organisation, avant diffusion publique."]
+- id: R-33
+  when:
+    rens_personnels: ["True"]
+  then:
+    category: "Gestion des données"
+    criterion: "Compatibilité avec la LAI/PRP"
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Des renseignements personnels sont prévus dans cet usage — confirmer la nécessité et la proportionnalité du traitement, appliquer la minimisation des données et compléter l'ÉFVP-R avant l'autorisation."]
+- id: R-34
+  when:
+    result_used_for_decision: ["True"]
+  then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Hallucinations et erreurs factuelles"
+    risk_level: "Élevé"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Les résultats appuient une prise de décision — vérifier les faits avec des sources indépendantes et documenter cette validation avant toute décision."]
+- id: R-35
+  when:
+    result_used_for_decision: ["True"]
+  then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Biais algorithmiques"
+    risk_level: "Élevé"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Les résultats appuient une prise de décision — évaluer les biais possibles et leurs effets différenciés sur les personnes ou groupes concernés."]
+- id: R-36
+  when:
+    result_used_for_decision: ["True"]
+  then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Supervision humaine insuffisante"
+    risk_level: "Élevé"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Les résultats appuient une prise de décision — désigner une personne responsable qui révise, peut contester et assume la décision finale."]
+- id: R-37
+  when:
+    result_published: ["True"]
+  then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Hallucinations et erreurs factuelles"
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Une publication est prévue — soumettre le contenu généré à une validation factuelle et éditoriale avant sa diffusion."]
+- id: R-38
+  when:
+    result_published: ["True"]
+  then:
+    category: "Éthique et fiabilité des résultats"
+    criterion: "Propriété intellectuelle du contenu généré"
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Une publication est prévue — vérifier les droits, licences, attributions et ressemblances substantielles avant la diffusion du contenu généré."]
+- id: R-39
+  when:
+    formation_iag_recue: ["aucune"]
+  then:
+    category: "Risques organisationnels"
+    criterion: "Formation insuffisante du personnel"
+    risk_level: "Élevé"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Aucune formation en IAG n'est déclarée — rendre une formation préalable sur l'usage responsable, la classification des données et la validation des résultats obligatoire avant l'accès à l'outil."]
+- id: R-40
+  when:
+    formation_iag_recue: ["partielle"]
+  then:
+    category: "Risques organisationnels"
+    criterion: "Formation insuffisante du personnel"
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["La formation en IAG est partielle — compléter les modules sur la protection des données, les limites du modèle et la supervision humaine avant le déploiement."]
+- id: R-41
+  when:
+    api_integration: ["True"]
+  then:
+    category: "Risques organisationnels"
+    criterion: "Dépendance technologique"
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["L'outil est intégré par API — documenter un plan de continuité, une solution de repli et les modalités de récupération des données en cas de panne ou de changement de fournisseur."]
+- id: R-42
+  when:
+    result_published: ["True"]
+  then:
+    category: "Risques organisationnels"
+    criterion: "Image et réputation institutionnelle"
+    risk_level: "Modéré"
+    recommendation: "Autoriser_avec_conditions"
+    conditions: ["Une publication associée à l'UQAM est prévue — obtenir une révision éditoriale appropriée et appliquer les normes institutionnelles avant diffusion."]

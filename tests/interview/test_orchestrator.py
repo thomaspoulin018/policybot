@@ -3,7 +3,7 @@ from policybot.models import ArpRecord, ContractFacts, RequestInfo, Qualificatio
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
-from tests.helpers.arp_fixtures import DEFAULT_EVIDENCE, arp_extraction_responses
+from tests.helpers.arp_fixtures import DEFAULT_EVIDENCE, arp_extraction_responses, exa_evidence
 
 
 def _terms_get(url):
@@ -29,7 +29,13 @@ def test_protege_b_into_public_tool_is_refused(tmp_path):
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    itv = Interview(
+        llm=llm, store=store,
+        exa_search=lambda tool_name, offering: exa_evidence(
+            training_default="no", data_retention="none", data_residency="quebec",
+            sub_processors="disclosed", provider_human_access="yes",
+        ),
+    )
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-001"),
         tool_name="ChatGPT",
@@ -57,7 +63,7 @@ def test_public_data_public_tool_authorised(tmp_path):
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    itv = Interview(llm=llm, store=store)
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-002"),
         tool_name="ChatGPT",
@@ -80,7 +86,7 @@ def test_assess_attaches_arp_record_to_tool_ref(tmp_path):
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    itv = Interview(llm=llm, store=store)
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-010"),
         tool_name="ChatGPT",
@@ -106,7 +112,7 @@ def test_assess_reuses_cached_arp_record_on_second_call(tmp_path):
          "highly_sensitive_secret": False, "confidence": 0.9},
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    itv = Interview(llm=llm, store=store)
     usage_inputs = [{"description": "Chercher de l'info publique",
                      "data_description": "information publique sur le web",
                      "automated_decisions": False, "mode": ["prompt"], "result_use": []}]
@@ -134,7 +140,13 @@ def test_assess_refreshes_stale_cached_arp_record(tmp_path):
         contract_facts=ContractFacts(training_default="yes"),
         schema_version=1,
     ))
-    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    itv = Interview(
+        llm=llm, store=store,
+        exa_search=lambda tool_name, offering: exa_evidence(
+            training_default="no", data_retention="none", data_residency="quebec",
+            sub_processors="disclosed", provider_human_access="yes",
+        ),
+    )
 
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-STALE"),
@@ -145,9 +157,9 @@ def test_assess_refreshes_stale_cached_arp_record(tmp_path):
     )
 
     assert state.tools[0].arp is not None
-    assert state.tools[0].arp.schema_version == 3
+    assert state.tools[0].arp.schema_version == 4
     assert state.tools[0].arp.contract_facts.training_default == "no"
-    assert store.get_arp("ChatGPT").schema_version == 3
+    assert store.get_arp("ChatGPT").schema_version == 4
 
 
 @pytest.mark.parametrize(
@@ -164,17 +176,16 @@ def test_arp_cache_modes(tmp_path, mode, reuses_cached, replaces_cached):
         tool_name="ChatGPT",
         iag_type="publique",
         contract_facts=ContractFacts(training_default="yes"),
-        schema_version=3,
+        schema_version=4,
         terms_snapshot="cached-marker",
     )
     store = PreApprovedStore(str(tmp_path / "pb.db"))
     store.save_arp(cached)
-    responses = [] if reuses_cached else arp_extraction_responses()
+    responses = []
     llm = FakeLLMProvider(json_responses=responses)
     itv = Interview(
         llm=llm,
         store=store,
-        http_get=_terms_get,
         arp_cache_mode=mode,
     )
 
@@ -183,30 +194,28 @@ def test_arp_cache_modes(tmp_path, mode, reuses_cached, replaces_cached):
 
     assert (resolved.terms_snapshot == "cached-marker") is reuses_cached
     assert (stored.terms_snapshot != "cached-marker") is replaces_cached
-    expected_tasks = [] if reuses_cached else ["contract_extraction"] * 5
-    assert llm.tasks == expected_tasks
+    assert llm.tasks == []
 
 
 def test_read_only_cache_miss_fetches_without_saving(tmp_path):
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    llm = FakeLLMProvider(json_responses=arp_extraction_responses())
+    llm = FakeLLMProvider(json_responses=[])
     itv = Interview(
         llm=llm,
         store=store,
-        http_get=_terms_get,
         arp_cache_mode="read_only",
     )
 
     resolved = itv._resolve_arp("ChatGPT", "publique")
 
-    assert resolved.schema_version == 3
+    assert resolved.schema_version == 4
     assert store.get_arp("ChatGPT") is None
-    assert llm.tasks == ["contract_extraction"] * 5
+    assert llm.tasks == []
 
 def test_unregistered_tool_without_override_raises_unknown_tool_error(tmp_path):
     llm = FakeLLMProvider(json_responses=[])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    itv = Interview(llm=llm, store=store)
     with pytest.raises(UnknownToolError):
         itv.assess(
             request=RequestInfo(numero="IAG-2026-003"),
@@ -228,7 +237,7 @@ def test_unregistered_tool_with_override_uses_override_iag_type(tmp_path):
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    itv = Interview(llm=llm, store=store)
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-006"),
         tool_name="OutilInconnu",
@@ -254,8 +263,12 @@ def test_assess_stores_qualification_profile_and_tool_version(tmp_path):
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    itv = Interview(llm=llm, store=store, http_get=_terms_get)
-    qualification = QualificationProfile(nb_utilisateurs_vises=12, fonctions_roles="conseillers")
+    itv = Interview(llm=llm, store=store)
+    qualification = QualificationProfile(
+        nb_utilisateurs_vises=12,
+        fonctions_roles="conseillers",
+        formation_iag_recue="aucune",
+    )
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-010"),
         tool_name="ChatGPT",
@@ -274,6 +287,7 @@ def test_assess_stores_qualification_profile_and_tool_version(tmp_path):
     assert state.tools[0].version_plan_tarifaire == "Plan Plus"
     assert state.usages[0].frequence_utilisation == "quotidienne"
     assert state.usages[0].nb_utilisateurs == 5
+    assert any("formation préalable" in condition.lower() for condition in state.usages[0].conditions)
 
 
 def test_assess_defaults_qualification_and_new_usage_fields_when_omitted(tmp_path):
@@ -287,7 +301,7 @@ def test_assess_defaults_qualification_and_new_usage_fields_when_omitted(tmp_pat
         ),
     ])
     store = PreApprovedStore(str(tmp_path / "pb.db"))
-    itv = Interview(llm=llm, store=store, http_get=_terms_get)
+    itv = Interview(llm=llm, store=store)
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-011"),
         tool_name="ChatGPT",
