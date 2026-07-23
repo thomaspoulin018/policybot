@@ -7,6 +7,7 @@ additional PolicyBot LLM stage.
 from __future__ import annotations
 
 import os
+import string
 import sysconfig
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,29 @@ _CONTRACT_FACT_METADATA = {
 CONTRACT_FACT_NAMES = tuple(
     name for name in ContractFacts.model_fields if name not in _CONTRACT_FACT_METADATA
 )
+_ALLOWED_PLACEHOLDERS = frozenset({
+    "tool", "vendor", "plan", "deployment_mode", "contract_type",
+    "contract_version", "jurisdiction",
+})
+_REQUIRED_QUERY_PLACEHOLDERS = frozenset({
+    "tool", "vendor", "plan", "deployment_mode", "contract_type",
+    "contract_version",
+})
+EXA_SEARCH_TYPES = frozenset({"auto", "neural", "keyword", "deep"})
+
+
+def _placeholders(template: str, *, context: str) -> frozenset[str]:
+    """Return and validate simple named placeholders in a YAML template."""
+    found: set[str] = set()
+    for _, field_name, format_spec, conversion in string.Formatter().parse(template):
+        if field_name is None:
+            continue
+        if format_spec or conversion or not field_name.isidentifier():
+            raise ValueError(f"{context} has an invalid placeholder: {field_name!r}")
+        if field_name not in _ALLOWED_PLACEHOLDERS:
+            raise ValueError(f"{context} has an unsupported placeholder: {field_name}")
+        found.add(field_name)
+    return frozenset(found)
 
 
 class ExaTextConfig(BaseModel):
@@ -74,7 +98,7 @@ class ExaSearchConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: str = Field(min_length=1)
-    type: Literal["auto", "neural", "keyword"] = "auto"
+    type: Literal["auto", "neural", "keyword", "deep"] = "auto"
     num_results: int = Field(gt=0, le=20)
     include_domains: tuple[str, ...] = ()
     contents: ExaContentsConfig
@@ -124,11 +148,15 @@ class FactSearchConfig(BaseModel):
             raise ValueError(
                 f"values not accepted by ContractFacts for {self.fact}: {invalid_values}"
             )
-        query = self.exa.query
-        if "{tool}" not in query or "{vendor}" not in query:
+        placeholders = _placeholders(self.exa.query, context=f"fact {self.fact} exa.query")
+        missing = _REQUIRED_QUERY_PLACEHOLDERS - placeholders
+        if missing:
             raise ValueError(
-                f"fact {self.fact} exa.query must contain {{tool}} and {{vendor}}"
+                f"fact {self.fact} exa.query must contain offer placeholders: "
+                f"{', '.join(sorted(missing))}"
             )
+        for domain in self.exa.include_domains:
+            _placeholders(domain, context=f"fact {self.fact} exa.include_domains")
         value_schema = (self.exa.contents.summary.schema_.get("properties") or {}).get("value")
         if not isinstance(value_schema, dict):
             raise ValueError("summary.schema.properties.value must be an object")
@@ -138,8 +166,36 @@ class FactSearchConfig(BaseModel):
             )
         return self
 
-    def render(self, *, tool: str, vendor: str) -> "RenderedFactSearch":
-        values = {"tool": tool, "vendor": vendor}
+    def placeholders(self) -> frozenset[str]:
+        """Placeholders used by this fact's query and domain filters."""
+        return _placeholders(self.exa.query, context=f"fact {self.fact} exa.query") | frozenset(
+            placeholder
+            for domain in self.exa.include_domains
+            for placeholder in _placeholders(
+                domain, context=f"fact {self.fact} exa.include_domains",
+            )
+        )
+
+    def render(
+        self,
+        *,
+        tool: str,
+        vendor: str,
+        plan: str = "",
+        deployment_mode: str = "",
+        contract_type: str = "",
+        contract_version: str = "",
+        jurisdiction: str = "",
+    ) -> "RenderedFactSearch":
+        values = {
+            "tool": tool,
+            "vendor": vendor,
+            "plan": plan,
+            "deployment_mode": deployment_mode,
+            "contract_type": contract_type,
+            "contract_version": contract_version,
+            "jurisdiction": jurisdiction,
+        }
         try:
             query = self.exa.query.format(**values)
             include_domains = tuple(

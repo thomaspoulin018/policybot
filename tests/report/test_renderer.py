@@ -106,6 +106,22 @@ def test_render_contains_the_contract_offering_identity():
     assert "2026-07-01" in html
 
 
+def test_render_flags_an_incomplete_contract_offering_identity():
+    state = _state()
+    offering = ContractOfferingIdentity(
+        vendor="OpenAI", product="ChatGPT", plan="",
+        deployment_mode="public_saas", contract_type="consumer_terms",
+        contract_version="",
+    )
+    state.tools[0].offering = offering
+    state.tools[0].arp.offering = offering
+
+    html = unescape(render_html(state))
+
+    assert "identité de l’offre contractuelle est incomplète" in html
+    assert "plan, contract_version" in html
+
+
 def test_render_contains_disclaimer_footer():
     html = unescape(render_html(_state()))
     assert "requiert validation et autorisation par l'autorité désignée" in html
@@ -146,11 +162,15 @@ def test_render_contains_automated_observations_for_manual_arp_criteria():
     assert "Gestion des incidents" in html
     assert "Conditions d'utilisation acceptables" in html
     assert "Compatibilité licence usage gouvernemental" in html
-    assert "Constat pré-rempli (à valider) : SSO/MFA et intégration IdP documentés." in html
-    assert "Constat pré-rempli (à valider) : Journaux d'accès et audit prompts/sorties accessibles" in html
+    assert "<strong>SSO/MFA et intégration IdP documentés.</strong>" in html
+    assert "<strong>Journaux d'accès et audit prompts/sorties accessibles" in html
     assert "restriction d'usage institutionnel détectée" in html
-    assert "Constat pré-rempli (à valider) : À confirmer; preuve insuffisante sur la compatibilité" in html
-    assert "Constat pré-rempli (à valider) : Plan de réponse aux incidents et notification de brèche" in html
+    assert "<strong>À confirmer; preuve insuffisante sur la compatibilité" in html
+    assert "<strong>Plan de réponse aux incidents et notification de brèche" in html
+    assert "Constat pré-rempli (à valider)" not in html
+    assert "À confirmer par l'agent SI" not in html
+    assert "Citation non disponible." not in html
+    assert "Source non disponible." not in html
     assert "The institutional contract explicitly documents this control." in html
     assert "Source : <a href=\"https://example.test/contracts#:~:text=" in html
     assert ">example.test</a> — vérifiée le 20 juillet 2026" in html
@@ -160,7 +180,7 @@ def test_render_contains_automated_observations_for_manual_arp_criteria():
     assert "source-hash-must-not-be-rendered" not in html
 
 
-def test_automated_observation_deduplicates_shared_evidence_and_hides_technical_fields():
+def test_automated_observation_keeps_citations_when_evidence_exists():
     facts = ContractFacts(
         institutional_terms_available="yes",
         dpa_available="yes",
@@ -188,6 +208,16 @@ def test_automated_observation_deduplicates_shared_evidence_and_hides_technical_
     assert "20 juillet 2026" in observation
     assert "not-for-a-human-reader" not in observation
     assert "institutional_terms_available=yes" not in observation
+
+
+def test_observation_without_evidence_contains_only_its_value():
+    facts = ContractFacts(data_residency="unknown")
+
+    observation = str(_auto_observation(
+        "Lieu d'hébergement à confirmer.", facts, "data_residency",
+    ))
+
+    assert observation == "Lieu d'hébergement à confirmer."
 
 
 def test_non_disclosure_observation_is_formatted_without_hash_or_technical_fields():
@@ -260,24 +290,19 @@ def test_citation_link_targets_the_verbatim_quote_and_preserves_page_anchor():
     )
 
 
-def test_partie_a_citation_and_source_use_a_text_fragment_link():
+def test_partie_a_observations_render_citations_and_source_links_when_available():
     quote = "The institutional contract explicitly documents this control."
-    markup = _reportlab_observation_source_markup(
-        "https://example.test/contracts",
-        date(2026, 7, 20),
-        quote,
-    )
     html = unescape(render_html(_state()))
 
     expected_target = (
         "https://example.test/contracts#:~:text="
         "The%20institutional%20contract%20explicitly%20documents%20this%20control."
     )
-    assert f'<link href="{expected_target}">' in markup
-    assert f'href="{expected_target}"' in html
+    assert quote in html
+    assert expected_target in html
 
 
-def test_pdf_embeds_a_link_to_the_cited_text_fragment():
+def test_pdf_observations_embed_a_link_to_cited_text_when_available():
     pytest.importorskip("reportlab")
     pypdf = pytest.importorskip("pypdf")
 
@@ -294,6 +319,22 @@ def test_pdf_embeds_a_link_to_the_cited_text_fragment():
         "https://example.test/contracts#:~:text="
         "The%20institutional%20contract%20explicitly%20documents%20this%20control."
     ) in targets
+
+
+def test_pdf_splits_an_oversized_risk_row_across_pages():
+    pytest.importorskip("reportlab")
+    state = _state()
+    state.tools[0].arp.contract_facts.evidence["authentication_support"] = FactEvidence(
+        value="sso_mfa",
+        source_url="https://example.test/contracts",
+        quote="This continuous contractual quotation is intentionally long. " * 180,
+        confidence=0.9,
+        source_collected_at=date(2026, 7, 20),
+    )
+
+    pdf = render_pdf(state)
+
+    assert pdf.startswith(b"%PDF")
 
 
 def test_render_contains_partie_c_conditions():

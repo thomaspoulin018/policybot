@@ -270,24 +270,16 @@ class _EvidenceDisplay:
 
 @dataclass(frozen=True)
 class _AutomatedObservation:
-    """A pre-filled finding rendered appropriately by HTML and ReportLab."""
+    """A concise finding with citations only when supporting evidence exists."""
 
     label: str
     evidence: tuple[_EvidenceDisplay, ...]
-    notes: tuple[str, ...]
-    needs_confirmation: bool
-
-    def _status(self) -> str:
-        return "À confirmer par l'agent SI" if self.needs_confirmation else "À valider par l'agent SI"
 
     def __str__(self) -> str:
-        parts = [f"Constat pré-rempli (à valider) : {self.label}", self._status()]
-        parts.extend(f"Note : {note}" for note in self.notes)
+        parts = [self.label]
         for proof in self.evidence:
             if proof.quote:
                 parts.append(f"Citation : « {proof.quote} »")
-            else:
-                parts.append("Citation : non disponible")
             if proof.source_url and not proof.source_is_shared:
                 source = f"Source : {_source_label(proof.source_url)}"
                 if proof.collected_at:
@@ -295,27 +287,15 @@ class _AutomatedObservation:
                 parts.append(source)
             elif proof.collected_at and not proof.source_is_shared:
                 parts.append(f"Source vérifiée le {_format_french_date(proof.collected_at)}")
-            elif not proof.source_is_shared:
-                parts.append("Source : non disponible")
         return "\n".join(parts)
 
     def __html__(self) -> Markup:
-        lines = [
-            '<div class="automated-observation">',
-            f"<strong>Constat pré-rempli (à valider) : {escape(self.label)}</strong>",
-            f'<div class="observation-status">{escape(self._status())}</div>',
-        ]
-        lines.extend(
-            f'<div class="observation-status">Note : {escape(note)}</div>'
-            for note in self.notes
-        )
+        lines = [f"<strong>{escape(self.label)}</strong>"]
         for proof in self.evidence:
             if proof.quote:
                 lines.append(
                     f"<blockquote>{_html_quote_markup(proof.quote, proof.source_url)}</blockquote>"
                 )
-            else:
-                lines.append('<div class="observation-status">Citation non disponible.</div>')
             if proof.source_url and not proof.source_is_shared:
                 source_url = _citation_target_url(proof.source_url, proof.quote)
                 source = f'Source : <a href="{escape(source_url)}">{escape(_source_label(proof.source_url))}</a>'
@@ -327,32 +307,19 @@ class _AutomatedObservation:
                     '<div class="observation-source">'
                     f"Source vérifiée le {escape(_format_french_date(proof.collected_at))}</div>"
                 )
-            elif not proof.source_is_shared:
-                lines.append('<div class="observation-source">Source non disponible.</div>')
-        lines.append("</div>")
         return Markup("".join(lines))
 
     def reportlab_flowables(self, styles):
         from xml.sax.saxutils import escape as xml_escape
         from reportlab.platypus import Paragraph
 
-        flowables = [Paragraph(
-            f"<b>Constat pré-rempli (à valider) : {xml_escape(self.label)}</b>",
-            styles["ObservationVerdict"],
-        )]
-        flowables.append(Paragraph(xml_escape(self._status()), styles["ObservationStatus"]))
-        flowables.extend(
-            Paragraph(f"Note : {xml_escape(note)}", styles["ObservationStatus"])
-            for note in self.notes
-        )
+        flowables = [Paragraph(xml_escape(self.label), styles["ObservationVerdict"])]
         for proof in self.evidence:
             if proof.quote:
                 flowables.append(Paragraph(
                     _reportlab_quote_markup(proof.quote, proof.source_url),
                     styles["ObservationQuote"],
                 ))
-            else:
-                flowables.append(Paragraph("Citation non disponible.", styles["ObservationStatus"]))
             if proof.source_url and not proof.source_is_shared:
                 source = _reportlab_observation_source_markup(
                     proof.source_url,
@@ -361,8 +328,6 @@ class _AutomatedObservation:
                 )
             elif proof.collected_at and not proof.source_is_shared:
                 source = f"Source vérifiée le {_format_french_date(proof.collected_at)}"
-            elif not proof.source_is_shared:
-                source = "Source non disponible."
             else:
                 source = ""
             if source:
@@ -507,34 +472,27 @@ def _auto_observation(
 ) -> _AutomatedObservation:
     names = (field_names,) if isinstance(field_names, str) else field_names
     evidence: list[_EvidenceDisplay] = []
-    notes: list[str] = []
     seen_evidence: set[tuple[str | None, str | None]] = set()
     seen_sources: set[tuple[str, object | None]] = set()
     for field_name in names:
         proof = facts.evidence.get(field_name)
         if proof is None:
             continue
-        if proof.note:
-            notes.append(proof.note)
         key = (proof.quote, proof.source_url)
-        if key not in seen_evidence:
-            seen_evidence.add(key)
-            source_key = (proof.source_url, proof.source_collected_at)
-            source_is_shared = bool(proof.source_url) and source_key in seen_sources
-            if proof.source_url:
-                seen_sources.add(source_key)
-            evidence.append(_EvidenceDisplay(
-                quote=proof.quote,
-                source_url=proof.source_url,
-                collected_at=proof.source_collected_at,
-                source_is_shared=source_is_shared,
-            ))
-    return _AutomatedObservation(
-        label=label,
-        evidence=tuple(evidence),
-        notes=tuple(dict.fromkeys(notes)),
-        needs_confirmation=any(getattr(facts, field_name) == "unknown" for field_name in names),
-    )
+        if key in seen_evidence:
+            continue
+        seen_evidence.add(key)
+        source_key = (proof.source_url, proof.source_collected_at)
+        source_is_shared = bool(proof.source_url) and source_key in seen_sources
+        if proof.source_url:
+            seen_sources.add(source_key)
+        evidence.append(_EvidenceDisplay(
+            quote=proof.quote,
+            source_url=proof.source_url,
+            collected_at=proof.source_collected_at,
+            source_is_shared=source_is_shared,
+        ))
+    return _AutomatedObservation(label=label, evidence=tuple(evidence))
 
 
 def _arp_automated_observations(
@@ -595,6 +553,11 @@ def render_html(state: InterviewState) -> str:
         {
             "tool_name": tool.name,
             "offering": tool.offering or (tool.arp.offering if tool.arp else None),
+            "missing_identity_fields": (
+                (tool.offering or (tool.arp.offering if tool.arp else None))
+                .missing_search_identity_fields()
+                if tool.offering or (tool.arp and tool.arp.offering) else ()
+            ),
             "groups": _group_by_category(
                 _merge_rows(
                     ARP_CRITERIA,
@@ -1101,7 +1064,16 @@ def _risk_table(headers: list[str], groups: list[tuple[str, list[dict]]], styles
                 ),
             ])
     widths = [50, 145, 48, 110, 48, 58, 103]
-    table = Table(rows, colWidths=widths, hAlign="LEFT", repeatRows=1)
+    # A single criterion can include several sourced observations.  Permit a
+    # very tall row to continue on the next page instead of making the entire
+    # PDF fail with a ReportLab LayoutError.
+    table = Table(
+        rows,
+        colWidths=widths,
+        hAlign="LEFT",
+        repeatRows=1,
+        splitInRow=1,
+    )
     commands = [
         ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d0d5dd")),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef6f7")),
@@ -1193,6 +1165,11 @@ def _render_reportlab_pdf(state: InterviewState) -> bytes:
         {
             "tool_name": tool.name,
             "offering": tool.offering or (tool.arp.offering if tool.arp else None),
+            "missing_identity_fields": (
+                (tool.offering or (tool.arp.offering if tool.arp else None))
+                .missing_search_identity_fields()
+                if tool.offering or (tool.arp and tool.arp.offering) else ()
+            ),
             "sources": tool.arp.contract_facts.sources if tool.arp else [],
             "groups": _group_by_category(
                 _merge_rows(
@@ -1211,6 +1188,13 @@ def _render_reportlab_pdf(state: InterviewState) -> bytes:
         if table["offering"] is not None:
             story.append(_para(
                 f"Identite de l'offre contractuelle : {table['offering'].display_label()}",
+                styles["BodyText"],
+            ))
+        if table["missing_identity_fields"]:
+            story.append(_para(
+                "Attention : identité de l’offre contractuelle incomplète "
+                f"({', '.join(table['missing_identity_fields'])}). La recherche a été "
+                "effectuée, mais l’autorité désignée doit confirmer l’offre applicable.",
                 styles["BodyText"],
             ))
         story.append(_risk_table([

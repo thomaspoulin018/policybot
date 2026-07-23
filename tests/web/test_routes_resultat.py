@@ -61,6 +61,8 @@ def test_final_submit_shows_validated_contract_citation_and_link(tmp_path):
 
     resp = client.post("/wizard/contexte-affaires", data={
         "tool_name": "ChatGPT",
+        "version_plan_tarifaire": "Enterprise",
+        "contract_version": "DPA-2026",
         "data_checked": "Info déjà publique",
         "usage_description": "Chercher de l'information publique",
         "mode": "prompt",

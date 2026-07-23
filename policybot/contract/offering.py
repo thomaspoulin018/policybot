@@ -31,6 +31,7 @@ def build_offering_identity(
     deployment_mode: str | None = None,
     contract_type: str | None = None,
     contract_version: str | None = None,
+    jurisdiction: str | None = None,
     effective_date: date | None = None,
 ) -> ContractOfferingIdentity:
     entry = lookup_tool(tool_name) or {}
@@ -45,11 +46,14 @@ def build_offering_identity(
         resolved_deployment = resolved_deployment or "managed_saas"
         resolved_contract = resolved_contract or "institutional_agreement"
     return ContractOfferingIdentity(
-        vendor=(vendor or entry.get("vendor") or tool_name).strip(),
+        # Do not turn the product name into a presumed vendor: a contract
+        # search must abstain when the assessed offering cannot be identified.
+        vendor=(vendor or entry.get("vendor") or "").strip(),
         product=tool_name.strip(),
         plan=normalized_plan,
         deployment_mode=(resolved_deployment or _DEPLOYMENT_BY_IAG_TYPE[iag_type]).strip(),
         contract_type=(resolved_contract or _CONTRACT_BY_IAG_TYPE[iag_type]).strip(),
         contract_version=(contract_version or "").strip(),
+        jurisdiction=(jurisdiction or "").strip(),
         effective_date=effective_date,
     )

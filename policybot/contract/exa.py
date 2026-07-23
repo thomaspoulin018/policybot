@@ -4,6 +4,9 @@ from __future__ import annotations
 import contextvars
 import json
 import os
+import random
+import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date
@@ -12,7 +15,11 @@ from typing import Any, Iterable, Mapping, Protocol
 from policybot.classify.tool_registry import lookup_tool
 from policybot.contract.arp import _quote_is_anchored
 from policybot.contract.evidence import ContractEvidence, EvidenceDocument
-from policybot.contract.fact_search import FACT_SEARCHES, FactSearchConfig
+from policybot.contract.fact_search import (
+    EXA_SEARCH_TYPES,
+    FACT_SEARCHES,
+    FactSearchConfig,
+)
 from policybot.contract.source_policy import (
     build_source_policy,
     contract_source_urls,
@@ -33,11 +40,61 @@ from policybot.tracing import (
 
 DEFAULT_MAX_WORKERS = 8
 
-# Exa does not return billing metadata with Search responses.  These public
-# rates are therefore an estimate based on the request parameters, not an
-# invoice value.  See https://exa.ai/pricing (verified 2026-07-21).
+# One Exa search per fact runs concurrently against api.exa.ai.  Under load the
+# server intermittently resets or drops connections (ConnectionReset / SSL EOF)
+# and can answer 429/5xx; each of those is transient — a plain retry recovers
+# the fact.  Without a retry a single blip permanently marked the fact
+# ``collection_failure``, silently hollowing out Partie A.  Retries stay inside
+# ``_collect_one`` so an exhausted fact still degrades alone, never the
+# interview.  Tune with ``POLICYBOT_EXA_MAX_ATTEMPTS``.
+DEFAULT_MAX_ATTEMPTS = 3
+_RETRY_BASE_DELAY_S = 0.5
+# 429 plus the whole 5xx range are the retryable HTTP statuses exa_py surfaces
+# as ``ValueError("... status code NNN ...")``; a 4xx (400/401/403) is a
+# permanent request/auth problem and must fail fast without burning retries.
+_RETRYABLE_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})
+_HTTP_STATUS_RE = re.compile(r"status code (\d{3})")
+
+
+def _http_status(exc: Exception) -> int | None:
+    """Return the HTTP status exa_py encoded in a ValueError message, if any."""
+    if isinstance(exc, ValueError) and (match := _HTTP_STATUS_RE.search(str(exc))):
+        return int(match.group(1))
+    return None
+
+
+def _is_transient(exc: Exception) -> bool:
+    """True when retrying the same Exa search could plausibly succeed.
+
+    Network failures (``requests`` raises ``ConnectionError``/``SSLError``/
+    ``Timeout`` — all ``OSError`` subclasses, as are the builtin
+    ``ConnectionResetError``/``TimeoutError``) are always transient.  A
+    ValueError only counts when its embedded HTTP status is 429/5xx; a 4xx is
+    permanent, and any other ValueError (e.g. a bad-response parse) is not
+    worth retrying.
+    """
+    status = _http_status(exc)
+    if status is not None:
+        return status in _RETRYABLE_HTTP_STATUS
+    if isinstance(exc, ValueError):
+        return False
+    return isinstance(exc, OSError)
+
+
+def _sleep_before_retry(attempt: int) -> None:
+    """Exponential backoff with full jitter, to de-synchronise worker retries."""
+    ceiling = _RETRY_BASE_DELAY_S * (2 ** (attempt - 1))
+    time.sleep(random.uniform(0, ceiling))
+
+
+# Exa's Search response carries a ``costDollars`` object whose ``total`` is
+# Exa's own per-request cost estimate (labelled "not an invoice record").  We
+# read that value when present (see ``_response_cost_usd``).  The public rates
+# below are only a fallback for responses that omit it — e.g. a stubbed client
+# or an older API.  See https://exa.ai/pricing (verified 2026-07-21).
 _EXA_SEARCH_BASE_COST_USD = {
     "auto": 0.007,
+    "deep": 0.012,
 }
 _EXA_AI_SUMMARY_COST_PER_RESULT_USD = 0.001
 
@@ -121,11 +178,38 @@ def _document_from_result(result: Any) -> tuple[EvidenceDocument, Mapping[str, A
     ), raw
 
 
-def _offering_scope(offering: ContractOfferingIdentity) -> str:
-    return " ".join(part for part in (
-        offering.plan, offering.deployment_mode, offering.contract_type,
-        offering.contract_version,
-    ) if part).strip()
+def _identity_values(
+    tool_name: str,
+    vendor: str,
+    offering: ContractOfferingIdentity,
+) -> dict[str, str]:
+    def known_or_unknown(value: str) -> str:
+        cleaned = value.strip()
+        return cleaned if cleaned and cleaned.casefold() != "unknown" else "unknown"
+
+    return {
+        "tool": known_or_unknown(tool_name),
+        "vendor": known_or_unknown(vendor),
+        "plan": known_or_unknown(offering.plan),
+        "deployment_mode": known_or_unknown(offering.deployment_mode),
+        "contract_type": known_or_unknown(offering.contract_type),
+        "contract_version": known_or_unknown(offering.contract_version),
+        "jurisdiction": known_or_unknown(offering.jurisdiction),
+    }
+
+
+def _missing_identity_fields(
+    definition: FactSearchConfig,
+    *,
+    tool_name: str,
+    vendor: str,
+    offering: ContractOfferingIdentity,
+) -> tuple[str, ...]:
+    values = _identity_values(tool_name, vendor, offering)
+    return tuple(sorted(
+        placeholder for placeholder in definition.placeholders()
+        if values[placeholder].casefold() == "unknown"
+    ))
 
 
 def _search_kwargs(
@@ -133,10 +217,11 @@ def _search_kwargs(
     *,
     query: str,
     include_domains: Iterable[str],
+    search_type: str | None = None,
 ) -> dict[str, Any]:
     contents = definition.exa.contents
     return {
-        "type": definition.exa.type,
+        "type": search_type or definition.exa.type,
         "num_results": definition.exa.num_results,
         "include_domains": list(dict.fromkeys(domain for domain in include_domains if domain)),
         "contents": {
@@ -153,14 +238,39 @@ def _search_kwargs(
     }
 
 
-def estimate_search_cost_usd(definition: FactSearchConfig) -> float | None:
+def _response_cost_usd(response: Any) -> float | None:
+    """Return Exa's own per-request cost (``costDollars.total``) if present.
+
+    Exa's Search response exposes ``cost_dollars`` (``exa_py`` dataclass) or the
+    raw ``costDollars`` mapping; either way its ``total`` is Exa's estimate for
+    the request actually run — far more accurate than the public-rate fallback.
+    A stubbed client or an older API simply omits it, yielding ``None``.
+    """
+    cost = _field(response, "cost_dollars")
+    if cost is None:
+        cost = _field(response, "costDollars")
+    if cost is None:
+        return None
+    total = _field(cost, "total")
+    try:
+        value = float(total)
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
+
+
+def estimate_search_cost_usd(
+    definition: FactSearchConfig,
+    *,
+    search_type: str | None = None,
+) -> float | None:
     """Return the public-rate estimate for one configured Exa search.
 
     The current contract-fact configuration always requests an AI summary for
     every result.  Exa's API-key response does not expose charged usage, so an
     unsupported search type deliberately produces ``None`` instead of a guess.
     """
-    base_cost = _EXA_SEARCH_BASE_COST_USD.get(definition.exa.type)
+    base_cost = _EXA_SEARCH_BASE_COST_USD.get(search_type or definition.exa.type)
     if base_cost is None:
         return None
     return base_cost + (
@@ -185,38 +295,68 @@ def _collect_one(
     offering: ContractOfferingIdentity,
     client: ExaClient,
     source_urls: list[str],
+    search_type: str | None = None,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
 ) -> _FactSearchResult:
-    rendered = definition.render(tool=tool_name, vendor=vendor)
-    scope = _offering_scope(offering)
-    query = " ".join(part for part in (rendered.query, scope) if part)
+    missing_fields = _missing_identity_fields(
+        definition, tool_name=tool_name, vendor=vendor, offering=offering,
+    )
+    rendered = definition.render(**_identity_values(tool_name, vendor, offering))
+    query = rendered.query
     policy = build_source_policy(
         offering, priority_urls=source_urls, source_urls=source_urls,
     )
     known_domains = [url.split("/", 3)[2] for url in source_urls if "://" in url]
     include_domains = (*rendered.include_domains, *known_domains)
-    kwargs = _search_kwargs(definition, query=query, include_domains=include_domains)
+    kwargs = _search_kwargs(
+        definition,
+        query=query,
+        include_domains=include_domains,
+        search_type=search_type,
+    )
 
     with trace_step(None, "exa_fact_search", fact=definition.fact) as extra:
         extra.update({
             "query": mask_text(query),
+            "missing_identity_fields": list(missing_fields),
             "option_a": definition.selection.strategy,
             "option_d_require_declared_source_url": (
                 definition.selection.require_declared_source_url
             ),
         })
-        try:
+        attempts = 0
+        while True:
+            attempts += 1
             record_exa_search_started()
-            response = client.search(query, **kwargs)
-        except Exception as exc:  # noqa: BLE001 - a fact must never abort an interview
-            record_exa_search_failed()
-            extra.update(outcome="collection_failure", error=type(exc).__name__)
-            return _FactSearchResult(
-                definition.fact,
-                _unknown("collecte Exa échouée", "collection_failure"),
-                [],
-                failed=True,
-            )
-        record_exa_search_succeeded(estimate_search_cost_usd(definition))
+            try:
+                response = client.search(query, **kwargs)
+                break
+            except Exception as exc:  # noqa: BLE001 - a fact must never abort an interview
+                record_exa_search_failed()
+                if attempts < max(1, max_attempts) and _is_transient(exc):
+                    _sleep_before_retry(attempts)
+                    continue
+                extra.update(
+                    outcome="collection_failure",
+                    error=type(exc).__name__,
+                    error_status=_http_status(exc),
+                    attempts=attempts,
+                )
+                return _FactSearchResult(
+                    definition.fact,
+                    _unknown("collecte Exa échouée", "collection_failure"),
+                    [],
+                    failed=True,
+                )
+        extra["attempts"] = attempts
+        reported_cost = _response_cost_usd(response)
+        cost_reported = reported_cost is not None
+        cost_usd = (
+            reported_cost if cost_reported
+            else estimate_search_cost_usd(definition, search_type=search_type)
+        )
+        record_exa_search_succeeded(cost_usd, reported=cost_reported)
+        extra.update(cost_usd=cost_usd, cost_reported=cost_reported)
 
         documents: list[EvidenceDocument] = []
         accepted: list[tuple[FactEvidence, Mapping[str, Any]]] = []
@@ -323,11 +463,14 @@ def collect_evidence_from_exa(
     *,
     definitions: Iterable[FactSearchConfig] = FACT_SEARCHES,
     max_workers: int = DEFAULT_MAX_WORKERS,
+    search_type: str | None = None,
+    max_attempts: int | None = None,
 ) -> ContractEvidence:
     """Collect every configured fact concurrently and degrade independently."""
     configs = tuple(definitions)
     source_urls = contract_source_urls(tool_name, offering)
     workers = max(1, min(max_workers, len(configs)))
+    attempts = _configured_attempts() if max_attempts is None else max_attempts
     results: dict[str, _FactSearchResult] = {}
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="policybot-exa") as pool:
         futures = {
@@ -340,6 +483,8 @@ def collect_evidence_from_exa(
                 offering=offering,
                 client=client,
                 source_urls=source_urls,
+                search_type=search_type,
+                max_attempts=attempts,
             ): definition.fact
             for definition in configs
         }
@@ -373,6 +518,20 @@ def _configured_workers() -> int:
         return DEFAULT_MAX_WORKERS
 
 
+def _configured_attempts() -> int:
+    raw = os.environ.get("POLICYBOT_EXA_MAX_ATTEMPTS", "")
+    try:
+        return max(1, int(raw)) if raw else DEFAULT_MAX_ATTEMPTS
+    except ValueError:
+        return DEFAULT_MAX_ATTEMPTS
+
+
+def _configured_search_type() -> str | None:
+    """Return a valid global Exa mode, without overriding YAML by default."""
+    configured = os.environ.get("POLICYBOT_EXA_SEARCH_TYPE", "").strip().lower()
+    return configured if configured in EXA_SEARCH_TYPES else None
+
+
 def search_contract_facts_with_exa(
     tool_name: str,
     *,
@@ -381,8 +540,14 @@ def search_contract_facts_with_exa(
     client: ExaClient | None = None,
     definitions: Iterable[FactSearchConfig] = FACT_SEARCHES,
     max_workers: int | None = None,
+    search_type: str | None = None,
+    max_attempts: int | None = None,
 ) -> ContractEvidence | None:
     """Create the real client lazily; a missing key is a clean unknown fallback."""
+    configs = tuple(definitions)
+    selected_search_type = search_type or _configured_search_type()
+    entry = lookup_tool(tool_name) or {}
+    vendor = str(entry.get("vendor") or offering.vendor or "")
     active_client = client
     if active_client is None:
         key = api_key or os.environ.get("EXA_API_KEY")
@@ -395,12 +560,13 @@ def search_contract_facts_with_exa(
             with trace_step(None, "exa_client_init") as extra:
                 extra.update(outcome="failed", error=type(exc).__name__)
             return None
-    entry = lookup_tool(tool_name) or {}
     return collect_evidence_from_exa(
         tool_name,
-        str(entry.get("vendor") or offering.vendor or tool_name),
+        vendor,
         offering,
         active_client,
-        definitions=definitions,
+        definitions=configs,
         max_workers=max_workers or _configured_workers(),
+        search_type=selected_search_type,
+        max_attempts=max_attempts,
     )

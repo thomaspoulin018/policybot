@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan : Dossiers de run debug par requête</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.6; color: #1a1a2e;
+    background: #f4f6fb; padding: 2rem;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.8rem; font-weight: 700; }
+  header p  { margin-top: .4rem; opacity: .8; font-size: .98rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1rem; font-size: .85rem; opacity: .7; }
+
+  .section {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+  }
+  .section h2 {
+    font-size: 1.1rem; font-weight: 700; color: #16213e;
+    border-left: 4px solid #4361ee; padding-left: .75rem;
+    margin-bottom: 1rem;
+  }
+  .section h3 { font-size: .98rem; color: #16213e; margin: 1.1rem 0 .5rem; }
+  p { margin-bottom: .6rem; }
+
+  ol.steps, ul.bullets { padding-left: 1.4rem; }
+  ol.steps li { margin-bottom: .7rem; }
+  ul.bullets li { margin-bottom: .4rem; }
+  ol.steps li strong { color: #4361ee; }
+  code { background: #f0f2f8; padding: .1rem .35rem; border-radius: 4px; font-size: .86em; font-family: "SFMono-Regular", Consolas, monospace; }
+
+  .code-block {
+    background: #0f1729; color: #e2e8f0; border-radius: 8px;
+    padding: 1rem 1.2rem; font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: .82rem; line-height: 1.5; white-space: pre; overflow-x: auto; margin: .6rem 0;
+  }
+
+  .badge {
+    display: inline-block; font-size: .72rem; font-weight: 600;
+    padding: .15rem .55rem; border-radius: 99px; margin-right: .3rem;
+  }
+  .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-yellow { background: #fef9c3; color: #a16207; }
+  .badge-red    { background: #fee2e2; color: #b91c1c; }
+  .badge-gray   { background: #e5e7eb; color: #374151; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; margin: .5rem 0; }
+  th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .75rem; }
+  td { padding: .5rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  .callout {
+    border-left: 4px solid #4361ee; background: #f0f4ff;
+    padding: .75rem 1rem; border-radius: 0 8px 8px 0;
+    font-size: .9rem; margin: .75rem 0;
+  }
+  .callout.warn { border-color: #f59e0b; background: #fffbeb; }
+  .callout.danger { border-color: #ef4444; background: #fef2f2; }
+  .callout strong { display: inline; }
+  .filetree { font-size: .82rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Dossiers de run « debug » par requête</h1>
+    <p>Un dossier horodaté par appel <code>assess()</code>, avec un fichier <code>.md</code> lisible qui déballe en clair les appels LLM et la recherche de contrat — pour comprendre et débugger une requête à la main.</p>
+    <div class="meta">
+      <span>Date : 2026-07-22</span>
+      <span>Portée : traçabilité debug locale (dev-only)</span>
+      <span>Approche : TDD, offline</span>
+    </div>
+  </header>
+
+  <!-- OBJECTIF -->
+  <div class="section">
+    <h2>Objectif &amp; portée</h2>
+    <p>Aujourd'hui, la seule trace d'une requête est <code>logs/policybot.jsonl</code> (via <code>policybot/tracing.py</code>) : structuré, une ligne JSON par étape, mais <strong>le texte libre y est systématiquement masqué</strong> (longueur + hash SHA-256 seulement). Impossible de relire un prompt ou une réponse LLM à l'œil.</p>
+    <p>On ajoute un <strong>canal parallèle, dev-only</strong> : à chaque appel <code>Interview.assess()</code>, si le flag est activé, on crée un dossier de run horodaté contenant un fichier <code>.md</code> qui expose <strong>en clair</strong> :</p>
+    <ul class="bullets">
+      <li><span class="badge badge-blue">Volet 1</span> <strong>Appels LLM détaillés</strong> — pour chaque appel : call site (<code>run_name</code>/tags/task), prompt système + utilisateur, réponse brute, tokens, coût.</li>
+      <li><span class="badge badge-blue">Volet 2</span> <strong>Recherche de contrat</strong> — l'objet <code>ContractEvidence</code> : documents trouvés par fait (URL, titre, source, extrait), faits retenus avec citation verbatim, faits en échec.</li>
+    </ul>
+    <p>Un court <strong>entête d'identification</strong> (interview_id, outil, horodatage, coût total) coiffe le fichier pour le rendre autosuffisant — mais <strong>pas</strong> de section verdict/synthèse détaillée (hors périmètre choisi).</p>
+
+    <div class="callout warn">
+      <strong>Décisions verrouillées</strong> (issues des questions préalables) :
+      <ul class="bullets" style="margin-top:.4rem;">
+        <li>Texte libre <strong>en clair</strong>, dans un dossier debug local <strong>gitignoré</strong>.</li>
+        <li>Contenu = <strong>appels LLM + recherche contrat</strong> uniquement (+ entête d'ID).</li>
+        <li>Structure : <code>logs/runs/AAAA-MM-JJ_HH-MM-SS_&lt;id&gt;/</code> — <strong>un dossier par requête</strong>.</li>
+        <li>Activable par <strong>flag env</strong>, <strong>off par défaut</strong>, <strong>en plus</strong> du JSONL existant (qui ne change pas).</li>
+        <li>Granularité : <strong>un fichier par appel <code>assess()</code></strong> (donc plusieurs fichiers possibles pour un même parcours web wizard — assumé).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- CONTRAINTE PRIVACY -->
+  <div class="section">
+    <h2>⚠️ La contrainte de confidentialité — à traiter en premier</h2>
+    <p>Le <code>CLAUDE.md</code> pose une règle <strong>non négociable</strong> : <em>« never log free text in the clear »</em>. Ce plan crée délibérément une exception <strong>locale et opt-in</strong>. On l'encadre pour qu'elle ne devienne jamais une fuite :</p>
+    <table>
+      <tr><th>Garde-fou</th><th>Mise en œuvre</th></tr>
+      <tr><td>Jamais versionné</td><td><code>logs/runs/</code> ajouté au <code>.gitignore</code> (vérifier que <code>logs/</code> l'est déjà ; sinon cibler <code>logs/runs/</code> explicitement).</td></tr>
+      <tr><td>Off par défaut</td><td>Rien n'est écrit sans <code>POLICYBOT_DEBUG_RUNS=1</code>. Le comportement de prod est inchangé.</td></tr>
+      <tr><td>Le JSONL reste masqué</td><td>On <strong>ne touche pas</strong> à <code>tracing.py</code> / <code>mask_text()</code>. Le canal masqué et le canal clair coexistent.</td></tr>
+      <tr><td>Avertissement dans le fichier</td><td>Entête du <code>.md</code> : bandeau « contient du texte non masqué — ne pas partager / ne pas committer ».</td></tr>
+      <tr><td>Documenté</td><td>Nouvelle sous-section dans <code>CLAUDE.md</code> décrivant l'exception et sa raison d'être.</td></tr>
+    </table>
+    <div class="callout danger"><strong>Règle d'or :</strong> ce canal est un outil de développement local. Il ne doit jamais être activé dans un déploiement partagé, ni son dossier committé.</div>
+  </div>
+
+  <!-- ARCHITECTURE -->
+  <div class="section">
+    <h2>Architecture — comment ça s'accroche au code existant</h2>
+    <p>On réutilise le patron déjà présent dans <code>tracing.py</code> : un <strong>contextvar</strong> qui porte l'état du run courant à travers toute la pile d'appels, ouvert/fermé par un <em>context manager</em> autour de <code>assess()</code> — exactement comme <code>collect_llm_usage()</code> le fait déjà pour les compteurs de tokens.</p>
+
+    <h3>Nouveau module : <code>policybot/debug_run.py</code></h3>
+    <ul class="bullets">
+      <li>Un contextvar <code>_current_debug_run: ContextVar[DebugRun | None]</code> (défaut <code>None</code> = désactivé).</li>
+      <li><code>DebugRun</code> (dataclass) accumule <code>llm_calls: list[LLMCallRecord]</code> et <code>contract_searches: list[ContractSearchRecord]</code>, plus les métadonnées d'entête.</li>
+      <li><code>LLMCallRecord</code> : <code>method</code> (json/structured/text), <code>run_name</code>, <code>tags</code>, <code>task</code>, <code>system</code>, <code>user</code>, <code>response</code> (str), <code>tokens</code>, <code>cost</code>, <code>duration_ms</code>, <code>status</code>.</li>
+      <li><code>ContractSearchRecord</code> : <code>tool_name</code>, <code>source</code>, <code>documents_by_fact</code>, <code>facts</code> (citations), <code>failed_facts</code>.</li>
+      <li><code>@contextmanager debug_run(interview_id, tool_name)</code> : si le flag est off → yield sans rien faire ; si on → crée le <code>DebugRun</code>, le pose dans le contextvar, et <strong>à la sortie</strong> écrit le dossier + le <code>.md</code>.</li>
+      <li>Helpers <code>record_llm_call(...)</code> / <code>record_contract_search(...)</code> : no-op si aucun run actif (comme <code>record_llm_call_started()</code> aujourd'hui).</li>
+    </ul>
+
+    <h3>Capture des appels LLM — <code>DebugRecordingProvider</code> (wrapper)</h3>
+    <p>Plutôt que de modifier chaque provider (<code>OpenRouterProvider</code>, <code>FakeLLMProvider</code>), on introduit un <strong>décorateur <code>LLMProvider</code></strong> qui enveloppe le provider injecté. Il implémente <code>complete_json</code> / <code>complete_structured</code> / <code>draft_text</code>, délègue au provider réel, et enregistre <code>system</code>/<code>user</code>/réponse dans le run courant. Non-invasif, testable isolément.</p>
+    <div class="callout"><strong>Sérialisation des réponses :</strong> <code>complete_json</code> → <code>json.dumps</code> du dict ; <code>complete_structured</code> → <code>model_dump()</code> du pydantic ; <code>draft_text</code> → la chaîne telle quelle.</div>
+
+    <h3>Capture de la recherche de contrat</h3>
+    <p>Dans <code>Interview._resolve_arp()</code> (<code>orchestrator.py</code>, bloc <code>resolve_arp_fetch</code>), l'objet <code>ContractEvidence</code> (URLs, extraits, <code>facts</code> avec citations, <code>failed_facts</code>) est déjà en main juste avant l'extraction. On appelle <code>record_contract_search(tool_name, source, evidence)</code> à cet endroit. <span class="badge badge-gray">note</span> Le code actuel passe par <code>contract/exa.py</code> + <code>fact_search.py</code> + <code>evidence.py</code> (Exa), pas Tavily/<code>families.py</code> comme le dit le <code>CLAUDE.md</code> — se fier au code.</p>
+  </div>
+
+  <!-- FLUX -->
+  <div class="section">
+    <h2>Flux de bout en bout</h2>
+    <div class="code-block">assess(request, tool_name, usages)
+   │
+   ├─ with collect_llm_usage(id):            # existant, inchangé
+   │   └─ with debug_run(id, tool_name):     # NOUVEAU — no-op si flag off
+   │        │
+   │        ├─ classify_data(...)  ──► DebugRecordingProvider capte prompt+réponse ─┐
+   │        ├─ _resolve_arp(...)                                                     │
+   │        │     └─ record_contract_search(evidence)  ── capte URLs + citations    ├─► DebugRun
+   │        ├─ extract_contract_facts(...) ──► capte prompt+réponse ────────────────┤   (contextvar)
+   │        ├─ evaluate_usage / synthesize (déterministe, non capté)                │
+   │        │                                                                        │
+   │        └─ (sortie du context manager) ─► écrit logs/runs/&lt;ts&gt;_&lt;id&gt;/run.md ◄─────┘
+   │
+   └─ return InterviewState</div>
+    <p>Chaque appel <code>assess()</code> ouvre son propre <code>debug_run</code> ; les contextvars étant isolés par contexte d'exécution, deux requêtes concurrentes (API async, wizard) écrivent dans deux dossiers distincts sans collision.</p>
+  </div>
+
+  <!-- STRUCTURE FICHIERS -->
+  <div class="section">
+    <h2>Structure produite sur disque</h2>
+    <div class="code-block filetree">logs/
+├─ policybot.jsonl              # existant (masqué) — inchangé
+└─ runs/                        # NOUVEAU — gitignoré
+   └─ 2026-07-22_14-03-58_a1b2c3d4/
+      └─ run.md                 # un fichier par appel assess()</div>
+    <p>Nom du dossier : <code>&lt;date&gt;_&lt;heure&gt;_&lt;8 premiers car. de l'interview_id&gt;</code>. Le dossier (plutôt qu'un simple fichier) laisse la place à de futurs artefacts — HTML de termes récupérés, dumps de prompts bruts — sans casser le nommage.</p>
+
+    <h3>Squelette du <code>run.md</code></h3>
+    <div class="code-block"># Run debug — {tool_name}
+
+&gt; ⚠️ Contient du texte NON masqué (prompts, réponses, extraits contrat).
+&gt; Local, dev-only. Ne pas committer, ne pas partager.
+
+- interview_id : a1b2c3d4-...
+- Outil : ChatGPT (publique)
+- Démarré : 2026-07-22 14:03:58
+- Durée totale : 2143 ms
+- LLM : 3 appels · 4210 tokens · 0.00218 USD
+
+---
+## Appels LLM (3)
+
+### 1. classify_data  ·  task=data_classification  ·  312 ms  ·  ok
+**System**
+```
+Tu es un classificateur de données...
+```
+**User**
+```
+Des courriels internes contenant des noms d'employés...
+```
+**Réponse**
+```json
+{ "data_classification": "prot_b", "rens_personnels": true, ... }
+```
+**Usage** : in=820 out=140 total=960 · 0.00051 USD
+
+### 2. arp_extraction  ·  ...
+
+---
+## Recherche de contrat (Exa)
+
+**Outil** : ChatGPT · **Source** : exa
+
+### Fait : training_default  →  accepted
+- **Valeur** : "opt_out_available"
+- **URL** : https://openai.com/policies/...
+- **Citation** : « We do not train on your business data by default... »
+- **Documents candidats** : 3 (URL · titre · type · extrait tronqué)
+
+### Faits en échec : privacy_certifications, data_residency</div>
+  </div>
+
+  <!-- PHASES -->
+  <div class="section">
+    <h2>Découpage en phases (TDD)</h2>
+
+    <h3>Phase 0 — Garde-fous privacy</h3>
+    <ol class="steps">
+      <li><strong>Gitignore :</strong> confirmer/ajouter <code>logs/runs/</code> dans <code>.gitignore</code>.</li>
+      <li><strong>Flag :</strong> lire <code>POLICYBOT_DEBUG_RUNS</code> ; centraliser dans <code>policybot/config.py</code> à côté des autres réglages env.</li>
+    </ol>
+
+    <h3>Phase 1 — Module <code>debug_run.py</code> + context manager</h3>
+    <ol class="steps">
+      <li><strong>Test d'abord :</strong> flag off ⇒ aucun dossier créé, <code>record_*</code> sont des no-op.</li>
+      <li><strong>Test :</strong> flag on ⇒ à la sortie de <code>debug_run()</code>, un dossier <code>logs/runs/&lt;ts&gt;_&lt;id&gt;/run.md</code> existe (rediriger la racine via une variable, comme <code>POLICYBOT_LOG_PATH</code> le fait pour les tests).</li>
+      <li><strong>Impl :</strong> contextvar, dataclasses <code>DebugRun</code>/<code>LLMCallRecord</code>/<code>ContractSearchRecord</code>, helpers, création de dossier.</li>
+    </ol>
+
+    <h3>Phase 2 — <code>DebugRecordingProvider</code></h3>
+    <ol class="steps">
+      <li><strong>Test :</strong> wrapper autour d'un <code>FakeLLMProvider</code> ⇒ le run courant contient 1 <code>LLMCallRecord</code> avec system/user/réponse exacts pour chaque méthode.</li>
+      <li><strong>Test :</strong> délégation transparente — la valeur de retour est identique au provider sous-jacent.</li>
+      <li><strong>Impl :</strong> les 3 méthodes + sérialisation par type de réponse.</li>
+    </ol>
+
+    <h3>Phase 3 — Capture recherche contrat</h3>
+    <ol class="steps">
+      <li><strong>Test :</strong> <code>_resolve_arp()</code> avec un <code>exa_search</code> injecté renvoyant une <code>ContractEvidence</code> ⇒ le run contient 1 <code>ContractSearchRecord</code> avec faits + citations + failed_facts.</li>
+      <li><strong>Impl :</strong> appel <code>record_contract_search(...)</code> dans le bloc <code>resolve_arp_fetch</code>.</li>
+    </ol>
+
+    <h3>Phase 4 — Rendu du <code>run.md</code></h3>
+    <ol class="steps">
+      <li><strong>Test :</strong> un <code>DebugRun</code> peuplé ⇒ le markdown produit contient l'entête d'ID, chaque appel LLM, chaque fait de contrat, le bandeau d'avertissement.</li>
+      <li><strong>Impl :</strong> fonction <code>render_run_md(run) -&gt; str</code> pure (facile à tester), puis écriture disque dans le context manager.</li>
+      <li><strong>Robustesse :</strong> l'écriture ne doit jamais faire échouer <code>assess()</code> — envelopper dans un try/except qui, au pire, log un warning (comme la dégradation Exa ne casse pas l'entrevue).</li>
+    </ol>
+
+    <h3>Phase 5 — Câblage</h3>
+    <ol class="steps">
+      <li><strong>Orchestrator :</strong> ouvrir <code>debug_run(state.interview_id, tool_name)</code> à l'intérieur de <code>collect_llm_usage</code> dans <code>assess()</code>.</li>
+      <li><strong>Provider :</strong> dans <code>api/deps.py</code> (<code>default_interview()</code>), envelopper le provider choisi dans <code>DebugRecordingProvider</code> quand le flag est on.</li>
+      <li><strong>Test d'intégration :</strong> un <code>assess()</code> complet avec <code>FakeLLMProvider</code> + <code>exa_search</code> injecté ⇒ un <code>run.md</code> lisible de bout en bout.</li>
+    </ol>
+
+    <h3>Phase 6 — Doc</h3>
+    <ol class="steps">
+      <li><strong><code>CLAUDE.md</code> :</strong> documenter l'exception privacy + le flag, et corriger la mention Tavily→Exa au passage si pertinent.</li>
+      <li><strong><code>.env.example</code> :</strong> ajouter <code>POLICYBOT_DEBUG_RUNS=</code> commenté.</li>
+    </ol>
+  </div>
+
+  <!-- FICHIERS TOUCHÉS -->
+  <div class="section">
+    <h2>Fichiers touchés</h2>
+    <table>
+      <tr><th>Fichier</th><th>Nature</th></tr>
+      <tr><td><code>policybot/debug_run.py</code></td><td><span class="badge badge-green">nouveau</span> contextvar, dataclasses, context manager, rendu md, écriture</td></tr>
+      <tr><td><code>policybot/llm/debug_provider.py</code></td><td><span class="badge badge-green">nouveau</span> <code>DebugRecordingProvider</code></td></tr>
+      <tr><td><code>policybot/interview/orchestrator.py</code></td><td><span class="badge badge-yellow">modif</span> ouvrir <code>debug_run(...)</code> + <code>record_contract_search(...)</code></td></tr>
+      <tr><td><code>policybot/api/deps.py</code></td><td><span class="badge badge-yellow">modif</span> envelopper le provider si flag on</td></tr>
+      <tr><td><code>policybot/config.py</code></td><td><span class="badge badge-yellow">modif</span> lire <code>POLICYBOT_DEBUG_RUNS</code></td></tr>
+      <tr><td><code>.gitignore</code> / <code>.env.example</code> / <code>CLAUDE.md</code></td><td><span class="badge badge-yellow">modif</span> garde-fous + doc</td></tr>
+      <tr><td><code>tests/test_debug_run.py</code> + <code>tests/llm/test_debug_provider.py</code></td><td><span class="badge badge-green">nouveau</span> couverture offline déterministe</td></tr>
+    </table>
+  </div>
+
+  <!-- SETUP -->
+  <div class="section">
+    <h2>Environnement &amp; lancement</h2>
+    <div class="code-block">cd C:\code\05_Travail\PolicyBot
+python -m venv .venv
+
+# Windows (PowerShell)
+.\.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+
+pip install -e ".[dev]"          # ajouter ".[pdf]" pour l'export PDF
+
+# activer le canal debug (dev local seulement)
+$env:POLICYBOT_DEBUG_RUNS = "1"  # PowerShell
+# export POLICYBOT_DEBUG_RUNS=1  # bash
+
+pytest -v                        # toute la suite (offline, déterministe)
+pytest tests/test_debug_run.py -v
+uvicorn policybot.api.app:app --reload   # lancer l'app, faire une requête, lire logs/runs/</div>
+    <div class="callout">Toujours activer le venv avant de lancer : <code>.\.venv\Scripts\activate</code> (Windows) ou <code>source .venv/bin/activate</code> (macOS/Linux). Le flag <code>POLICYBOT_DEBUG_RUNS</code> reste <strong>off</strong> tant qu'on ne le pose pas explicitement.</div>
+  </div>
+
+  <!-- RISQUES -->
+  <div class="section">
+    <h2>Risques &amp; mitigations</h2>
+    <div class="callout danger"><strong>Fuite de texte libre.</strong> Le fichier contient du contenu non masqué. → Gitignore <code>logs/runs/</code>, flag off par défaut, bandeau d'avertissement dans chaque fichier, doc explicite. Ne jamais activer en déploiement partagé.</div>
+    <div class="callout warn"><strong>Plusieurs fichiers par parcours web.</strong> Le wizard appelle <code>assess()</code> à chaque étape (interview_id différent) → N dossiers pour un même parcours. Assumé (choix « un fichier par appel <code>assess()</code> »). L'entête d'ID permet de les relier si besoin plus tard.</div>
+    <div class="callout warn"><strong>Écriture qui casse l'entrevue.</strong> Un souci d'I/O ne doit jamais faire échouer <code>assess()</code>. → Écriture enveloppée dans try/except, dégradation silencieuse + warning, jamais d'exception propagée.</div>
+    <div class="callout"><strong>Étapes déterministes non captées.</strong> Matrice, règles grille, synthèse ne passent pas par le LLM et sortent donc du périmètre choisi. Elles restent visibles dans le JSONL masqué existant si besoin.</div>
+  </div>
+
+  <!-- SUCCÈS -->
+  <div class="section">
+    <h2>Critères de « fait »</h2>
+    <ul class="bullets">
+      <li>Avec <code>POLICYBOT_DEBUG_RUNS=1</code>, un appel <code>assess()</code> produit exactement un <code>logs/runs/&lt;ts&gt;_&lt;id&gt;/run.md</code> lisible, contenant tous les appels LLM (prompt + réponse en clair) et la recherche de contrat (URLs + citations).</li>
+      <li>Sans le flag : aucun dossier créé, comportement et JSONL strictement inchangés.</li>
+      <li><code>logs/runs/</code> est gitignoré ; chaque fichier porte le bandeau d'avertissement.</li>
+      <li><code>pytest -v</code> passe intégralement, offline et déterministe (nouveaux tests inclus).</li>
+      <li>Une erreur d'écriture debug ne fait jamais échouer une requête.</li>
+    </ul>
+  </div>
+
+  <!-- QUESTIONS OUVERTES -->
+  <div class="section">
+    <h2>Questions encore ouvertes</h2>
+    <ul class="bullets">
+      <li>Faut-il une <strong>purge/rotation</strong> de <code>logs/runs/</code> (les runs s'accumulent) ? Proposition : script/commande manuelle plus tard, hors périmètre initial.</li>
+      <li>Garder le nom <code>run.md</code> ou utiliser <code>&lt;interview_id&gt;.md</code> à l'intérieur du dossier ? (Le dossier porte déjà l'ID court — <code>run.md</code> suffit.)</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

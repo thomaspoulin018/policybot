@@ -93,6 +93,11 @@ def test_test_prefill_renders_context_step_with_demo_values(tmp_path):
     assert 'name="besoin_affaires" value="réduire le temps' in resp.text
     assert 'name="mode_acquisition" value="achat_direct" checked' in resp.text
     assert resp.text.count('name="besoin_affaires"') == 1
+    assert 'name="deployment_mode" value="public_saas"' in resp.text
+    assert 'name="contract_type" value="consumer_terms"' in resp.text
+    assert 'name="contract_version" value="Conditions d’utilisation – juillet 2026"' in resp.text
+    assert 'name="jurisdiction" value="Californie, États-Unis"' in resp.text
+    assert 'name="contract_effective_date" value="2026-07-01"' in resp.text
 
 
 @pytest.mark.parametrize(
@@ -115,6 +120,31 @@ def test_each_test_scenario_prefills_its_expected_form_values(
     assert resp.status_code == 200
     assert f'name="tool_name" value="{expected_tool}"' in resp.text
     assert expected_description in resp.text
+
+
+@pytest.mark.parametrize(
+    ("scenario_id", "deployment_mode", "contract_type", "contract_version"),
+    [
+        ("public_permitted", "public_saas", "consumer_terms", "Conditions d’utilisation – juillet 2026"),
+        ("mcn_blocked", "public_saas", "consumer_terms", "Conditions d’utilisation – juillet 2026"),
+        ("arp_closed_circuit", "managed_saas", "institutional_agreement", "Microsoft Customer Agreement – 2026"),
+        ("protege_c_governmental", "government_hosted", "government_agreement", "Entente gouvernementale – 2026"),
+        ("automated_decision", "public_saas", "consumer_terms", "Conditions d’utilisation – juillet 2026"),
+        ("multiple_usages", "public_saas", "consumer_terms", "Conditions d’utilisation – juillet 2026"),
+    ],
+)
+def test_each_test_scenario_prefills_contract_offering_fields(
+    tmp_path, scenario_id, deployment_mode, contract_type, contract_version,
+):
+    client = _client(tmp_path)
+
+    resp = client.post("/wizard/test-prefill", data={"scenario_id": scenario_id})
+
+    assert f'name="deployment_mode" value="{deployment_mode}"' in resp.text
+    assert f'name="contract_type" value="{contract_type}"' in resp.text
+    assert f'name="contract_version" value="{contract_version}"' in resp.text
+    assert 'name="jurisdiction" value="' in resp.text
+    assert 'name="contract_effective_date" value="2026-' in resp.text
 
 
 def test_mcn_blocked_prefill_contains_the_data_that_should_trigger_the_gate(tmp_path):

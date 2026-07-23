@@ -116,8 +116,23 @@ def test_llm_usage_summary_reports_total_run_cost(trace_events):
     assert summary["total_tokens"] == 180
     assert summary["openrouter_cost_usd"] == 0.002
     assert summary["exa_estimated_cost_usd"] == 0.012
+    assert summary["exa_reported_search_calls"] == 0
     assert summary["total_cost_usd"] == 0.014
     assert summary["cost_usd"] == 0.014
+
+
+def test_llm_usage_summary_counts_exa_reported_costs(trace_events):
+    with collect_llm_usage("exa-reported"):
+        record_exa_search_started()
+        record_exa_search_succeeded(0.0031, reported=True)
+        record_exa_search_started()
+        record_exa_search_succeeded(0.0042, reported=True)
+
+    summary = trace_events[-1]
+    assert summary["exa_successful_search_calls"] == 2
+    assert summary["exa_priced_search_calls"] == 2
+    assert summary["exa_reported_search_calls"] == 2
+    assert summary["exa_estimated_cost_usd"] == 0.0073
 
 
 def test_no_raw_text_leaks_into_logs(tmp_path, trace_events):
@@ -203,7 +218,11 @@ def test_exa_fact_rejection_logs_no_quote_content(trace_events):
                 },
             }]}
 
-    offering = build_offering_identity("ToolX", "publique", vendor="Vendor")
+    offering = build_offering_identity(
+        "ToolX", "publique", vendor="Vendor", plan="Enterprise",
+        deployment_mode="managed_saas", contract_type="institutional_agreement",
+        contract_version="DPA-2026",
+    )
     evidence = collect_evidence_from_exa(
         "ToolX", "Vendor", offering, FakeExa(),
         definitions=(FACT_SEARCH_BY_NAME["training_default"],), max_workers=1,

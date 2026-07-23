@@ -26,31 +26,43 @@
   <label class="freefield">Version / plan tarifaire (optionnel) :
     <input type="text" name="version_plan_tarifaire" value="{{ state.version_plan_tarifaire }}" placeholder="ex. Plan Plus, Entreprise">
   </label>
-  <details>
-    <summary>Préciser l’offre contractuelle</summary>
-    <label class="freefield">Mode de déploiement :
-      <select name="deployment_mode">
-        <option value="">Déduire du type d’outil</option>
-        {% for value, label in [("public_saas", "Service public"), ("managed_saas", "Service institutionnel géré"), ("sovereign_hosted", "Hébergement souverain"), ("government_hosted", "Hébergement gouvernemental"), ("on_premise", "Sur site")] %}
-        <option value="{{ value }}" {% if state.deployment_mode == value %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label class="freefield">Type de contrat :
-      <select name="contract_type">
-        <option value="">Déduire du plan</option>
-        {% for value, label in [("consumer_terms", "Conditions grand public"), ("institutional_agreement", "Contrat institutionnel"), ("government_agreement", "Entente gouvernementale"), ("dpa", "Entente de traitement des données")] %}
-        <option value="{{ value }}" {% if state.contract_type == value %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label class="freefield">Version du contrat :
-      <input type="text" name="contract_version" value="{{ state.contract_version }}" placeholder="ex. DPA-2026-07">
-    </label>
-    <label class="freefield">Date d’effet du contrat :
-      <input type="date" name="contract_effective_date" value="{{ state.contract_effective_date }}">
-    </label>
-  </details>
+  <section class="contract-details" aria-labelledby="contract-details-title">
+    <div class="contract-fields">
+      <div>
+        <h2 id="contract-details-title">Préciser l’offre contractuelle <span>(facultatif)</span></h2>
+        <p>Ces renseignements servent à cibler la recherche contractuelle.</p>
+      </div>
+      <div class="field-row">
+        <label class="freefield">Mode de déploiement
+          <select name="deployment_mode">
+            <option value="">Déduire du type d’outil</option>
+            {% for value, label in [("public_saas", "Service public"), ("managed_saas", "Service institutionnel géré"), ("sovereign_hosted", "Hébergement souverain"), ("government_hosted", "Hébergement gouvernemental"), ("on_premise", "Sur site")] %}
+            <option value="{{ value }}" {% if state.deployment_mode == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="freefield">Type de contrat
+          <select name="contract_type">
+            <option value="">Déduire du plan</option>
+            {% for value, label in [("consumer_terms", "Conditions grand public"), ("institutional_agreement", "Contrat institutionnel"), ("government_agreement", "Entente gouvernementale"), ("dpa", "Entente de traitement des données")] %}
+            <option value="{{ value }}" {% if state.contract_type == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="freefield">Version du contrat
+          <input type="text" name="contract_version" value="{{ state.contract_version }}" placeholder="ex. DPA-2026-07">
+        </label>
+        <label class="freefield">Date d’effet du contrat
+          <input type="date" name="contract_effective_date" value="{{ state.contract_effective_date }}">
+        </label>
+      </div>
+      <label class="freefield">Territoire ou compétence applicable
+        <input type="text" name="jurisdiction" value="{{ state.jurisdiction }}" placeholder="ex. Québec, Canada">
+      </label>
+    </div>
+  </section>
   <div class="foot"><span></span><button class="next" type="submit">Continuer &rarr;</button></div>
 </form>
 <section class="test-scenarios" aria-labelledby="test-scenarios-title">

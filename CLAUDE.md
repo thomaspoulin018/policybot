@@ -53,7 +53,7 @@ accidentally traces during a test run.
 | | Decides the verdict? | Role |
 |---|---|---|
 | **Deterministic Python** (matrix + `grille.yaml` rules) | Yes | The only source of a verdict. Pure functions, exhaustively unit-tested. |
-| **LLM** (via swappable `LLMProvider`) | Never | Phrases questions, proposes answer options, extracts facts from tool terms, drafts narrative prose. |
+| **LLM** (via swappable `LLMProvider`) | Never | Phrases questions, proposes answer options, classifies data, drafts narrative prose. Contract-fact extraction no longer runs through this provider — Exa's structured `summary` does it (see pipeline step 2). |
 
 Two guardrails make this concrete, and any change touching the grille/matrix
 must preserve them:
@@ -78,12 +78,12 @@ Web UI (renders QuestionSpec)
         │
 Interview Orchestrator  ── holds InterviewState, drives the pipeline below
         │
-  ┌─────┼───────────┬──────────────┬───────────┬────────────┐
-  LLM   Classifiers  Pre-approved   Contract     Grille        → Report (PDF/DOCX)
-  layer (data, tool  DB (SQLite)    analyzer     engine
-  (swap) type)       ArpRecord +    (fetch terms (matrix gate
-                     PreApproved    → extract    + grille.yaml
-                                    ContractFacts rules)
+  ┌─────┼───────────┬──────────────┬────────────┬────────────┐
+  LLM   Classifiers  Pre-approved   Contract      Grille        → Report (PDF/DOCX)
+  layer (data, tool  DB (SQLite)    fact search   engine
+  (swap) type)       ArpRecord      (Exa: 1 query (matrix gate
+                     keyed by       per fact →    + grille.yaml
+                     offering       ContractFacts rules)
                                     → Partie A)
 ```
 
@@ -95,11 +95,31 @@ or presents facts. For one tool + one or more usages:
    `gouvernementale`). Unknown tools fall back to asking the user
    (`tool_type_question()`), which the API surfaces as a 422
    `UnknownToolError` and the web wizard surfaces as an extra step.
-2. **Resolve the tool's contract facts (Partie A / ARP), once per tool.**
-   Check the SQLite `PreApprovedStore` for a cached `ArpRecord` first. Otherwise
-   fetch terms of use — via `TermsFetcher` (registry URL → HTML → text) or, if
-   `POLICYBOT_CONTRACT_SEARCH=tavily` is set (or a `tavily_search` callable is
-   injected), via `policybot/contract/tavily.py` (une recherche Tavily par **famille de critères** — 5 familles définies dans `contract/families.py` —, un seul Extract sur les URLs dédupliquées avec budget réparti en round-robin, config auto-générée par outil sous `configs/tavily_contracts/`) — puis une extraction LLM **par famille**, chaque fait revenant avec sa valeur, son URL et une citation verbatim (`ContractFacts.evidence`). Un fait sans citation retombe à `unknown`. Une erreur Tavily dégrade la famille concernée, jamais l'entrevue.
+2. **Resolve the tool's contract facts (Partie A / ARP), once per offering.**
+   D'abord, `build_offering_identity` (`contract/offering.py`) fige l'offre
+   évaluée (`ContractOfferingIdentity` : vendor, produit, forfait, mode de
+   déploiement, type et version de contrat). Le `PreApprovedStore` SQLite est
+   interrogé pour un `ArpRecord` en cache **indexé par cette offre**, sauf si
+   `POLICYBOT_ARP_CACHE_MODE` désactive la lecture (`read_write` / `refresh` /
+   `read_only` / `disabled`). En cache manquant ou périmé (schéma <
+   `CURRENT_ARP_SCHEMA_VERSION`), PolicyBot lance **une recherche Exa par fait
+   contractuel** en parallèle (`contract/exa.py`,
+   `search_contract_facts_with_exa`, clé `EXA_API_KEY` ou client injecté). Il
+   n'y a **pas d'étape d'extraction par le LLMProvider PolicyBot** : chaque
+   recherche Exa demande un `summary` structuré (schéma JSON `value` / `quote`
+   / `source_url`) qui fait office d'extraction. Chaque config vit dans un YAML
+   par fait sous `configs/recherche_des_faits/` (`fact_search.py`, chargé et
+   validé à l'import — l'ensemble doit couvrir exactement les champs de
+   `ContractFacts` ; override `POLICYBOT_FACT_SEARCH_DIR`). PolicyBot ne retient
+   une preuve que si la source est acceptable (`source_policy.py` : classement
+   contrat > DPA > doc technique > page commerciale > secondaire) **et** que la
+   citation apparaît réellement dans le contenu Exa retourné (`_quote_is_anchored`).
+   Sinon le fait vaut `unknown` — aucune valeur n'est déduite silencieusement.
+   L'échec Exa d'un fait le dégrade seul, jamais l'entrevue. Un refus matriciel
+   sur **tous** les usages court-circuite entièrement cette résolution ARP.
+   `extract_contract_facts` (`contract/arp.py`) assemble ensuite les preuves
+   ancrées en `ContractFacts` (+ `evidence`, `sources`, `snapshot_ref`) sans
+   appeler de LLM.
 3. **For each usage, classify the data.** The employee describes data in plain
    language (never the data itself); the LLM returns structured signals; a
    deterministic decision tree maps those to Non classifié / Protégé A/B/C
@@ -135,8 +155,10 @@ calls `Interview.assess` directly per step instead of going through the graph.
 
 ```
 policybot/
-  models.py       Pydantic v2 domain models: QuestionSpec, ContractFacts,
-                  RiskFactor, ArpRecord, PreApprovedRecord, Usage, InterviewState
+  models.py       Pydantic v2 domain models: QuestionSpec, ContractFacts (+
+                  FactEvidence per-fact proof, ContractSource), RiskFactor,
+                  ArpRecord, ContractOfferingIdentity, PreApprovedRecord, Usage,
+                  InterviewState
   criteria.py     Fixed (category, criterion, description) tables — ARP_CRITERIA
                   and USAGE_CRITERIA — mirroring the reference Grille docx in
                   document order; the report renderer relies on this order.
@@ -147,15 +169,21 @@ policybot/
                   OpenRouterProvider (langchain ChatOpenAI → OpenRouter, POC)
   classify/       data_classifier.py (LLM signals → decision tree),
                   tool_type.py + tool_registry.py (known-tool lookup)
-  contract/       fetcher.py (terms URL → text via TermsFetcher), arp.py (LLM
-                  extraction → ContractFacts + Partie A RiskFactors),
-                  tavily.py (Tavily Search + Extract alternative source, one
-                  auto-generated query config per tool under
-                  `configs/tavily_contracts/`), tavily_probe.py (manual CLI:
-                  `python -m policybot.contract.tavily_probe "<tool>"`),
-                  families.py (les 5 familles de critères : requête, champs,
-                  mots-clés), evidence.py (`ContractEvidence` : l'évidence
-                  indexée par famille)
+  contract/       fact_search.py (charge/valide les YAML de
+                  `configs/recherche_des_faits/`, un par champ de ContractFacts,
+                  → FACT_SEARCHES), exa.py (recherche Exa par fait, en parallèle,
+                  → ContractEvidence ; extraction via le summary structuré Exa,
+                  pas de LLMProvider), offering.py (build_offering_identity →
+                  ContractOfferingIdentity), source_policy.py (classement/filtre
+                  déterministe des sources), arp.py (extract_contract_facts —
+                  assemble les preuves ancrées, sans LLM — + build_arp → Partie A
+                  RiskFactors), evidence.py (ContractEvidence / EvidenceDocument :
+                  documents candidats + preuve ancrée indexés par fait).
+                  Plus de fetcher.py/TermsFetcher ni de couche Tavily.
+  config.py       Routage LLM par tâche + ArpCacheMode, lit `configs/policybot.yaml`
+                  (override POLICYBOT_CONFIG_PATH ; POLICYBOT_ARP_CACHE_MODE).
+  prompts.py      Prompts système/utilisateur par tâche LLM, lit
+                  `configs/prompts.yaml` (override POLICYBOT_PROMPTS_PATH).
   grille/         matrix.py (hard gate), rules.py + grille.yaml (rule engine,
                   data not code, ~15 rules), engine.py (per-usage verdict +
                   synthesis)
@@ -197,8 +225,10 @@ docs/superpowers/ design specs + implementation plans (source of truth for inten
   canned JSON/text and records every call — fully offline and deterministic.
   When adding a test that hits an LLM-backed path, queue a fake response
   rather than mocking at a lower level.
-- **TermsFetcher** is tested against saved HTML fixtures in
-  `tests/contract/fixtures/`, never the live web.
+- **Contract fact search** is tested offline against a fake/stub Exa client
+  (`tests/contract/test_exa.py`, `test_fact_search.py`) — never the live Exa
+  API. The YAML config set is validated at import, so a malformed or incomplete
+  `configs/recherche_des_faits/` fails collection.
 - **`tests/test_golden_scenarios.py`** is the canonical end-to-end acceptance
   test (the real UQAM slide-5 example: ChatGPT/Perplexity + Protégé B
   strategic/financial data ⇒ `INTERDIT` / `Refuser`). Extend this file when a
@@ -216,10 +246,14 @@ docs/superpowers/ design specs + implementation plans (source of truth for inten
   endpoint; default model is `google/gemma-4-31b-it` (confirm the exact slug
   on OpenRouter before relying on it — it's flagged as a POC choice in the
   source).
-- Every LLM-assisted step (data classification, ARP extraction) is traced in
-  LangSmith when tracing is enabled, tagged by call site
-  (`data_classification`, `arp_extraction`) for distinguishing traces in the
-  dashboard. Tracing is opt-in via `.env` (`LANGCHAIN_TRACING_V2=true` +
+- LLM calls now route per task (`config.py` `LLMTask`: `data_classification`,
+  `tool_type_detection`, `mode_detection`, `form_suggestions`) with prompts from
+  `configs/prompts.yaml`. ARP contract-fact extraction is **no longer** an
+  LLMProvider call, so it no longer appears as a LangSmith trace — the Exa
+  searches are traced instead in the internal jsonl log (`record_exa_search_*`).
+- Each LLM-assisted step is traced in LangSmith when tracing is enabled, tagged
+  by call site for distinguishing traces in the dashboard. Tracing is opt-in via
+  `.env` (`LANGCHAIN_TRACING_V2=true` +
   `LANGCHAIN_API_KEY` + `LANGCHAIN_PROJECT`); it is force-disabled under
   pytest regardless of `.env` contents (see `tests/conftest.py`). Never commit
   `.env` — it's gitignored; use `.env.example` as the template.
@@ -241,17 +275,30 @@ configurable via `POLICYBOT_LOG_PATH` (`tests/conftest.py` redirects it so the
 test suite never writes into the repo's `logs/`); the file rotates
 automatically (5 MB × 5 backups).
 
+### Exception locale : runs debug explicites
+
+`configs/policybot.yaml` active ce canal via `debug_runs.enabled: true`, pour
+un usage **dev local uniquement**. Il écrit un fichier Markdown par appel
+`Interview.assess()` sous le répertoire `debug_runs.output_dir` (par défaut
+`logs/runs/`). Il contient
+volontairement les prompts, réponses LLM et extraits Exa non masqués afin de
+déboguer une requête. Ce répertoire est ignoré par Git, le flag est désactivé
+par défaut et le JSONL masqué ci-dessus demeure inchangé. Ne jamais l'activer
+dans un déploiement partagé ni partager ou versionner ses fichiers.
+
 ## Known gaps / in-flight work
 
 - `grille.yaml` now has ~15 rules (past the original 3 starter rules from
   `docs/superpowers/plans/2026-07-07-grille-rules.md`), refined further in
   `docs/superpowers/plans/2026-07-09-grille-report-alignment.md` — check
   those specs/plans before assuming the rule set is either final or complete.
-- **Packaging debt:** `grille.yaml` and report/web templates are not yet
-  declared as package data in `pyproject.toml` — they work in an editable
-  install (`pip install -e`) but would be missing from a built wheel.
+- **Packaging debt (partial):** `configs/recherche_des_faits/*.yaml` is now
+  shipped via `[tool.setuptools.data-files]` (with a `sysconfig` data-path
+  fallback in `fact_search.py`), but `grille.yaml`, `known_tools.yaml`, and the
+  report/web templates are still not declared as package data — they work in an
+  editable install (`pip install -e`) but would be missing from a built wheel.
 - `README.md`'s "16 tasks / 64 tests" status table is stale (the suite has
-  grown well past that — 192 tests collected as of this writing); treat the
+  grown well past that — 250 tests collected as of this writing); treat the
   README's process narrative as historical, not a live dashboard.
 - Deferred beyond MVP (last confirmed against the design spec): an officer
   review/back-office dashboard, scheduled re-fetching of stale ARPs, UQAM

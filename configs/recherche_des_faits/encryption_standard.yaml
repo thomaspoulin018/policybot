@@ -4,7 +4,7 @@ category_arp: "Sécurité de l'information"
 allowed_values: ["strong", "partial", "none", "unknown"]
 hint: "strong seulement si le chiffrement en transit et au repos est explicite; partial si un seul est établi."
 exa:
-  query: "{tool} {vendor} security encryption at rest in transit TLS AES"
+  query: "{plan} {deployment_mode} {contract_type} {contract_version} {tool} {vendor} security encryption at rest in transit TLS AES"
   type: auto
   num_results: 5
   include_domains: []
@@ -12,7 +12,7 @@ exa:
     text: {max_characters: 8000}
     highlights: {query: "encryption at rest in transit TLS", num_sentences: 3}
     summary:
-      query: "What encryption category is explicitly documented for data in transit and at rest?"
+      query: "What encryption category is explicitly documented for data in transit and at rest? Return a short, verbatim, continuous quote copied exactly from the returned page text; do not use ellipses."
       schema:
         type: object
         additionalProperties: false
@@ -21,4 +21,4 @@ exa:
           value: {type: string, enum: ["strong", "partial", "none", "unknown"]}
           quote: {type: string}
           source_url: {type: string}
-selection: {strategy: source_rank, require_declared_source_url: true}
+selection: {strategy: source_rank, require_declared_source_url: false}

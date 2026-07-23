@@ -4,7 +4,7 @@ category_arp: "Sécurité de l'information"
 allowed_values: ["sso_mfa", "partial", "none", "unknown"]
 hint: "sso_mfa seulement si SSO/SAML/OIDC et MFA sont explicites; partial si un seul est établi."
 exa:
-  query: "{tool} {vendor} security SSO SAML OIDC MFA authentication"
+  query: "{plan} {deployment_mode} {contract_type} {contract_version} {tool} {vendor} security SSO SAML OIDC MFA authentication"
   type: auto
   num_results: 5
   include_domains: []
@@ -12,7 +12,7 @@ exa:
     text: {max_characters: 8000}
     highlights: {query: "SSO SAML OIDC MFA", num_sentences: 3}
     summary:
-      query: "What authentication support category is explicitly documented?"
+      query: "What authentication support category is explicitly documented? Return a short, verbatim, continuous quote copied exactly from the returned page text; do not use ellipses."
       schema:
         type: object
         additionalProperties: false
@@ -21,4 +21,4 @@ exa:
           value: {type: string, enum: ["sso_mfa", "partial", "none", "unknown"]}
           quote: {type: string}
           source_url: {type: string}
-selection: {strategy: source_rank, require_declared_source_url: true}
+selection: {strategy: source_rank, require_declared_source_url: false}

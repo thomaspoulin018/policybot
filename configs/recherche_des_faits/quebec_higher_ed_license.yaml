@@ -4,15 +4,15 @@ category_arp: "Conformité légale et contractuelle"
 allowed_values: ["yes", "no", "unknown"]
 hint: "yes seulement si un usage éducatif, universitaire, public ou institutionnel est explicitement permis."
 exa:
-  query: "{tool} {vendor} Quebec higher education university public sector license terms"
+  query: "{plan} {deployment_mode} {contract_type} {contract_version} {tool} {vendor} Quebec higher education university public sector license terms"
   type: auto
   num_results: 5
   include_domains: []
   contents:
-    text: {max_characters: 8000}
+    text: {max_characters: 24000}
     highlights: {query: "higher education university public sector license", num_sentences: 3}
     summary:
-      query: "Is educational, public-sector, or institutional use explicitly permitted?"
+      query: "Is educational, public-sector, or institutional use explicitly permitted? Return a short, verbatim, continuous quote copied exactly from the returned page text; do not use ellipses."
       schema:
         type: object
         additionalProperties: false
@@ -21,4 +21,4 @@ exa:
           value: {type: string, enum: ["yes", "no", "unknown"]}
           quote: {type: string}
           source_url: {type: string}
-selection: {strategy: source_rank, require_declared_source_url: true}
+selection: {strategy: source_rank, require_declared_source_url: false}

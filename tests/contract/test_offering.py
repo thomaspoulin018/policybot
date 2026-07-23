@@ -11,6 +11,7 @@ def test_offering_identity_key_covers_every_contract_dimension():
         deployment_mode="managed_saas",
         contract_type="institutional_agreement",
         contract_version="2026-01",
+        jurisdiction="Québec",
         effective_date=date(2026, 1, 1),
     )
 
@@ -22,6 +23,7 @@ def test_offering_identity_key_covers_every_contract_dimension():
         "deployment_mode": "public_saas",
         "contract_type": "consumer_terms",
         "contract_version": "2026-02",
+        "jurisdiction": "Ontario",
         "effective_date": date(2026, 2, 1),
     }.items():
         assert base.model_copy(update={field: replacement}).cache_key() != base.cache_key()
@@ -45,3 +47,15 @@ def test_offering_identity_has_a_human_readable_label():
     assert "Microsoft 365 Entreprise" in label
     assert "DPA-2026" in label
     assert "2026-03-01" in label
+
+
+def test_missing_search_identity_fields_treats_empty_and_unknown_as_incomplete():
+    offering = ContractOfferingIdentity(
+        vendor="OpenAI", product="ChatGPT", plan="",
+        deployment_mode="unknown", contract_type="consumer_terms",
+        contract_version="",
+    )
+
+    assert offering.missing_search_identity_fields() == (
+        "plan", "deployment_mode", "contract_version",
+    )

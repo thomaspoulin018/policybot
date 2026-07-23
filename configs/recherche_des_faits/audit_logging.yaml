@@ -4,7 +4,7 @@ category_arp: "Sécurité de l'information"
 allowed_values: ["prompt_output_accessible", "access_logs_only", "none", "unknown"]
 hint: "prompt_output_accessible exige des journaux de prompts et sorties accessibles; access_logs_only couvre seulement les accès ou l'administration."
 exa:
-  query: "{tool} {vendor} audit logs prompts outputs administrator security"
+  query: "{plan} {deployment_mode} {contract_type} {contract_version} {tool} {vendor} audit logs prompts outputs administrator security"
   type: auto
   num_results: 5
   include_domains: []
@@ -12,7 +12,7 @@ exa:
     text: {max_characters: 8000}
     highlights: {query: "audit log prompt output access", num_sentences: 3}
     summary:
-      query: "What audit logging category is explicitly available to the organization?"
+      query: "What audit logging category is explicitly available to the organization? Return a short, verbatim, continuous quote copied exactly from the returned page text; do not use ellipses."
       schema:
         type: object
         additionalProperties: false
@@ -21,4 +21,4 @@ exa:
           value: {type: string, enum: ["prompt_output_accessible", "access_logs_only", "none", "unknown"]}
           quote: {type: string}
           source_url: {type: string}
-selection: {strategy: source_rank, require_declared_source_url: true}
+selection: {strategy: source_rank, require_declared_source_url: false}

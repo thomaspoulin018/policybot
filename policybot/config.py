@@ -70,12 +70,22 @@ class CacheConfig(BaseModel):
     arp: ArpCacheConfig = Field(default_factory=ArpCacheConfig)
 
 
+class DebugRunsConfig(BaseModel):
+    """Local-only clear-text diagnostics; disabled unless YAML opts in."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    output_dir: str = "logs/runs"
+
+
 class PolicyBotConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: Literal[1] = 1
     llm: LLMConfig
     cache: CacheConfig = Field(default_factory=CacheConfig)
+    debug_runs: DebugRunsConfig = Field(default_factory=DebugRunsConfig)
 
 
 _GLOBAL_ENV_FIELDS = {

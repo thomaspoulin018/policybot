@@ -72,6 +72,8 @@ def test_golden_chatgpt_public_offer_keeps_opt_out_as_unconfirmed(tmp_path):
     ).assess(
         request=RequestInfo(numero="IAG-2026-007"),
         tool_name="ChatGPT Pro",
+        tool_version_plan_tarifaire="Plus",
+        contract_version="2026-07",
         usage_inputs=[{
             "description": "Résumer des sources publiques",
             "data_description": "articles déjà publiés",

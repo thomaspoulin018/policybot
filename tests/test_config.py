@@ -17,7 +17,9 @@ def test_repository_config_declares_all_llm_tasks_and_cache_mode():
     assert config.llm.tasks.tool_type_detection.model
     assert config.llm.tasks.mode_detection.model
     assert config.llm.tasks.form_suggestions.model
-    assert config.cache.arp.mode == "read_write"
+    assert config.cache.arp.mode == "disabled"
+    assert not config.debug_runs.enabled
+    assert config.debug_runs.output_dir == "logs/runs"
 
 
 def test_environment_overrides_global_then_task_specific_values():
@@ -39,3 +41,9 @@ def test_environment_overrides_global_then_task_specific_values():
 def test_invalid_environment_override_is_rejected():
     with pytest.raises(ValidationError):
         load_config(CONFIG_PATH, env={"POLICYBOT_ARP_CACHE_MODE": "sometimes"})
+
+
+def test_debug_runs_are_configured_in_yaml_not_environment():
+    config = load_config(CONFIG_PATH, env={"POLICYBOT_DEBUG_RUNS": "1"})
+
+    assert not config.debug_runs.enabled

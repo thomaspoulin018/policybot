@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from policybot.config import LLM_TASKS, load_config
+from policybot.llm.debug_provider import DebugRecordingProvider
 from policybot.llm.openrouter import OpenRouterProvider
 from policybot.llm.fake import FakeLLMProvider
 from policybot.llm.router import TaskRoutingLLMProvider
@@ -30,8 +31,12 @@ def default_interview(
         llm = TaskRoutingLLMProvider(providers)
     else:
         llm = FakeLLMProvider()
+    if config.debug_runs.enabled:
+        llm = DebugRecordingProvider(llm)
     return Interview(
         llm=llm,
         store=PreApprovedStore(db_path),
         arp_cache_mode=config.cache.arp.mode,
+        debug_runs_enabled=config.debug_runs.enabled,
+        debug_runs_output_dir=config.debug_runs.output_dir,
     )

@@ -42,3 +42,8 @@ cache:
     # read_only: lit le cache sans jamais écrire
     # disabled: ne lit ni n'écrit dans le cache
     mode: disabled
+
+# Diagnostics locaux en clair : à activer seulement pendant un débogage local.
+debug_runs:
+  enabled: True
+  output_dir: logs/runs

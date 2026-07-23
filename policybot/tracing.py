@@ -78,6 +78,7 @@ class LLMUsage:
     exa_successful_search_calls: int = 0
     exa_failed_search_calls: int = 0
     exa_priced_search_calls: int = 0
+    exa_reported_search_calls: int = 0
     exa_estimated_cost_usd: float = 0.0
 
     def _openrouter_cost(self) -> float | None:
@@ -118,7 +119,12 @@ class LLMUsage:
             "exa_successful_search_calls": self.exa_successful_search_calls,
             "exa_failed_search_calls": self.exa_failed_search_calls,
             "exa_priced_search_calls": self.exa_priced_search_calls,
-            # Estimated from Exa's public per-request pricing, not supplied by Exa.
+            # How many priced calls carried Exa's own costDollars.total (vs the
+            # public-rate fallback). Equal to exa_priced_search_calls ⇒ the whole
+            # exa cost below is Exa-reported, not estimated by us.
+            "exa_reported_search_calls": self.exa_reported_search_calls,
+            # Exa's own per-request cost (costDollars.total) where reported, else
+            # the public-rate estimate. Exa labels total itself as "estimated".
             "exa_estimated_cost_usd": exa_cost,
             "total_cost_usd": total_cost,
         }
@@ -127,6 +133,27 @@ class LLMUsage:
 _current_llm_usage: contextvars.ContextVar[LLMUsage | None] = contextvars.ContextVar(
     "policybot_llm_usage", default=None,
 )
+
+
+def llm_usage_snapshot() -> dict[str, int | float] | None:
+    """Return the current aggregate counters without exposing any free text.
+
+    A local debug-run wrapper uses two snapshots around one provider call to
+    associate OpenRouter's existing token/cost accounting with that call.  The
+    masked JSONL trace remains the only persistent output from this module.
+    """
+    usage = _current_llm_usage.get()
+    if usage is None:
+        return None
+    return {
+        "successful_api_calls": usage.successful_api_calls,
+        "usage_recorded_calls": usage.usage_recorded_calls,
+        "cost_recorded_api_calls": usage.cost_recorded_api_calls,
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "total_tokens": usage.total_tokens,
+        "cost_usd": usage.cost_usd,
+    }
 
 
 def mask_text(text: str) -> dict:
@@ -241,12 +268,21 @@ def record_exa_search_failed() -> None:
         usage.exa_failed_search_calls += 1
 
 
-def record_exa_search_succeeded(estimated_cost_usd: float | None) -> None:
+def record_exa_search_succeeded(
+    cost_usd: float | None, *, reported: bool = False,
+) -> None:
+    """Record one successful Exa search and its cost.
+
+    ``reported`` is True when ``cost_usd`` is Exa's own ``costDollars.total``
+    from the response, False when it is our public-rate estimate fallback.
+    """
     if usage := _current_llm_usage.get():
         usage.exa_successful_search_calls += 1
-        if estimated_cost_usd is not None:
+        if cost_usd is not None:
             usage.exa_priced_search_calls += 1
-            usage.exa_estimated_cost_usd += estimated_cost_usd
+            usage.exa_estimated_cost_usd += cost_usd
+            if reported:
+                usage.exa_reported_search_calls += 1
 
 
 @contextmanager

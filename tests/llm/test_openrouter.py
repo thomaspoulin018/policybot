@@ -154,6 +154,7 @@ def test_usage_and_cost_are_aggregated_from_openrouter_response(monkeypatch):
         "exa_successful_search_calls": 0,
         "exa_failed_search_calls": 0,
         "exa_priced_search_calls": 0,
+        "exa_reported_search_calls": 0,
         "exa_estimated_cost_usd": 0.0,
         "total_cost_usd": 0.00125,
     }

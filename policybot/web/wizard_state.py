@@ -27,6 +27,7 @@ class WizardState(BaseModel):
     deployment_mode: str = ""
     contract_type: str = ""
     contract_version: str = ""
+    jurisdiction: str = ""
     contract_effective_date: str = ""
     nb_utilisateurs_vises: str = ""
     fonctions_roles: str = ""
@@ -73,6 +74,8 @@ class WizardState(BaseModel):
             fields.append(("contract_type", self.contract_type))
         if self.contract_version:
             fields.append(("contract_version", self.contract_version))
+        if self.jurisdiction:
+            fields.append(("jurisdiction", self.jurisdiction))
         if self.contract_effective_date:
             fields.append(("contract_effective_date", self.contract_effective_date))
         if self.nb_utilisateurs_vises:
@@ -159,6 +162,7 @@ class WizardState(BaseModel):
             deployment_mode=form.get("deployment_mode", "") or "",
             contract_type=form.get("contract_type", "") or "",
             contract_version=form.get("contract_version", "") or "",
+            jurisdiction=form.get("jurisdiction", "") or "",
             contract_effective_date=form.get("contract_effective_date", "") or "",
             nb_utilisateurs_vises=form.get("nb_utilisateurs_vises", "") or "",
             fonctions_roles=form.get("fonctions_roles", "") or "",
@@ -258,6 +262,11 @@ def _demo_state(**overrides) -> WizardState:
         "demandeur": "Marie Tremblay",
         "unite": "Direction des services administratifs",
         "version_plan_tarifaire": "Plan Plus",
+        "deployment_mode": "public_saas",
+        "contract_type": "consumer_terms",
+        "contract_version": "Conditions d’utilisation – juillet 2026",
+        "jurisdiction": "Californie, États-Unis",
+        "contract_effective_date": "2026-07-01",
         "nb_utilisateurs_vises": "25",
         "fonctions_roles": "conseillers pédagogiques et agents administratifs",
         "niveau_maitrise_ti": "intermédiaire",
@@ -324,6 +333,11 @@ def demo_wizard_scenarios() -> list[DemoWizardScenario]:
             state=_demo_state(
                 tool_name="Microsoft Copilot Entreprise",
                 version_plan_tarifaire="Licence institutionnelle Entreprise",
+                deployment_mode="managed_saas",
+                contract_type="institutional_agreement",
+                contract_version="Microsoft Customer Agreement – 2026",
+                jurisdiction="Québec, Canada",
+                contract_effective_date="2026-01-01",
                 acces_protege_a_ou_plus="oui",
                 data_checked=["Documents internes de travail"],
                 data_free_text="notes de travail internes non publiques, sans renseignement personnel",
@@ -341,6 +355,11 @@ def demo_wizard_scenarios() -> list[DemoWizardScenario]:
                 tool_name="Assistant gouvernemental sécurisé",
                 tool_type_override="gouvernementale",
                 version_plan_tarifaire="Environnement gouvernemental contrôlé",
+                deployment_mode="government_hosted",
+                contract_type="government_agreement",
+                contract_version="Entente gouvernementale – 2026",
+                jurisdiction="Québec, Canada",
+                contract_effective_date="2026-04-01",
                 acces_protege_a_ou_plus="oui",
                 data_checked=[
                     "Renseignements personnels",
@@ -402,4 +421,3 @@ def demo_wizard_state(scenario_id: str = "public_permitted") -> WizardState:
         if scenario.id == scenario_id:
             return scenario.state.model_copy(deep=True)
     raise KeyError(scenario_id)
-

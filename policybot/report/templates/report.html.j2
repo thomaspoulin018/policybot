@@ -28,8 +28,12 @@
       <tr><th>Mode de déploiement</th><td>{{ table.offering.deployment_mode }}</td></tr>
       <tr><th>Type de contrat</th><td>{{ table.offering.contract_type }}</td></tr>
       <tr><th>Version du contrat</th><td>{{ table.offering.contract_version or "Non précisée" }}</td></tr>
+      <tr><th>Compétence applicable</th><td>{{ table.offering.jurisdiction or "Non précisée" }}</td></tr>
       <tr><th>Date d’effet</th><td>{{ table.offering.effective_date or "Non précisée" }}</td></tr>
     </table>
+    {% if table.missing_identity_fields %}
+    <p><strong>Attention :</strong> l’identité de l’offre contractuelle est incomplète ({{ table.missing_identity_fields|join(", ") }}). La recherche a été effectuée, mais l’autorité désignée doit confirmer l’offre applicable.</p>
+    {% endif %}
     {% endif %}
     {% if table.sources %}
     <h4>Registre des sources contractuelles</h4>

@@ -4,15 +4,15 @@ category_arp: "Conformité légale et contractuelle"
 allowed_values: ["yes", "no", "unknown"]
 hint: "yes seulement lorsqu'un accord de traitement des données est explicitement disponible."
 exa:
-  query: "{tool} {vendor} data processing agreement DPA"
+  query: "{plan} {deployment_mode} {contract_type} {contract_version} {tool} {vendor} data processing agreement DPA"
   type: auto
   num_results: 5
   include_domains: []
   contents:
-    text: {max_characters: 8000}
+    text: {max_characters: 24000}
     highlights: {query: "data processing agreement DPA", num_sentences: 3}
     summary:
-      query: "Is a data processing agreement explicitly available for this offering?"
+      query: "Is a data processing agreement explicitly available for this offering? Return a short, verbatim, continuous quote copied exactly from the returned page text; do not use ellipses."
       schema:
         type: object
         additionalProperties: false
@@ -21,4 +21,4 @@ exa:
           value: {type: string, enum: ["yes", "no", "unknown"]}
           quote: {type: string}
           source_url: {type: string}
-selection: {strategy: source_rank, require_declared_source_url: true}
+selection: {strategy: source_rank, require_declared_source_url: false}

@@ -40,6 +40,7 @@ class ContractOfferingIdentity(BaseModel):
     deployment_mode: str = "unknown"
     contract_type: str = "unknown"
     contract_version: str = ""
+    jurisdiction: str = ""
     effective_date: Optional[date] = None
 
     def canonical_payload(self) -> dict[str, str]:
@@ -50,6 +51,7 @@ class ContractOfferingIdentity(BaseModel):
             "deployment_mode": self.deployment_mode.strip().casefold(),
             "contract_type": self.contract_type.strip().casefold(),
             "contract_version": self.contract_version.strip().casefold(),
+            "jurisdiction": self.jurisdiction.strip().casefold(),
             "effective_date": self.effective_date.isoformat() if self.effective_date else "",
         }
 
@@ -61,6 +63,21 @@ class ContractOfferingIdentity(BaseModel):
         digest = hashlib.sha256(encoded).hexdigest()
         return f"offering:{digest}"
 
+    def missing_search_identity_fields(self) -> tuple[str, ...]:
+        """Return the offer dimensions that must be known before any search."""
+        values = {
+            "vendor": self.vendor,
+            "product": self.product,
+            "plan": self.plan,
+            "deployment_mode": self.deployment_mode,
+            "contract_type": self.contract_type,
+            "contract_version": self.contract_version,
+        }
+        return tuple(
+            name for name, value in values.items()
+            if not value.strip() or value.strip().casefold() == "unknown"
+        )
+
     def display_label(self) -> str:
         parts = [self.vendor, self.product]
         if self.plan:
@@ -68,6 +85,8 @@ class ContractOfferingIdentity(BaseModel):
         parts.extend([self.deployment_mode, self.contract_type])
         if self.contract_version:
             parts.append(self.contract_version)
+        if self.jurisdiction:
+            parts.append(self.jurisdiction)
         if self.effective_date:
             parts.append(self.effective_date.isoformat())
         return " — ".join(part for part in parts if part)

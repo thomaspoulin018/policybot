@@ -3,6 +3,7 @@ from policybot.models import ArpRecord, ContractFacts, RequestInfo, Qualificatio
 from policybot.llm.fake import FakeLLMProvider
 from policybot.preapproved.store import PreApprovedStore
 from policybot.interview.orchestrator import Interview, UnknownToolError
+from policybot.contract.offering import build_offering_identity
 from tests.helpers.arp_fixtures import DEFAULT_EVIDENCE, arp_extraction_responses, exa_evidence
 
 
@@ -67,6 +68,8 @@ def test_public_data_public_tool_authorised(tmp_path):
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-002"),
         tool_name="ChatGPT",
+        tool_version_plan_tarifaire="Enterprise",
+        contract_version="DPA-2026",
         usage_inputs=[{"description": "Chercher de l'info publique",
                        "data_description": "information publique sur le web",
                        "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
@@ -151,6 +154,8 @@ def test_assess_refreshes_stale_cached_arp_record(tmp_path):
     state = itv.assess(
         request=RequestInfo(numero="IAG-2026-STALE"),
         tool_name="ChatGPT",
+        tool_version_plan_tarifaire="Enterprise",
+        contract_version="DPA-2026",
         usage_inputs=[{"description": "Chercher de l'info publique",
                        "data_description": "information publique sur le web",
                        "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
@@ -172,9 +177,15 @@ def test_assess_refreshes_stale_cached_arp_record(tmp_path):
     ],
 )
 def test_arp_cache_modes(tmp_path, mode, reuses_cached, replaces_cached):
+    offering = build_offering_identity(
+        "ChatGPT", "publique", vendor="OpenAI", plan="Enterprise",
+        deployment_mode="managed_saas", contract_type="institutional_agreement",
+        contract_version="DPA-2026",
+    )
     cached = ArpRecord(
         tool_name="ChatGPT",
         iag_type="publique",
+        offering=offering,
         contract_facts=ContractFacts(training_default="yes"),
         schema_version=4,
         terms_snapshot="cached-marker",
@@ -189,8 +200,8 @@ def test_arp_cache_modes(tmp_path, mode, reuses_cached, replaces_cached):
         arp_cache_mode=mode,
     )
 
-    resolved = itv._resolve_arp("ChatGPT", "publique")
-    stored = store.get_arp("ChatGPT")
+    resolved = itv._resolve_arp("ChatGPT", "publique", offering)
+    stored = store.get_arp(offering)
 
     assert (resolved.terms_snapshot == "cached-marker") is reuses_cached
     assert (stored.terms_snapshot != "cached-marker") is replaces_cached
@@ -313,3 +324,25 @@ def test_assess_defaults_qualification_and_new_usage_fields_when_omitted(tmp_pat
     assert state.tools[0].version_plan_tarifaire == ""
     assert state.usages[0].frequence_utilisation == ""
     assert state.usages[0].nb_utilisateurs is None
+
+
+def test_incomplete_offering_identity_still_calls_injected_contract_search(tmp_path):
+    store = PreApprovedStore(str(tmp_path / "pb.db"))
+    calls = []
+
+    def contract_search(tool_name, offering):
+        calls.append((tool_name, offering))
+        return exa_evidence(training_default="no")
+
+    itv = Interview(
+        llm=FakeLLMProvider(), store=store,
+        exa_search=contract_search,
+    )
+
+    arp = itv._resolve_arp(
+        "ChatGPT", "publique",
+        build_offering_identity("ChatGPT", "publique", vendor="OpenAI"),
+    )
+
+    assert calls
+    assert arp.contract_facts.training_default == "no"

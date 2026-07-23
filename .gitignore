@@ -150,6 +150,8 @@ activemq-data/
 
 # PolicyBot internal trace logs (policybot/tracing.py, POLICYBOT_LOG_PATH)
 logs/
+# Clear-text local diagnostics (policybot/debug_run.py, never commit).
+logs/runs/
 
 # Generated PolicyBot reports
 output/

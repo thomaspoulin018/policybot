@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import date
 import inspect
+from pathlib import Path
 from typing import Callable, Optional
 from policybot.config import ArpCacheMode
 from policybot.models import (
@@ -15,6 +16,7 @@ from policybot.classify.tool_registry import lookup_tool
 from policybot.contract.evidence import ContractEvidence
 from policybot.contract.offering import build_offering_identity
 from policybot.contract.arp import CURRENT_ARP_SCHEMA_VERSION, extract_contract_facts, build_arp
+from policybot.debug_run import debug_run, record_contract_search
 from policybot.grille.engine import evaluate_usage, synthesize
 from policybot.grille.matrix import evaluate_matrix
 from policybot.tracing import collect_llm_usage, trace_step, mask_text
@@ -40,11 +42,15 @@ class UnknownToolError(ValueError):
 class Interview:
     def __init__(self, llm: LLMProvider, store: PreApprovedStore,
                  exa_search: Optional[Callable[[str], "ContractEvidence | None"]] = None,
-                 arp_cache_mode: ArpCacheMode = "read_write"):
+                 arp_cache_mode: ArpCacheMode = "read_write",
+                 debug_runs_enabled: bool = False,
+                 debug_runs_output_dir: str | Path = "logs/runs"):
         self._llm = llm
         self._store = store
         self._exa_search = exa_search
         self._arp_cache_mode = arp_cache_mode
+        self._debug_runs_enabled = debug_runs_enabled
+        self._debug_runs_output_dir = debug_runs_output_dir
 
     @property
     def llm(self) -> LLMProvider:
@@ -58,6 +64,11 @@ class Interview:
     ) -> ArpRecord:
         offering = offering or build_offering_identity(tool_name, iag_type)
         with trace_step(None, "resolve_arp", tool_name=tool_name) as extra:
+            missing_identity = offering.missing_search_identity_fields()
+            if missing_identity:
+                # Informative only: the search still runs, while the report
+                # makes the missing dimensions explicit to the officer.
+                extra["missing_identity_fields"] = list(missing_identity)
             cached = None
             cache_read_enabled = self._arp_cache_mode in ("read_write", "read_only")
             if cache_read_enabled:
@@ -93,6 +104,9 @@ class Interview:
                     facts = ContractFacts()
                 else:
                     fetch_extra["facts"] = len(evidence.facts)
+                    record_contract_search(
+                        tool_name, fetch_extra["source"], evidence,
+                    )
                     facts = extract_contract_facts(evidence)
             arp = build_arp(tool_name, iag_type, facts, offering)
             if self._arp_cache_mode in ("read_write", "refresh"):
@@ -110,12 +124,18 @@ class Interview:
                deployment_mode: str | None = None,
                contract_type: str | None = None,
                contract_version: str | None = None,
+               jurisdiction: str | None = None,
                contract_effective_date: date | None = None,
                offering_override: ContractOfferingIdentity | None = None) -> InterviewState:
         state = InterviewState(interview_id=str(uuid.uuid4()), request=request)
         if qualification is not None:
             state.qualification = qualification
-        with collect_llm_usage(state.interview_id) as llm_usage:
+        with collect_llm_usage(state.interview_id) as llm_usage, debug_run(
+            state.interview_id,
+            tool_name,
+            enabled=self._debug_runs_enabled,
+            output_dir=self._debug_runs_output_dir,
+        ):
             with trace_step(state.interview_id, "assess", tool_name=tool_name):
                 entry = lookup_tool(tool_name)
                 iag_type = classify_tool_type(tool_name)
@@ -131,6 +151,7 @@ class Interview:
                     deployment_mode=deployment_mode,
                     contract_type=contract_type,
                     contract_version=contract_version,
+                    jurisdiction=jurisdiction,
                     effective_date=contract_effective_date,
                 )
                 state.tools.append(ToolRef(
