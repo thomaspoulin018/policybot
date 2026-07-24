@@ -1,0 +1,8 @@
+version: 2
+id: B04
+partie: B
+category: Risques organisationnels
+criterion: Image et réputation institutionnelle
+question: Quels incidents publics documentés impliquant l'outil peuvent éclairer le risque d'image et de réputation institutionnelle ?
+exa:
+  query: "{vendor} {tool} public incidents controversy harmful inaccurate generated content reputation university organization"

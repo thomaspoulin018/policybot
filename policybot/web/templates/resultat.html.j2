@@ -1,50 +1,42 @@
-{# policybot/web/templates/resultat.html.j2 #}
 {% extends "_layout.html.j2" %}
 {% block content %}
-<div class="kicker">Resultat</div>
-<div class="assist"><img src="/static/friendly.png" alt=""> Voici ce que je recommande - l'agent SI aura le dernier mot.</div>
-<section class="recommendation-summary">
-  <h1>Recommandation préliminaire : {{ recommendation }}</h1>
-  <p>PolicyBot formule une recommandation. Seule l’autorité désignée peut autoriser l’usage.</p>
+<div class="kicker">Résultats</div>
+<div class="assist"><img src="/static/friendly.png" alt=""> Voici le dossier de preuves à examiner avec l’agent SI.</div>
+<section class="finding-summary">
+  <h1>Constats sourcés par critère</h1>
+  <p><strong>PolicyBot ne calcule aucune autorisation.</strong> Les niveaux F/M/E sont proposés; seule l’autorité désignée évalue la permissibilité.</p>
+  <p>Coût estimé des recherches Exa : {{ "%.4f"|format(total_cost) }} $ US.</p>
 </section>
 <section class="evidence-summary" aria-labelledby="evidence-title">
-  <h2 id="evidence-title">Sur quoi repose cette recommandation ?</h2>
-  <p>Voici les éléments contractuels vérifiés automatiquement. Chaque conclusion est accompagnée de sa citation et de la source consultée.</p>
+  <h2 id="evidence-title">Sources vérifiées</h2>
+  <p>Chaque extrait ci-dessous a été retrouvé dans le texte de sa propre page.</p>
   {% if contract_evidence %}
   <div class="evidence-list">
     {% for item in contract_evidence %}
     <article class="evidence-card">
       <h3>{{ item.label }}</h3>
       <blockquote>« {{ item.quote }} »</blockquote>
-      <a href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">{{ item.source_url }}</a>
+      <a href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">Ouvrir et surligner la source</a>
     </article>
     {% endfor %}
   </div>
   {% else %}
-  <p class="evidence-empty">Aucune preuve contractuelle vérifiée n’a été recueillie pour cette évaluation. L’autorité désignée devra confirmer les conditions applicables.</p>
+  <p class="evidence-empty">Aucune citation ancrée n’a été recueillie. L’autorité désignée doit compléter la vérification.</p>
   {% endif %}
 </section>
 {% if pdf_filename %}
 <div class="export-panel">
-  <a class="download" href="/output/pdf/{{ pdf_filename }}" download>Telecharger le PDF</a>
-  <span>Enregistre dans <code>output/pdf/{{ pdf_filename }}</code></span>
+  <a class="download" href="/output/pdf/{{ pdf_filename }}" download>Télécharger le PDF</a>
 </div>
 {% elif pdf_error %}
-<div class="export-panel warning">
-  <span>Le rapport est affiche ci-dessous. L'export PDF sera disponible apres installation de l'extra <code>pdf</code>.</span>
-</div>
+<div class="export-panel warning"><span>L’export PDF a échoué : {{ pdf_error }}</span></div>
 {% endif %}
 {% if docx_filename %}
 <div class="export-panel">
-  <a class="download" href="/output/docx/{{ docx_filename }}" download>Telecharger la fiche Word</a>
-  <span>Enregistree dans <code>output/docx/{{ docx_filename }}</code></span>
+  <a class="download" href="/output/docx/{{ docx_filename }}" download>Télécharger le document Word</a>
 </div>
 {% elif docx_error %}
-<div class="export-panel warning">
-  <span>Le rapport est affiche ci-dessous. L'export Word a echoue: {{ docx_error }}</span>
-</div>
+<div class="export-panel warning"><span>L’export Word a échoué : {{ docx_error }}</span></div>
 {% endif %}
-<div class="report">
-{{ report_html | safe }}
-</div>
+<div class="report">{{ report_html | safe }}</div>
 {% endblock %}

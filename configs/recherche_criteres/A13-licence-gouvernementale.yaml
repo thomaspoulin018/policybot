@@ -1,0 +1,8 @@
+version: 2
+id: A13
+partie: A
+category: Conformité légale et contractuelle
+criterion: Compatibilité licence usage gouvernemental
+question: La licence permet-elle un usage par une institution d'enseignement supérieur québécoise ?
+exa:
+  query: "{vendor} {tool} license government public sector higher education Quebec Canada eligibility {plan}"

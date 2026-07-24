@@ -16,6 +16,7 @@ dependencies = [
     "pyyaml>=6.0",
     "python-multipart>=0.0.9",
     "exa-py>=1.0",
+    "python-docx>=1.1",
 ]
 
 [project.optional-dependencies]
@@ -30,7 +31,8 @@ build-backend = "setuptools.build_meta"
 include = ["policybot*"]
 
 [tool.setuptools.data-files]
-"configs/recherche_des_faits" = ["configs/recherche_des_faits/*.yaml"]
+"configs" = ["configs/recherche_defaults.yaml"]
+"configs/recherche_criteres" = ["configs/recherche_criteres/*.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

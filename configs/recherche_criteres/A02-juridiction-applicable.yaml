@@ -1,0 +1,8 @@
+version: 2
+id: A02
+partie: A
+category: Souveraineté et hébergement des données
+criterion: Juridiction applicable
+question: "Quelle loi s'applique en cas de litige ? Risque d'accès par des autorités étrangères (ex. : Cloud Act US) ?"
+exa:
+  query: Which law and courts govern the {tool} agreement from {vendor}? foreign government access Cloud Act {jurisdiction} {plan} {contract_type}

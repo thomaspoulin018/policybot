@@ -1,0 +1,8 @@
+version: 2
+id: B03
+partie: B
+category: Éthique et fiabilité des résultats
+criterion: Biais algorithmiques
+question: Quelles informations publiées décrivent les données d'entraînement, les évaluations de biais et les mesures d'atténuation du modèle ?
+exa:
+  query: "{vendor} {tool} model card training data bias fairness evaluations mitigation transparency"

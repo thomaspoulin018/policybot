@@ -1,0 +1,10 @@
+version: 2
+id: A05
+partie: A
+category: Souveraineté et hébergement des données
+criterion: Garanties contractuelles de non-divulgation
+question: Le contrat interdit-il explicitement la réutilisation des données soumises ?
+exa:
+  query: "{vendor} {tool} contract confidentiality customer content non-disclosure reuse human access DPA {plan} {contract_type} {contract_version}"
+  type: deep
+  num_results: 8

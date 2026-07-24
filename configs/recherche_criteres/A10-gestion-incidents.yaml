@@ -1,0 +1,8 @@
+version: 2
+id: A10
+partie: A
+category: Sécurité de l'information
+criterion: Gestion des incidents
+question: Le fournisseur dispose-t-il d'un plan de réponse aux incidents ? Délais de notification en cas de brèche ?
+exa:
+  query: "{vendor} {tool} security incident response breach notification timeline DPA {plan}"

@@ -1,0 +1,10 @@
+version: 2
+id: A04
+partie: A
+category: Souveraineté et hébergement des données
+criterion: Données soumises utilisées pour entraînement du modèle
+question: Les requêtes soumises sont-elles utilisées pour améliorer ou entraîner le modèle ? Opt-out disponible ?
+exa:
+  query: Does {vendor} use content submitted to {tool} to train models by default? opt-out privacy policy {plan} {deployment_mode} {contract_type} {contract_version}
+  type: deep
+  num_results: 8

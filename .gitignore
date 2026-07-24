@@ -232,5 +232,7 @@ __marimo__/
 
 configs/*
 !configs/policybot.yaml
-!configs/recherche_des_faits/
-!configs/recherche_des_faits/*.yaml
+!configs/recherche_defaults.yaml
+!configs/recherche_criteres/
+!configs/recherche_criteres/*.yaml
+tmp/*

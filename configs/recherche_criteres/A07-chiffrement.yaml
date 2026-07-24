@@ -1,0 +1,8 @@
+version: 2
+id: A07
+partie: A
+category: Sécurité de l'information
+criterion: Chiffrement des données
+question: Les données sont-elles chiffrées de bout en bout en transit et au repos ? Quel standard (AES-256, TLS 1.3) ?
+exa:
+  query: "{vendor} {tool} encryption at rest in transit AES-256 TLS security {plan}"

@@ -1,305 +1,62 @@
 # PolicyBot
 
-PolicyBot is a self-service web tool for **UQAM** that tells an employee whether a
-planned use of a generative-AI tool is safe, and produces a sourced report a
-security/privacy officer can review and authorize. It automates the first two
-steps of the **MCN** mandatory guide for generative AI (IAG), under the **LGGRI**:
+PolicyBot prépare un dossier de constats sourcés pour l’évaluation d’un outil
+d’IA générative dans une université québécoise. Il ne calcule aucune
+autorisation : l’officier désigné évalue la permissibilité et prend la décision.
 
-1. **Fiche de qualification** — who, what tool, what data, what usage.
-2. **Grille d'évaluation des risques** — matrix gate + risk scoring per usage.
-3. *(out of scope for PolicyBot)* Authorization by the **Direction SI** officer.
+## Fonctionnement
 
-> **PolicyBot recommends; it never authorizes.** Every screen and every page of
-> the generated report says so explicitly.
+Pour une offre donnée, PolicyBot :
 
-Full background, source docs (`SI_-_*.docx/pptx`), and glossary (MCN, LGGRI, IAG,
-ARP, ÉFVP-R, F/M/E/C) live in the design spec —
-[`docs/superpowers/specs/2026-07-02-policybot-design.md`](docs/superpowers/specs/2026-07-02-policybot-design.md).
-The step-by-step TDD build order is in the implementation plan —
-[`docs/superpowers/plans/2026-07-02-policybot.md`](docs/superpowers/plans/2026-07-02-policybot.md).
-This README summarizes both against what's actually implemented.
+1. identifie l’outil, son fournisseur et son type d’IAG;
+2. classifie prudemment les données décrites pour chaque usage;
+3. charge 17 critères configurables (13 en partie A, 4 en partie B);
+4. lance une recherche Exa indépendante par critère;
+5. recueille une réponse, un niveau F/M/E proposé et une justification;
+6. n’affiche que les citations retrouvées dans le texte de leur propre page;
+7. produit un rapport HTML, PDF ou DOCX avec le coût total des recherches.
 
-## Core idea: rules decide, the LLM only assists
+Les recherches sont mises en cache par identité d’offre dans SQLite avec le
+schéma ARP v2. Les modes `read_write`, `refresh`, `read_only` et `disabled`
+sont configurables avec `POLICYBOT_ARP_CACHE_MODE`.
 
-| | Decides the verdict? | Role |
-|---|---|---|
-| **Deterministic Python** (matrix + `grille.yaml` rules) | ✅ Yes | The only source of a verdict. Pure functions, exhaustively unit-tested. |
-| **LLM** (via a swappable `LLMProvider`) | ❌ Never | Phrases questions, proposes answer options, classifies descriptions, and drafts narrative prose. |
+## Configuration
 
-Two guardrails make this concrete:
+- `configs/recherche_defaults.yaml` : paramètres Exa, budget, schémas JSON,
+  instructions et gabarits de rendu.
+- `configs/recherche_criteres/*.yaml` : une question et une requête par critère.
+- `POLICYBOT_SEARCH_DEFAULTS_PATH` et `POLICYBOT_CRITERIA_DIR` : chemins de
+  remplacement pour les tests ou un déploiement.
+- `EXA_API_KEY` : clé Exa, conservée dans `.env` et jamais versionnée.
 
-- **The MCN permission matrix is an absolute hard gate.** Nothing — no LLM
-  output, no rule, no score — can override an `INTERDIT`.
-- **F/M/E/C risk ratings are pre-filled proposals, not computed verdicts.**
-  Every `RiskFactor` carries `origin: "rule" | "llm_proposed"` and
-  `proposed: bool`; the officer sets the final rating. The one exception is the
-  matrix result itself, which is policy, not a proposal.
+Le mode `neural` est utilisé par défaut. Les critères A04, A05, A11 et A12
+emploient `deep` afin de mieux couvrir les enjeux contractuels. Le plafond et
+la stratégie de dépassement sont définis dans le YAML commun.
 
-Other principles baked into the design: **conservative-by-default**
-classification (when unsure between two data levels, pick the more restrictive
-one and flag it), **nothing derived is silently trusted** (low-confidence or
-"Autre" free-text answers set `needs_officer_confirmation`), and **the whole
-decision is auditable** (every question, offered options, and selection is
-logged, and the report is a pure rendering of that state — nothing is invented).
-
-## The process, end to end
-
-```
-Web UI (renders QuestionSpec)
-        │
-Interview Orchestrator  ── holds InterviewState, drives the pipeline below
-        │
-  ┌─────┼───────────┬──────────────┬───────────┬────────────┐
-  LLM   Classifiers  Pre-approved   Contract     Grille        → Report (PDF)
-  layer (data, tool  DB (SQLite)    analyzer     engine
-  (swap) type)       ArpRecord +    (Exa search   (matrix gate
-                     PreApproved    → anchored    + grille.yaml
-                                    ContractFacts rules)
-                                    → Partie A)
-```
-
-**Invariant: only the Grille engine decides.** Every other component gathers or
-presents facts.
-
-For one tool + one or more usages, the pipeline (`Interview.assess`) runs:
-
-1. **Identify the tool.** Look it up in the tool registry (`policybot/classify/tool_registry.py`)
-   to get its vendor and **IAG type** (`publique` / `circuit_ferme` / `souveraine` /
-   `gouvernementale`). Unknown tools fall back to asking the user
-   (`tool_type_question()`).
-2. **Resolve the tool's contract facts (Partie A / ARP), once per tool.**
-   - Check the SQLite `PreApprovedStore` for a cached `ArpRecord` first (reuse).
-   - Otherwise Exa runs one structured search per contract fact from
-     `configs/recherche_des_faits/*.yaml`. A value is kept only when its
-     verbatim quote is anchored in that result's retrieved text. Multiple
-     candidates are selected deterministically by source type then Exa
-     relevance; the YAML can require the declared `source_url` to match the
-     result URL (option D). A fact that cannot be proved stays `unknown`.
-   - Set `selection.require_declared_source_url: true` in a fact YAML to activate
-     option D. The shipped definitions enable it for every fact.
-3. **For each usage, classify the data.** The employee describes the data in
-   plain language (never the data itself); the LLM returns structured signals
-   (`already_public`, `contains_personal_info`, `strategic_sensitive`, …); a
-   deterministic decision tree maps those signals to **Non classifié / Protégé
-   A / Protégé B / Protégé C** (+ `rens_personnels`), conservatively, with a
-   confidence score.
-4. **Run the MCN permission matrix (the hard gate).** `data_classification ×
-   iag_type → PERMIS | INTERDIT | OBLIGATOIRE`. An `INTERDIT` immediately sets
-   the usage's verdict to `Refuser` — no scoring, no LLM opinion can change it.
-5. **Otherwise, evaluate `grille.yaml` rules of thumb** over the ARP + usage
-   facts, take the highest-severity match, and collect every triggered rule
-   for transparency (Partie B). Set `efvpr_required` if the usage involves
-   personal information.
-6. **Synthesize across usages (Partie C).** Global risk = the worst residual
-   level across all usages (no averaging); recommendation follows the same
-   rule (any `Refuser` wins; otherwise Élevé/Critique → `Escalader` or
-   `Autoriser_avec_conditions`; otherwise `Autoriser`).
-7. **Render the report.** An HTML template mirrors the two official forms
-   (Fiche de qualification, then Grille Partie A/B/C), with the
-   "recommendation, not authorization" disclaimer on every page. With the
-   `pdf` extra installed, the app writes a styled PDF copy to `output/pdf/`.
-   It also fills the official Word qualification fiche and saves it to `output/docx/`.
-
-### The MCN permission matrix (hard gate)
-
-| Data ↓ / Tool → | Publique | Circuit fermé | Souveraine | Gouv (UQAM) |
-|---|---|---|---|---|
-| Non classifié | PERMIS | PERMIS | PERMIS | PERMIS |
-| Protégé A | INTERDIT | PERMIS | PERMIS | PERMIS |
-| Protégé B | INTERDIT | PERMIS | PERMIS | PERMIS |
-| Protégé C | INTERDIT | INTERDIT | INTERDIT | OBLIGATOIRE |
-
-Implemented as a plain 4×4 dict lookup in `policybot/grille/matrix.py`; all 16
-cells are exhaustively parametrized in `tests/grille/test_matrix.py`.
-
-## Project layout
-
-```
-policybot/
-  models.py       Pydantic v2 domain models: QuestionSpec, ContractFacts,
-                  RiskFactor, ArpRecord, PreApprovedRecord, Usage, InterviewState
-  llm/            LLMProvider interface (complete_json / draft_text) +
-                  FakeLLMProvider (tests) + OpenRouterProvider (Gemma, POC)
-  classify/       data_classifier.py (LLM signals → decision tree),
-                  tool_type.py + tool_registry.py (known-tool lookup)
-  contract/       exa.py (one search per fact, anchoring and deterministic
-                  selection), fact_search.py (YAML schema/loader), arp.py
-                  (ContractFacts assembly + Partie A RiskFactors)
-  grille/         matrix.py (hard gate), rules.py + grille.yaml (rule engine,
-                  data not code), engine.py (per-usage verdict + synthesis)
-  preapproved/    store.py — SQLite cache of ArpRecord and PreApprovedRecord,
-                  each with an expiry so stale approvals force re-review
-  interview/      questions.py (QuestionSpec builders), orchestrator.py
-                  (Interview.assess — the pipeline above)
-  report/         templates/report.html.j2 + renderer.py (render_html,
-                  PDF export to output/pdf and filled Word fiche to output/docx)
-tests/            mirrors the package layout; fixtures under tests/*/fixtures
-docs/superpowers/ design spec + implementation plan (source of truth for intent)
-```
-
-## Getting started
-
-```bash
-pip install -e ".[dev]"
-pytest -v
-```
-
-A FastAPI app (`policybot/api/app.py`) exposes `POST /assess` and `POST /report`
-(see Status below). The full pipeline also works end to end against a fake LLM
-in-process:
-
-```python
-from policybot.models import RequestInfo
-from policybot.llm.fake import FakeLLMProvider
-from policybot.preapproved.store import PreApprovedStore
-from policybot.interview.orchestrator import Interview
-
-llm = FakeLLMProvider(json_responses=[
-    {"already_public": True, "contains_personal_info": False,
-     "strategic_sensitive": False, "internal_nonpublic": False,
-     "highly_sensitive_secret": False, "confidence": 0.9},
-])
-itv = Interview(llm=llm, store=PreApprovedStore("policybot.db"))
-state = itv.assess(
-    request=RequestInfo(numero="IAG-2026-001"),
-    tool_name="ChatGPT",
-    usage_inputs=[{"description": "Chercher de l'info publique",
-                   "data_description": "information publique sur le web",
-                   "automated_decisions": False, "mode": ["prompt"], "result_use": []}],
-)
-print(state.result_global.recommendation)  # conservative if EXA_API_KEY is absent
-```
-
-A real run swaps in `OpenRouterProvider` (see `policybot/llm/openrouter.py`);
-no unit test ever calls the network — the OpenRouter path is exercised only
-behind an integration-test flag.
-
-## Traceability (LangSmith)
-
-Every LLM-assisted step (data classification and any future drafting) is traced in [LangSmith](https://smith.langchain.com) for
-debugging. `OpenRouterProvider` is built on `langchain_openai.ChatOpenAI`
-pointed at OpenRouter's OpenAI-compatible endpoint, so tracing comes for free
-and stays consistent with the LangGraph interview graph, whose nodes trace
-through the same environment variables. Each call site is tagged
-(`data_classification`, for example) so traces are distinguishable at a
-glance in the UI.
-
-Tracing is **off unless you opt in**, so tests and CI never emit traces. To
-enable it, copy `.env.example` to `.env` and fill in your keys:
-
-```dotenv
-OPENROUTER_API_KEY=<your OpenRouter key>
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=<your LangSmith key from Settings → API Keys>
-LANGCHAIN_PROJECT=policybot
-```
-
-The app loads `.env` automatically at startup (via `python-dotenv`), so no shell
-export is needed. To disable tracing, set `LANGCHAIN_TRACING_V2=false` (or remove
-the line). The `.env` is deliberately **not** loaded under `pytest` (and
-`tests/conftest.py` hard-disables tracing regardless), so the suite always stays
-offline and clean. The modern aliases `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` /
-`LANGSMITH_PROJECT` work too. Keep both keys in `.env` only (gitignored), never
-committed. Prompts sent to the LLM are already descriptions/metadata, not the
-sensitive data itself, so traces contain nothing more sensitive than what already
-goes to OpenRouter.
-
-### Configuration des modèles et du cache ARP
-
-La configuration non secrète est centralisée dans `configs/policybot.yaml`.
-Elle définit un modèle OpenRouter et ses paramètres (`reasoning_effort`,
-`max_tokens`, `temperature`, `timeout`) pour chacune des tâches suivantes :
-classification des données, détection du type d'outil, détection du mode,
-suggestions du formulaire. La recherche des faits contractuels ne passe pas par
-un fournisseur LLM PolicyBot.
-
-Le bloc `cache.arp.mode` accepte quatre comportements :
-
-- `read_write` : réutiliser le cache et enregistrer les nouvelles analyses ;
-- `refresh` : ignorer le cache et le remplacer ;
-- `read_only` : réutiliser le cache sans écrire ;
-- `disabled` : ne lire ni écrire le cache.
-
-Les secrets restent dans `.env`. `POLICYBOT_CONFIG_PATH` sélectionne un autre
-fichier YAML. Les variables `OPENROUTER_*` remplacent toutes les tâches, tandis
-que `POLICYBOT_LLM_<TÂCHE>_*` remplace une tâche précise. La liste complète des
-variables est documentée dans `.env.example`.
-
-## Traçabilité interne (logs de débogage)
-
-En plus du tracing LangSmith ci-dessus (qui ne couvre que les appels LLM),
-chaque étape du pipeline d'évaluation (`Interview.assess` → classification →
-résolution ARP → collecte Exa → évaluation de la grille → synthèse) écrit une
-ligne JSON dans un nouveau fichier
-`logs/log_AAAA-MM-JJ_HH-MM-SS_microsecondes.jsonl` à chaque démarrage, via
-`policybot/tracing.py`. Toutes les
-sous-étapes d'une même requête partagent le même `interview_id`, ce qui permet
-de reconstituer le déroulement complet d'un cas en filtrant sur cet identifiant.
-
-**Contrainte non négociable : aucun texte libre en clair.** Les descriptions
-d'usage, le contenu des contrats et les prompts/réponses LLM ne sont jamais
-écrits tels quels — seuls leur longueur et un hash SHA-256 tronqué
-(`mask_text()`) apparaissent dans les logs, pour ne pas créer une fuite de
-renseignements personnels dans un fichier non protégé.
-
-Consulter les traces en direct :
+## Lancer le projet
 
 ```powershell
-Get-Content (Get-ChildItem logs\log_*.jsonl | Sort-Object LastWriteTime | Select-Object -Last 1) -Wait
+.\.venv\Scripts\activate
+pip install -e ".[dev,pdf]"
+pytest -q
+uvicorn policybot.api.app:app --reload
 ```
 
-```bash
-tail -f "$(ls -t logs/log_*.jsonl | head -n 1)"
+Diagnostic réel d’un seul critère :
+
+```powershell
+python scripts/exa_debug_critere.py --critere A04 --tool ChatGPT --vendor OpenAI
 ```
 
-Le chemin du fichier est configurable via la variable d'environnement
-`POLICYBOT_LOG_PATH` (utile pour rediriger vers un fichier temporaire, comme le
-fait `tests/conftest.py` pour que la suite de tests n'écrive jamais dans
-`logs/` du dépôt). Chaque fichier tourne automatiquement (5 Mo × 5 backups) pour
-éviter une croissance illimitée.
+La réponse brute est enregistrée sous `tmp/` pour inspection locale. Elle peut
+contenir du texte de sources et ne doit pas être versionnée.
 
-## Testing strategy
+## Garanties
 
-- **Grille engine — pure unit tests, priority.** All 16 matrix cells and every
-  `grille.yaml` rule are tested; deterministic, no I/O.
-- **LLM-touching components** (classifiers and orchestrator) are
-  tested against `FakeLLMProvider`, which returns queued canned JSON/text and
-  records every call — fully offline and deterministic.
-- **Exa collection** is tested against a queued fake client: no unit test calls
-  the network. Tests cover quote anchoring, source ranking (option A), and the
-  configurable declared-URL guardrail (option D).
-- **Golden scenario** (planned, Task 16): the real UQAM slide-5 example —
-  ChatGPT/Perplexity + Protégé B strategic/financial data ⇒ `INTERDIT` /
-  `Refuser` — as the canonical end-to-end acceptance test.
-
-Run everything with `pytest -v`.
-
-## Status against the plan
-
-The original plan (`docs/superpowers/plans/2026-07-02-policybot.md`) defines 16
-TDD tasks. The current suite has grown beyond that historical count; run
-`python -m pytest -v` for the live result.
-
-| Done | Task |
-|---|---|
-| ✅ | 1–6: scaffolding, domain models, matrix, rule engine, per-usage grille engine, LLM provider (+fake +OpenRouter) |
-| ✅ | 7–9: data classifier, tool-type classifier + registry, Exa fact search |
-| ✅ | 10–12: ARP assembly, SQLite pre-approved store, HTML report renderer (+ optional PDF + filled Word fiche) |
-| ✅ | 13: interview orchestrator (`Interview.assess`) — full deterministic pipeline |
-| ✅ | 14: LangGraph state machine wrapping the orchestrator (`policybot/interview/graph.py`) |
-| ✅ | 15: FastAPI app exposing `POST /assess` and `POST /report` (`policybot/api/app.py`) |
-| ✅ | 16: golden end-to-end acceptance test (UQAM slide-5 scenario) |
-
-## To-do before a real run
-
-The backend pipeline is done; two things stand between it and a production
-deployment:
-
-1. **Real `grille.yaml` rules.** Continue validating the rule engine with the officers' actual
-   rules of thumb; only three starter rules ship today.
-
-**Deferred beyond MVP** (per spec §14): an officer review/back-office
-dashboard, scheduled re-fetching of stale ARPs, and UQAM visual-identity PDF
-theming.
-
-The fact-search YAML files are declared as wheel data in `pyproject.toml`.
+- Une défaillance Exa affecte seulement son critère.
+- Un niveau F/M/E invalide reste vide; PolicyBot ne l’invente pas.
+- Les citations non ancrées sont rejetées et comptées.
+- Les journaux structurés ne contiennent aucun texte libre : seulement longueur
+  et empreinte tronquée.
+- Le rapport conserve la classification déclarée et rappelle clairement que la
+  validation humaine est obligatoire.

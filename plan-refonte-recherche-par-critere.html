@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Plan : refonte PolicyBot — une recherche Exa par critère</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.6; color: #1a1a2e;
+    background: #f4f6fb; padding: 2rem;
+  }
+  .container { max-width: 940px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.8rem; font-weight: 700; }
+  header p  { margin-top: .4rem; opacity: .8; font-size: .95rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1rem; font-size: .85rem; opacity: .7; }
+
+  .section {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+  }
+  .section h2 {
+    font-size: 1.05rem; font-weight: 700; color: #16213e;
+    border-left: 4px solid #4361ee; padding-left: .75rem;
+    margin-bottom: 1rem;
+  }
+  .section h3 {
+    font-size: .92rem; font-weight: 700; color: #16213e;
+    margin: 1.1rem 0 .5rem;
+  }
+  .section p + p { margin-top: .6rem; }
+  ul.plain { padding-left: 1.15rem; margin-top: .4rem; }
+  ul.plain li { margin-bottom: .35rem; }
+
+  ol.steps { padding-left: 1.25rem; }
+  ol.steps li { margin-bottom: .6rem; }
+  ol.steps li strong { color: #4361ee; }
+
+  .badge {
+    display: inline-block; font-size: .75rem; font-weight: 600;
+    padding: .15rem .55rem; border-radius: 99px; margin-right: .3rem;
+    vertical-align: middle;
+  }
+  .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-yellow { background: #fef9c3; color: #a16207; }
+  .badge-red    { background: #fee2e2; color: #b91c1c; }
+  .badge-grey   { background: #e5e7eb; color: #374151; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .75rem; }
+  td { padding: .5rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  code { font-family: "Cascadia Mono", Consolas, monospace; font-size: .85em;
+         background: #f2f4f9; padding: .1rem .3rem; border-radius: 4px; }
+
+  .code-block {
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: .82rem;
+    background: #16213e; color: #e6ebff; border-radius: 8px;
+    padding: 1rem 1.15rem; overflow-x: auto; white-space: pre;
+    line-height: 1.5; margin-top: .6rem;
+  }
+  .code-block .c { color: #8fa3d6; }
+
+  .callout {
+    border-left: 4px solid #4361ee; background: #f0f4ff;
+    padding: .75rem 1rem; border-radius: 0 8px 8px 0;
+    font-size: .9rem; margin-top: .75rem;
+  }
+  .callout.warn { border-color: #f59e0b; background: #fffbeb; }
+  .callout.danger { border-color: #ef4444; background: #fef2f2; }
+  .callout.ok { border-color: #22c55e; background: #f0fdf4; }
+
+  .cols { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+  .cols > div { flex: 1 1 300px; }
+  .cols h3 { margin-top: 0; }
+
+  .phase-meta { font-size: .8rem; color: #667; margin: -.5rem 0 .9rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Refonte PolicyBot — une recherche Exa par critère</h1>
+    <p>Sortir du couple « faits contractuels typés + grille de règles » pour un pipeline où chaque
+       critère du formulaire déclenche sa propre recherche, qui produit directement la ligne du rapport :
+       réponse, risque inhérent F/M/E proposé, citations validées.</p>
+    <div class="meta">
+      <span>Date : 23 juillet 2026</span>
+      <span>Dépôt : <code>C:\code\05_Travail\PolicyBot</code></span>
+      <span>Portée : refonte structurelle (grille, contract/, configs, rapport)</span>
+    </div>
+  </header>
+
+  <div class="section">
+    <h2>Spike Exa réalisé le 23 juillet 2026</h2>
+    <ul class="plain">
+      <li>Les résumés par page arrivent comme une chaîne JSON dans
+          <code>result.summary</code>, avec <code>answer</code>,
+          <code>citation</code>, <code>begin</code> et <code>end</code>.
+          Les offsets ne délimitent pas toujours toute la citation; le recalcul
+          par recherche verbatim demeure donc nécessaire.</li>
+      <li>Le coût se trouve dans <code>cost_dollars</code> (forme Python de
+          <code>costDollars</code>) avec <code>total</code>,
+          <code>search</code> et <code>contents</code>. A04 a coûté
+          0,015 $ US en neural et 0,020 $ US en deep.</li>
+      <li>La sortie globale est sous <code>output.content</code> et respecte
+          l’enum F/M/E. <code>output.grounding</code> contient aussi les
+          ancrages de champs globaux.</li>
+      <li>Sur ce run A04 : neural, 4,64 s et 2 citations ancrées sur 8;
+          deep, 5,96 s et 6 citations ancrées sur 8. Le mode deep a amélioré
+          la couverture des preuves pour un surcoût de 0,005 $ US.</li>
+    </ul>
+  </div>
+
+  <!-- ================= OBJECTIF ================= -->
+  <div class="section">
+    <h2>1. Objectif et intention</h2>
+    <p>Aujourd'hui PolicyBot cherche <strong>20 « faits » typés</strong> (<code>training_default</code>,
+       <code>data_residency</code>…), les mappe à la main vers les critères du formulaire, puis fait
+       trancher un <strong>moteur de règles + une matrice MCN</strong>. Deux couches d'interprétation
+       séparent la source réelle de ce que l'agent de sécurité lit.</p>
+    <p>La cible inverse le rapport de force : <strong>le critère du formulaire est l'unité de travail</strong>.
+       Une question = une recherche = une ligne de rapport. Exa répond, propose un niveau de risque,
+       et cite ; PolicyBot valide l'ancrage des citations et rend le tout tel quel. Aucune règle ne
+       réinterprète le résultat.</p>
+    <div class="callout">
+      <strong>Principe conservé :</strong> PolicyBot recommande, il n'autorise jamais. Le F/M/E reste
+      une <em>proposition</em> (<code>origin="llm_proposed"</code>, <code>proposed=true</code>) —
+      l'officier tranche. Ce qui disparaît, c'est le verdict automatique, pas la prudence.
+    </div>
+  </div>
+
+  <!-- ================= DÉCISIONS ================= -->
+  <div class="section">
+    <h2>2. Décisions actées (rondes de questions)</h2>
+    <table>
+      <tr><th style="width:31%">Décision</th><th>Choix retenu</th></tr>
+      <tr>
+        <td>Portée du retrait de la grille</td>
+        <td><span class="badge badge-red">total</span> <code>policybot/grille/</code> disparaît en entier :
+            <code>grille.yaml</code>, <code>rules.py</code>, <strong>et la matrice MCN</strong>
+            (<code>matrix.py</code>) et <code>engine.py</code>. Plus aucun verdict calculé.</td>
+      </tr>
+      <tr>
+        <td>Critères recherchés</td>
+        <td><span class="badge badge-blue">17</span> les 13 critères de <code>ARP_CRITERIA</code> (Partie A)
+            + les 4 critères d'usage listés dans <code>questions-recherche-internet.md</code> (Partie B) :
+            entraînement, LAI/PRP, biais algorithmiques, image et réputation.</td>
+      </tr>
+      <tr>
+        <td>Statut du F/M/E</td>
+        <td>Proposition affichée dans la colonne « Risque inhérent » ; l'officier décide. Pas de synthèse
+            automatique, pas de « pire niveau » calculé.</td>
+      </tr>
+      <tr>
+        <td>Citations begin/end</td>
+        <td>Les offsets servent à extraire le passage et à bâtir le lien profond ; la validation verbatim
+            (<code>_quote_is_anchored</code>) est <strong>conservée</strong> comme filet.</td>
+      </tr>
+      <tr>
+        <td>Reste du pipeline</td>
+        <td><span class="badge badge-red">supprimé</span> verdict + synthèse Partie C ·
+            <span class="badge badge-green">gardé</span> classification des données ·
+            <span class="badge badge-green">gardé</span> cache ARP SQLite ·
+            <span class="badge badge-green">gardé</span> wizard web + export PDF/DOCX</td>
+      </tr>
+      <tr>
+        <td>Organisation YAML</td>
+        <td>Un fichier commun <code>configs/recherche_defaults.yaml</code> (schémas, prompts, type Exa,
+            budget) + un fichier par critère sous <code>configs/recherche_criteres/</code>.</td>
+      </tr>
+      <tr>
+        <td>Deep search / coûts</td>
+        <td><code>neural</code> par défaut, <code>deep</code> / <code>deep-reasoning</code> en opt-in
+            par critère. <code>costDollars</code> capturé par recherche, agrégé par entrevue, logué et affiché.</td>
+      </tr>
+      <tr>
+        <td>Tests</td>
+        <td><span class="badge badge-yellow">minimum viable</span> : on supprime les tests obsolètes,
+            on couvre le chargeur YAML + le parsing Exa + la validation des citations. Le reste est
+            validé à la main via les scripts de debug.</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- ================= AVANT / APRÈS ================= -->
+  <div class="section">
+    <h2>3. Architecture — avant / après</h2>
+    <div class="cols">
+      <div>
+        <h3>Avant</h3>
+        <div class="code-block"><span class="c">20 YAML de faits</span>
+   ↓ 20 recherches Exa (1/fait)
+ContractFacts (champs typés)
+   ↓ mapping manuel arp.py
+RiskFactor (Partie A)
+   ↓
+matrice MCN (hard gate)
+   ↓
+grille.yaml (~15 règles)
+   ↓
+verdict par usage + synthèse C
+   ↓
+rapport</div>
+      </div>
+      <div>
+        <h3>Après</h3>
+        <div class="code-block"><span class="c">17 YAML de critères (A + B)</span>
+   ↓ 17 recherches Exa (1/critère)
+   ↓ output_schema global
+   ↓ contents.summary par page
+CriterionFinding
+  · answer
+  · inherent_risk F/M/E + justification
+  · citations[] (begin/end, ancrées)
+  · cost, exa_type
+   ↓ rendu direct
+RiskFactor (observations)
+   ↓
+rapport (pas de verdict)</div>
+      </div>
+    </div>
+    <div class="callout warn">
+      <strong>Conséquence à assumer :</strong> sans matrice MCN, PolicyBot ne produit plus le
+      « hard gate » <code>INTERDIT</code> qui était l'invariant central de <code>CLAUDE.md</code>.
+      Le rapport devient un <em>dossier de preuves</em>, pas une décision. <code>CLAUDE.md</code>,
+      le <code>README</code> et le disclaimer du rapport doivent être réécrits en conséquence
+      (phase 8) — sinon la doc décrit un produit qui n'existe plus.
+    </div>
+  </div>
+
+  <!-- ================= ENV ================= -->
+  <div class="section">
+    <h2>4. Environnement &amp; lancement</h2>
+    <div class="code-block">cd C:\code\05_Travail\PolicyBot
+python -m venv .venv
+
+<span class="c"># Windows</span>
+.\.venv\Scripts\activate
+
+<span class="c"># macOS / Linux</span>
+source .venv/bin/activate
+
+pip install -e ".[dev]"          <span class="c"># + ".[pdf]" pour l'export WeasyPrint</span>
+pytest -v                        <span class="c"># seule barrière qualité du projet</span>
+uvicorn policybot.api.app:app --reload
+
+<span class="c"># EXA_API_KEY doit être dans .env (jamais commité)</span>
+python scripts/exa_debug_global.py --fact contract_prohibits_reuse --type deep</div>
+    <div class="callout">
+      Toujours activer le venv avant de lancer quoi que ce soit :
+      <code>.\.venv\Scripts\activate</code> (Windows) ou <code>source .venv/bin/activate</code>.
+      Rappel projet : <strong>jamais de git worktree</strong>, on travaille dans le répertoire courant.
+    </div>
+  </div>
+
+  <!-- ================= PHASE 0 ================= -->
+  <div class="section">
+    <h2>Phase 0 — Spike Exa : figer le contrat d'API avant d'écrire du code</h2>
+    <p class="phase-meta"><span class="badge badge-grey">bloquante</span> Tout le reste dépend de ce que
+       l'API renvoie réellement. On ne devine pas.</p>
+    <ol class="steps">
+      <li><strong>Étendre <code>scripts/exa_debug_global.py</code></strong> pour vider la réponse brute
+          complète (<code>json.dumps(as_dict(response))</code>) dans <code>tmp/exa_raw_&lt;critere&gt;.json</code>,
+          sans filtrage.</li>
+      <li><strong>Répondre à quatre questions factuelles</strong> et les noter en tête du plan
+          d'implémentation :
+          <ul class="plain">
+            <li>Sous quelle forme arrivent les <strong>offsets begin/end</strong> d'une citation ?
+                (champ dédié dans <code>summary</code> ? dans <code>output.grounding</code> ? indices
+                caractères ou tokens ? relatifs à <code>text</code> ou au HTML brut ?)</li>
+            <li>Où se trouve le <strong>coût</strong> (<code>costDollars</code>) et se décompose-t-il
+                par sous-appel (search / contents / summary) ?</li>
+            <li>Que change concrètement <code>type: deep</code> / <code>deep-reasoning</code> sur la
+                forme de la réponse (résultats, grounding, latence, coût) ?</li>
+            <li><code>output_schema</code> accepte-t-il un champ <code>enum</code> pour
+                <code>inherent_risk: F|M|E</code> et le respecte-t-il ?</li>
+          </ul>
+      </li>
+      <li><strong>Mesurer</strong> coût et latence d'un critère en <code>neural</code> vs <code>deep</code>
+          — c'est ce qui décidera quels critères passent en opt-in deep (phase 3).</li>
+    </ol>
+    <div class="callout danger">
+      Si les offsets n'existent pas sous la forme attendue, on retombe sur le plan B :
+      la citation verbatim reste la source de vérité et <strong>PolicyBot calcule lui-même</strong>
+      <code>begin</code>/<code>end</code> par recherche de la citation normalisée dans le texte de la page.
+      Le reste du plan ne change pas — seule l'origine des offsets change.
+    </div>
+  </div>
+
+  <!-- ================= PHASE 1 ================= -->
+  <div class="section">
+    <h2>Phase 1 — Démolition</h2>
+    <p class="phase-meta">Faire tomber le code mort d'un coup, pour que le compilateur et pytest
+       montrent la surface exacte à reconstruire.</p>
+    <ol class="steps">
+      <li><strong>Supprimer</strong> <code>policybot/grille/</code> (matrix.py, rules.py, grille.yaml,
+          engine.py, REFERENCE_REGLES.md) et <code>tests/grille/</code>.</li>
+      <li><strong>Supprimer</strong> <code>configs/recherche_des_faits/</code> (20 YAML) et
+          <code>policybot/contract/fact_search.py</code>.</li>
+      <li><strong>Vider les appelants</strong> : <code>interview/orchestrator.py</code> (étapes 4-6 du
+          pipeline), <code>interview/graph.py</code>, <code>report/renderer.py</code>,
+          <code>report/templates/report.html.j2</code>, <code>web/wizard_state.py</code>,
+          <code>web/routes.py</code> — retirer tout ce qui touche verdict, recommandation, matrice,
+          règles déclenchées, Partie C.</li>
+      <li><strong>Purger les modèles</strong> : <code>Recommendation</code>, <code>RiskLevel</code>
+          global, champs de verdict de <code>Usage</code> / <code>InterviewState</code>, et
+          <code>ContractFacts</code> (les 20 champs typés + <code>evidence</code> disparaissent au
+          profit des <code>CriterionFinding</code>). <code>PreApprovedRecord.verdict</code> :
+          supprimé ou neutralisé selon ce que le store en fait.</li>
+      <li><strong>Statuer sur <code>contract/source_policy.py</code></strong> : on <em>garde</em> le
+          classement (contrat &gt; DPA &gt; doc technique &gt; page commerciale &gt; secondaire) mais
+          il devient une <strong>annotation affichée</strong> par citation, plus un filtre bloquant —
+          le filtrage réel, désormais, c'est l'ancrage.</li>
+      <li><strong>Supprimer les tests devenus faux</strong> : <code>tests/grille/</code>,
+          <code>tests/contract/test_fact_search.py</code>, les parties verdict de
+          <code>tests/test_golden_scenarios.py</code>, <code>tests/interview/</code> et
+          <code>tests/web/</code> qui assertent un verdict.</li>
+      <li><strong>Vérifier :</strong> <code>grep -rn "grille\|matrix\|verdict\|recommandation" policybot/</code>
+          ne retourne plus rien (hors docs). <code>pytest</code> collecte sans erreur d'import.</li>
+    </ol>
+  </div>
+
+  <!-- ================= PHASE 2 ================= -->
+  <div class="section">
+    <h2>Phase 2 — Modèle de données</h2>
+    <p class="phase-meta">Une seule structure porte tout ce qu'une ligne de rapport affiche.</p>
+    <div class="code-block"><span class="c"># policybot/models.py</span>
+
+class CriterionCitation(BaseModel):
+    url: str
+    title: str = ""
+    text: str                     <span class="c"># passage extrait via begin/end</span>
+    begin: int | None = None
+    end: int | None = None
+    anchored: bool = False        <span class="c"># _quote_is_anchored a confirmé</span>
+    deep_link: str = ""           <span class="c"># url#:~:text=prefix,suffix</span>
+    source_type: str = "unknown"  <span class="c"># annotation source_policy</span>
+    collected_at: date
+
+class CriterionFinding(BaseModel):
+    id: str                       <span class="c"># "A04", "B02"</span>
+    partie: Literal["A", "B"]
+    category: str                 <span class="c"># repris de criteria.py, verbatim</span>
+    criterion: str
+    question: str
+    answer: str = ""              <span class="c"># réponse globale synthétisée</span>
+    inherent_risk: Literal["F", "M", "E"] | None = None
+    justification: str = ""       <span class="c"># courte, accompagne le F/M/E</span>
+    citations: list[CriterionCitation] = []
+    rejected_citations: int = 0   <span class="c"># non ancrées, comptées pour l'audit</span>
+    exa_type: str = "neural"
+    cost_dollars: float = 0.0
+    outcome: Literal["ok", "no_answer", "search_failed"] = "ok"
+
+class ArpRecord(BaseModel):       <span class="c"># conservé, contenu remplacé</span>
+    tool_name: str
+    offering: ContractOfferingIdentity | None
+    findings: list[CriterionFinding] = []
+    total_cost_dollars: float = 0.0
+    schema_version: int = 2       <span class="c"># bump → invalide tout le cache v1</span>
+    fetched_at: date | None
+    expires_at: date | None</div>
+    <ol class="steps">
+      <li><strong>Ajouter</strong> ces modèles, retirer <code>ContractFacts</code> et
+          <code>FactEvidence</code>.</li>
+      <li><strong>Bumper <code>CURRENT_ARP_SCHEMA_VERSION</code> à 2</strong> : le cache SQLite existant
+          devient périmé automatiquement, aucune migration à écrire.</li>
+      <li><strong>Garder <code>RiskFactor</code></strong> comme structure de rendu : le renderer mappe
+          <code>CriterionFinding → RiskFactor(inherent, observations, origin="llm_proposed", proposed=True)</code>.</li>
+    </ol>
+  </div>
+
+  <!-- ================= PHASE 3 ================= -->
+  <div class="section">
+    <h2>Phase 3 — Configuration YAML (tout ce qui est envoyé est éditable)</h2>
+    <p class="phase-meta">Objectif dur : <strong>aucun prompt, schéma ou paramètre Exa en dur dans le
+       Python</strong>. Un <code>grep</code> de « Question: » ou de <code>"type": "object"</code> dans
+       <code>policybot/</code> doit revenir vide.</p>
+
+    <h3>Arborescence</h3>
+    <div class="code-block">configs/
+  recherche_defaults.yaml          <span class="c"># schémas, prompts, type Exa, budget, gabarit d'observation</span>
+  recherche_criteres/
+    A01-localisation-serveurs.yaml
+    A02-juridiction-applicable.yaml
+    A03-dependance-technologique.yaml
+    A04-donnees-entrainement.yaml
+    A05-garanties-non-divulgation.yaml
+    A06-authentification.yaml
+    A07-chiffrement.yaml
+    A08-journalisation.yaml
+    A09-utilisation-entrees-sorties.yaml
+    A10-gestion-incidents.yaml
+    A11-propriete-intellectuelle.yaml
+    A12-conditions-utilisation.yaml
+    A13-licence-gouvernementale.yaml
+    B01-donnees-entrainement-usage.yaml
+    B02-compatibilite-lai-prp.yaml
+    B03-biais-algorithmiques.yaml
+    B04-image-reputation.yaml</div>
+
+    <h3>configs/recherche_defaults.yaml</h3>
+    <div class="code-block">version: 2
+
+exa:
+  type: neural                  <span class="c"># auto | fast | neural | instant | deep-lite | deep | deep-reasoning</span>
+  num_results: 5
+  include_domains: []
+  contents:
+    text: {max_characters: 24000}
+    highlights: {num_sentences: 3}
+
+budget:
+  max_cost_dollars_per_interview: 2.50
+  on_exceeded: degrade_to_neural   <span class="c"># degrade_to_neural | continue | stop</span>
+
+schemas:
+  global:                       <span class="c"># → paramètre top-level output_schema</span>
+    type: object
+    additionalProperties: false
+    required: [answer, inherent_risk, justification]
+    properties:
+      answer:
+        type: string
+        description: "Réponse complète et sourcée à la question, en français, 2 à 4 phrases."
+      inherent_risk:
+        type: string
+        enum: [F, M, E]
+        description: "Risque inhérent pour la sécurité d'une organisation universitaire québécoise."
+      justification:
+        type: string
+        description: "Une à deux phrases justifiant le niveau attribué."
+
+  per_page:                     <span class="c"># → contents.summary.schema</span>
+    type: object
+    additionalProperties: false
+    required: [answer, citation]
+    properties:
+      answer: {type: string}
+      citation:
+        type: string
+        description: "Extrait verbatim continu copié exactement de CETTE page. Vide si la page ne répond pas."
+      begin: {type: integer, description: "Index de début de la citation dans le texte de la page."}
+      end:   {type: integer, description: "Index de fin."}
+
+prompts:
+  global_instruction: |
+    Tu évalues un outil d'IA générative pour une université québécoise soumise à la Loi 25
+    et aux directives du MCN. Réponds à la question ci-dessous à partir des sources trouvées.
+    Attribue ensuite un risque inhérent — F (faible), M (moyen) ou E (élevé) — pour la sécurité
+    de l'information de cette université, avec une courte justification.
+    Si les sources ne répondent pas, dis-le explicitement plutôt que de supposer.
+    Question : {question}
+
+  per_page_instruction: |
+    En utilisant uniquement cette page, réponds à la question et appuie ta réponse sur un
+    extrait court, continu et verbatim, copié exactement du texte de la page (aucune ellipse).
+    Indique les index de début et de fin de cet extrait dans le texte.
+    Si la page ne répond pas à la question, retourne une citation vide.
+    Question : {question}
+
+observation_template: |
+  {answer}
+
+  Risque inhérent proposé : {inherent_risk} — {justification}
+
+  Sources vérifiées :
+  {citations}
+
+citation_line_template: '- {source_type} — « {text} » ({deep_link})'
+citation_link_template: '{url}#:~:text={prefix},{suffix}'</div>
+
+    <h3>configs/recherche_criteres/A04-donnees-entrainement.yaml</h3>
+    <div class="code-block">version: 2
+id: A04
+partie: A
+category: "Souveraineté et hébergement des données"      <span class="c"># doit matcher criteria.py</span>
+criterion: "Données soumises utilisées pour entraînement du modèle"
+question: "Les requêtes soumises sont-elles utilisées pour améliorer ou entraîner le modèle ? Opt-out disponible ?"
+
+exa:
+  query: >
+    Does {vendor} use content submitted to {tool} to train its models by default?
+    {vendor} terms of use, privacy policy, training data opt-out
+    {plan} {deployment_mode} {contract_type} {contract_version}
+  type: deep                    <span class="c"># override du défaut neural (critère à fort enjeu)</span>
+  num_results: 8</div>
+
+    <ol class="steps">
+      <li><strong>Écrire <code>policybot/contract/criteres.py</code></strong> (remplace
+          <code>fact_search.py</code>) : charge <code>recherche_defaults.yaml</code>, fusionne chaque
+          fichier de critère par-dessus, expose <code>CRITERIA_SEARCHES</code>.</li>
+      <li><strong>Valider à l'import</strong>, comme aujourd'hui : les <code>id</code> sont uniques,
+          les 13 couples <code>(category, criterion)</code> de Partie A correspondent
+          <strong>exactement</strong> à <code>ARP_CRITERIA</code>, les 4 de Partie B à leurs entrées
+          dans <code>USAGE_CRITERIA</code>. Un fichier manquant ou en trop fait échouer la collecte
+          pytest — c'est voulu.</li>
+      <li><strong>Override d'environnement</strong> : <code>POLICYBOT_CRITERIA_DIR</code> et
+          <code>POLICYBOT_SEARCH_DEFAULTS_PATH</code>, sur le modèle de
+          <code>POLICYBOT_FACT_SEARCH_DIR</code>. Déclarer les nouveaux YAML dans
+          <code>[tool.setuptools.data-files]</code> (l'ancien chemin y est déjà).</li>
+    </ol>
+    <div class="callout">
+      Les placeholders disponibles dans <code>query</code> restent ceux de
+      <code>ContractOfferingIdentity</code> : <code>{tool} {vendor} {plan} {deployment_mode}
+      {contract_type} {contract_version} {jurisdiction}</code>. Un placeholder inconnu doit lever
+      à l'import, pas au moment de l'appel.
+    </div>
+  </div>
+
+  <!-- ================= PHASE 4 ================= -->
+  <div class="section">
+    <h2>Phase 4 — Client Exa : global + par page, deep, neural, coûts</h2>
+    <p class="phase-meta">Réécriture de <code>policybot/contract/exa.py</code>, directement inspirée de
+       <code>scripts/exa_debug_global.py</code> qui a déjà validé la mécanique.</p>
+    <div class="code-block"><span class="c"># une seule forme d'appel, identique pour les 17 critères</span>
+client.search(
+    query,
+    num_results = cfg.num_results,
+    type        = cfg.type,              <span class="c"># neural par défaut, deep en opt-in</span>
+    output_schema = defaults.schemas["global"],  <span class="c"># UNE synthèse : answer + F/M/E + justification</span>
+    contents = {
+        "text": {"max_characters": 24000},
+        "highlights": {...},
+        "summary": {                      <span class="c"># UNE réponse + citation PAR page</span>
+            "query":  render(defaults.prompts.per_page_instruction, question),
+            "schema": defaults.schemas.per_page,
+        },
+    },
+)</div>
+    <ol class="steps">
+      <li><strong>Un appel par critère, en parallèle</strong> (comme aujourd'hui) ; l'échec d'un critère
+          le marque <code>outcome="search_failed"</code> et ne fait jamais tomber l'entrevue.</li>
+      <li><strong>Lire la synthèse globale</strong> <code>output.content</code> →
+          <code>answer</code>, <code>inherent_risk</code>, <code>justification</code>. Si
+          <code>inherent_risk</code> manque ou est hors de <code>{F,M,E}</code> : laisser
+          <code>None</code>, ne jamais inventer.</li>
+      <li><strong>Lire les summaries par page</strong> → une <code>CriterionCitation</code> candidate
+          par résultat.</li>
+      <li><strong>Capturer le coût</strong> par appel (<code>costDollars</code>) → <code>cost_dollars</code>,
+          agrégé en <code>ArpRecord.total_cost_dollars</code>. Appliquer <code>budget.on_exceeded</code>
+          quand le plafond est franchi.</li>
+      <li><strong>Tracer</strong> via <code>record_exa_search_*</code> : id du critère, type Exa, nb de
+          résultats, coût, nb de citations retenues/rejetées. <span class="badge badge-red">rappel</span>
+          <strong>jamais de texte libre en clair</strong> dans <code>logs/policybot.jsonl</code> —
+          longueur + hash tronqué uniquement (<code>mask_text()</code>). Le canal
+          <code>debug_runs</code> reste la seule exception, en local.</li>
+    </ol>
+  </div>
+
+  <!-- ================= PHASE 5 ================= -->
+  <div class="section">
+    <h2>Phase 5 — Citations : offsets, ancrage, liens profonds</h2>
+    <p class="phase-meta">Le cœur de la crédibilité du rapport. Une citation non vérifiée ne s'affiche pas.</p>
+    <ol class="steps">
+      <li><strong>Extraire</strong> le passage par offsets : <code>page_text[begin:end]</code>.
+          Si les offsets sont absents ou incohérents (hors bornes, <code>end &lt;= begin</code>,
+          texte extrait qui ne ressemble pas à la citation), on retombe sur le texte
+          <code>citation</code> renvoyé et on recalcule <code>begin</code>/<code>end</code> par recherche
+          de la forme normalisée.</li>
+      <li><strong>Valider</strong> avec <code>_quote_is_anchored</code> (déplacé de <code>arp.py</code>
+          vers <code>contract/citations.py</code>) : la citation doit exister <strong>dans le texte
+          de sa propre page</strong>. Une citation non ancrée est comptée
+          (<code>rejected_citations</code>) puis jetée.</li>
+      <li><strong>Bâtir le lien profond</strong> : <code>url#:~:text=&lt;prefix&gt;,&lt;suffix&gt;</code>
+          où <code>prefix</code> = quelques premiers mots URL-encodés et <code>suffix</code> = quelques
+          derniers. Le navigateur surligne alors le passage exact — c'est ça, le « begin et end » du
+          point de vue de l'agent qui lit le rapport.</li>
+      <li><strong>Dédupliquer</strong> par URL, ordonner par rang de source
+          (<code>source_policy</code>), plafonner à N citations par critère
+          (<code>defaults.max_citations_per_criterion</code>).</li>
+    </ol>
+    <div class="callout warn">
+      Le mode global a un défaut connu, déjà observé par <code>exa_debug_global.py</code> :
+      <strong>la synthèse reformule et casse l'ancrage</strong>. C'est pourquoi les citations affichées
+      viennent des <em>summaries par page</em>, pas de la citation globale. La synthèse fournit la prose
+      et le F/M/E ; les pages fournissent les preuves.
+    </div>
+  </div>
+
+  <!-- ================= PHASE 6 ================= -->
+  <div class="section">
+    <h2>Phase 6 — Rendu : la colonne « Observation »</h2>
+    <p class="phase-meta">Le format est piloté par <code>observation_template</code> dans le YAML —
+       modifiable sans toucher au Python.</p>
+    <div class="code-block"><span class="c">--- Ligne A04 du rapport, colonne Observation ---</span>
+
+OpenAI n'utilise pas par défaut le contenu soumis via les forfaits Team, Enterprise
+et l'API pour entraîner ses modèles ; pour ChatGPT gratuit et Plus, l'utilisation
+est activée par défaut et un opt-out est offert dans les réglages.
+
+Risque inhérent proposé : M — L'opt-out dépend d'un réglage utilisateur, non d'une
+garantie contractuelle, et peut être réactivé sans préavis institutionnel.
+
+Sources vérifiées :
+- contrat — « We do not train our models on your business data by default »
+  (https://openai.com/enterprise-privacy#:~:text=We%20do%20not,by%20default)
+- doc technique — « You can disable training in Settings → Data Controls »
+  (https://help.openai.com/…#:~:text=You%20can%20disable,Data%20Controls)</div>
+    <ol class="steps">
+      <li><strong>Mapper</strong> <code>CriterionFinding → RiskFactor</code> dans
+          <code>contract/arp.py</code> (fortement allégé : plus de <code>_observation()</code> par fait,
+          plus de <code>" | ".join(...)</code> manuel).</li>
+      <li><strong>Conserver l'ordre documentaire</strong> de <code>criteria.py</code> — le rapport doit
+          rester aligné sur le formulaire officiel. Un critère sans réponse affiche
+          « Aucune source probante trouvée », pas une case vide.</li>
+      <li><strong>Adapter</strong> <code>report/templates/report.html.j2</code> : retirer la Partie C
+          (verdict/recommandation), ajouter la colonne « Risque inhérent (proposé) », rendre les liens
+          cliquables, afficher le coût total de la recherche en pied de rapport.</li>
+      <li><strong>Adapter</strong> <code>write_pdf</code>/<code>render_pdf</code> (ReportLab) et
+          <code>write_docx</code> : les liens profonds doivent survivre à l'export, l'observation
+          multi-lignes ne doit pas déborder de la cellule.</li>
+      <li><strong>Adapter le wizard web</strong> (<code>web/routes.py</code>,
+          <code>wizard_state.py</code>) : l'étape <code>resultats</code> n'annonce plus un verdict mais
+          un tableau de constats + le rappel « recommandation, jamais autorisation ».</li>
+    </ol>
+  </div>
+
+  <!-- ================= PHASE 7 ================= -->
+  <div class="section">
+    <h2>Phase 7 — Orchestrateur, cache et API</h2>
+    <ol class="steps">
+      <li><strong>Recâbler <code>Interview.assess</code></strong> : identification de l'outil →
+          <code>build_offering_identity</code> → cache ARP (v2) → sinon 17 recherches →
+          <code>CriterionFinding[]</code> → rendu. Les étapes 4, 5 et 6 de l'ancien pipeline
+          (matrice, règles, synthèse) disparaissent purement.</li>
+      <li><strong>Garder la classification des données</strong> telle quelle : elle alimente la fiche de
+          qualification et le contexte de la recherche, mais ne déclenche plus rien.</li>
+      <li><strong>Garder le cache SQLite</strong> : mêmes modes <code>POLICYBOT_ARP_CACHE_MODE</code>
+          (<code>read_write</code> / <code>refresh</code> / <code>read_only</code> /
+          <code>disabled</code>), indexé par offre, <code>schema_version=2</code>.
+          <span class="badge badge-green">gain</span> évite de repayer 17 recherches deep par relance.</li>
+      <li><strong>Simplifier <code>interview/graph.py</code></strong> : les nœuds de verdict sautent ;
+          garder la structure LangGraph pour <code>/assess</code>.</li>
+      <li><strong>Nettoyer <code>configs/prompts.yaml</code> et <code>config.py</code></strong> :
+          retirer la tâche LLM d'extraction contractuelle si elle traîne encore ; conserver
+          <code>data_classification</code>, <code>tool_type_detection</code>,
+          <code>mode_detection</code>, <code>form_suggestions</code>.</li>
+    </ol>
+  </div>
+
+  <!-- ================= PHASE 8 ================= -->
+  <div class="section">
+    <h2>Phase 8 — Tests, scripts, documentation</h2>
+    <p class="phase-meta"><span class="badge badge-yellow">minimum viable</span> — couverture ciblée sur
+       ce qui casse silencieusement.</p>
+    <ol class="steps">
+      <li><strong>Chargeur YAML</strong> (<code>tests/contract/test_criteres.py</code>) : les 17 fichiers
+          chargent, les couples <code>(category, criterion)</code> correspondent à <code>criteria.py</code>,
+          un fichier malformé lève, l'override d'env fonctionne.</li>
+      <li><strong>Parsing Exa</strong> (<code>tests/contract/test_exa.py</code>, client stub offline) :
+          extraction de <code>answer</code>/<code>inherent_risk</code>/<code>justification</code>,
+          <code>inherent_risk</code> invalide → <code>None</code>, coût agrégé, échec d'un critère
+          isolé.</li>
+      <li><strong>Citations</strong> (<code>tests/contract/test_citations.py</code>) : offsets valides,
+          offsets incohérents → recalcul, citation non ancrée → rejetée et comptée, forme du lien
+          <code>#:~:text=</code>.</li>
+      <li><strong>Rendu</strong> : un <code>CriterionFinding</code> complet produit l'observation
+          attendue selon le gabarit YAML ; un critère sans réponse produit le libellé de repli.</li>
+      <li><strong>Mettre à jour <code>scripts/</code></strong> : fusionner
+          <code>exa_debug_fact.py</code> et <code>exa_debug_global.py</code> en un seul
+          <code>scripts/exa_debug_critere.py</code> qui lit la vraie config YAML — c'est l'outil de
+          diagnostic de référence après la refonte.</li>
+      <li><strong>Réécrire <code>CLAUDE.md</code></strong> : l'invariant « seule la grille décide » et
+          le tableau matrice/LLM sont caducs. Le nouvel invariant à écrire :
+          <em>« PolicyBot ne calcule aucun verdict ; il rassemble des constats sourcés et propose un
+          risque inhérent par critère. Rien n'est affiché sans citation ancrée. »</em>
+          Mettre à jour aussi <code>README.md</code>, <code>AGENTS.md</code> et
+          <code>questions-recherche-internet.md</code>.</li>
+      <li><strong>Archiver</strong> les plans HTML devenus obsolètes
+          (<code>plan-refonte-recherche-faits-exa.html</code>,
+          <code>plan-refonte-prompts-recherche-faits.html</code>,
+          <code>plan-partie-b-observations-residuel-vide.html</code>) sous <code>docs/archive/</code>.</li>
+    </ol>
+  </div>
+
+  <!-- ================= INVENTAIRE ================= -->
+  <div class="section">
+    <h2>Inventaire des fichiers</h2>
+    <table>
+      <tr><th style="width:22%">Action</th><th>Fichiers</th></tr>
+      <tr>
+        <td><span class="badge badge-red">supprimé</span></td>
+        <td><code>policybot/grille/</code> (entier) · <code>tests/grille/</code> ·
+            <code>configs/recherche_des_faits/</code> (20 YAML) ·
+            <code>policybot/contract/fact_search.py</code> ·
+            <code>tests/contract/test_fact_search.py</code></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-green">créé</span></td>
+        <td><code>configs/recherche_defaults.yaml</code> ·
+            <code>configs/recherche_criteres/*.yaml</code> (17) ·
+            <code>policybot/contract/criteres.py</code> ·
+            <code>policybot/contract/citations.py</code> ·
+            <code>scripts/exa_debug_critere.py</code> ·
+            <code>tests/contract/test_criteres.py</code> ·
+            <code>tests/contract/test_citations.py</code></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-yellow">réécrit</span></td>
+        <td><code>policybot/contract/exa.py</code> · <code>policybot/contract/arp.py</code> ·
+            <code>policybot/models.py</code> (ContractFacts → CriterionFinding) ·
+            <code>policybot/interview/orchestrator.py</code> · <code>graph.py</code> ·
+            <code>policybot/report/renderer.py</code> + <code>report.html.j2</code> ·
+            <code>CLAUDE.md</code></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">touché</span></td>
+        <td><code>policybot/web/routes.py</code> · <code>wizard_state.py</code> ·
+            <code>policybot/preapproved/store.py</code> (schema v2) ·
+            <code>policybot/tracing.py</code> (champs coût) · <code>pyproject.toml</code> (data-files) ·
+            <code>README.md</code></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-grey">inchangé</span></td>
+        <td><code>policybot/classify/</code> · <code>policybot/llm/</code> ·
+            <code>policybot/contract/offering.py</code> · <code>source_policy.py</code> ·
+            <code>policybot/criteria.py</code> (source de vérité des libellés)</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- ================= RISQUES ================= -->
+  <div class="section">
+    <h2>Risques &amp; parades</h2>
+    <div class="callout danger">
+      <strong>1. Perte du garde-fou réglementaire.</strong> Sans matrice MCN, plus rien n'empêche
+      d'afficher un dossier « rassurant » pour un usage Protégé B sur un outil public — ce que
+      l'ancien pipeline refusait catégoriquement.
+      <br><em>Parade :</em> afficher en tête de rapport, en gras, la classification des données retenue
+      et la mention que <strong>l'évaluation de permissibilité relève entièrement de l'officier</strong>.
+      Décision produit à confirmer auprès de la Direction SI avant mise en service.
+    </div>
+    <div class="callout warn">
+      <strong>2. Coût et latence.</strong> 17 recherches dont plusieurs en <code>deep</code> peuvent
+      dépasser plusieurs dollars et plusieurs minutes par entrevue.
+      <br><em>Parade :</em> <code>neural</code> par défaut, <code>deep</code> réservé aux critères à
+      fort enjeu (A04, A05, A11, A12), plafond de budget par entrevue, cache ARP par offre.
+    </div>
+    <div class="callout warn">
+      <strong>3. F/M/E instable.</strong> Un modèle qui note « M » aujourd'hui et « E » demain sur la
+      même page rend le rapport non reproductible.
+      <br><em>Parade :</em> la justification est obligatoire et affichée ; le niveau est explicitement
+      étiqueté « proposé » ; le cache fige le résultat pour la durée de validité de l'ARP.
+    </div>
+    <div class="callout">
+      <strong>4. Citations toutes rejetées.</strong> Si l'ancrage échoue systématiquement (page rendue
+      en JS, PDF, texte tronqué à 24 000 caractères), la colonne Observation se vide.
+      <br><em>Parade :</em> <code>rejected_citations</code> est affiché dans le rapport — un critère
+      avec 5 citations rejetées est un signal, pas un silence. À surveiller lors du premier run réel.
+    </div>
+  </div>
+
+  <!-- ================= QUESTIONS OUVERTES ================= -->
+  <div class="section">
+    <h2>Questions ouvertes</h2>
+    <ul class="plain">
+      <li><strong>B04 « Image et réputation »</strong> n'est pas recherchable par nature
+          (<code>questions-recherche-internet.md</code> le dit explicitement). On lui écrit quand même un
+          YAML : soit une query orientée « incidents médiatisés liés à {tool} », soit un critère
+          <code>searchable: false</code> qui rend une ligne vide à remplir par l'officier. À trancher
+          à l'implémentation.</li>
+      <li><strong>Les 7 autres critères de <code>USAGE_CRITERIA</code></strong> (fuite de données,
+          hallucinations, formation, supervision…) restent sans recherche. Le rapport doit-il les
+          afficher en lignes vides « à compléter » ou les masquer ?</li>
+      <li><strong><code>PreApprovedRecord</code></strong> porte encore <code>verdict</code> et
+          <code>risk_level</code> : le modèle « pré-approuvé » a-t-il encore un sens sans verdict, ou
+          devient-il un simple cache d'ARP ?</li>
+      <li><strong>Langue des réponses.</strong> Les prompts sont en français, les sources en anglais.
+          Faut-il exiger la réponse en français (risque de reformulation) et garder les citations en
+          langue originale ? Le plan suppose oui.</li>
+    </ul>
+  </div>
+
+  <!-- ================= SUCCÈS ================= -->
+  <div class="section">
+    <h2>Critères de succès</h2>
+    <ol class="steps">
+      <li><strong>Zéro grille :</strong> <code>grep -rn "grille\|matrix\|verdict" policybot/</code> ne
+          retourne rien.</li>
+      <li><strong>Zéro prompt en dur :</strong> tous les schémas, instructions et paramètres Exa
+          proviennent de <code>configs/recherche_defaults.yaml</code> ou d'un fichier de critère ;
+          modifier un prompt dans le YAML change le comportement sans redéploiement de code.</li>
+      <li><strong>Un run réel</strong> sur ChatGPT / OpenAI produit 17 lignes, dont au moins 10 avec
+          une réponse, un F/M/E justifié et ≥ 1 citation ancrée assortie d'un lien profond qui surligne
+          bien le passage dans le navigateur.</li>
+      <li><strong>Le coût total</strong> de l'entrevue apparaît dans le rapport et dans
+          <code>logs/policybot.jsonl</code>, sans aucun texte libre en clair.</li>
+      <li><strong><code>pytest</code> vert</strong> sur la suite réduite, entièrement offline
+          (client Exa stub, aucun appel réseau).</li>
+      <li><strong>Les exports PDF et DOCX</strong> se génèrent et restent lisibles avec des observations
+          multi-lignes et des liens.</li>
+      <li><strong><code>CLAUDE.md</code> décrit le système qui existe</strong> — pas celui d'avant.</li>
+    </ol>
+  </div>
+
+</div>
+</body>
+</html>

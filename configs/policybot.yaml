@@ -45,5 +45,5 @@ cache:
 
 # Diagnostics locaux en clair : à activer seulement pendant un débogage local.
 debug_runs:
-  enabled: True
+  enabled: false
   output_dir: logs/runs

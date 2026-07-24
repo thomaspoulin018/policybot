@@ -310,7 +310,7 @@ def demo_wizard_scenarios() -> list[DemoWizardScenario]:
             id="mcn_blocked",
             title="Blocage par la matrice MCN",
             description="Une IAG publique reçoit des données stratégiques et personnelles.",
-            expected_result="Cible : INTERDIT et recommandation Refuser, sans analyse ARP.",
+            expected_result="Cible : classification Protégé B et examen humain renforcé.",
             state=_demo_state(
                 data_checked=[
                     "Renseignements personnels",
@@ -329,7 +329,7 @@ def demo_wizard_scenarios() -> list[DemoWizardScenario]:
             id="arp_closed_circuit",
             title="Analyse ARP — circuit fermé",
             description="Copilot Entreprise traite des documents internes Protégé A.",
-            expected_result="Cible : matrice PERMIS, collecte contractuelle et grille ARP.",
+            expected_result="Cible : classification prudente et dossier de constats sourcés.",
             state=_demo_state(
                 tool_name="Microsoft Copilot Entreprise",
                 version_plan_tarifaire="Licence institutionnelle Entreprise",
@@ -379,7 +379,7 @@ def demo_wizard_scenarios() -> list[DemoWizardScenario]:
             id="automated_decision",
             title="Décision automatisée",
             description="Des données publiques alimentent une décision sans révision humaine.",
-            expected_result="Cible : risque élevé et recommandation Escalader.",
+            expected_result="Cible : plusieurs constats à risque élevé à faire examiner.",
             state=_demo_state(
                 usage_description="Classer automatiquement les demandes reçues selon leur priorité.",
                 result_use_checked=["Prise de décision"],
@@ -390,7 +390,7 @@ def demo_wizard_scenarios() -> list[DemoWizardScenario]:
         ),
         DemoWizardScenario(
             id="multiple_usages",
-            title="Plusieurs usages — pire verdict",
+            title="Plusieurs usages — constats distincts",
             description="Un usage public permis et un usage stratégique interdit partagent le même outil.",
             expected_result="Cible : la synthèse globale conserve Refuser.",
             state=_demo_state(

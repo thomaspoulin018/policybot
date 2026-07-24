@@ -1,0 +1,8 @@
+version: 2
+id: B01
+partie: B
+category: Gestion des données
+criterion: Utilisation de données pour entraînement
+question: Les données soumises pourraient-elles être réutilisées par le fournisseur pour entraîner son modèle ?
+exa:
+  query: Does {vendor} use {tool} customer prompts outputs or files for model training? default opt-out {plan} {contract_type}

@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan : refonte des prompts de recherche des faits contractuels</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.6; color: #1a1a2e;
+    background: #f4f6fb; padding: 2rem 1rem;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.75rem; font-weight: 700; line-height: 1.3; }
+  header p  { margin-top: .5rem; opacity: .8; font-size: .97rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.1rem; font-size: .83rem; opacity: .65; }
+
+  .section {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+  }
+  .section h2 {
+    font-size: 1.05rem; font-weight: 700; color: #16213e;
+    border-left: 4px solid #4361ee; padding-left: .75rem;
+    margin-bottom: 1rem;
+  }
+  .section h3 {
+    font-size: .95rem; font-weight: 700; color: #16213e;
+    margin: 1.25rem 0 .5rem;
+  }
+  .section p + p { margin-top: .6rem; }
+  .section > p, .section > ul { margin-bottom: .5rem; }
+
+  ol.steps { padding-left: 1.3rem; }
+  ol.steps li { margin-bottom: .7rem; }
+  ol.steps li strong { color: #4361ee; }
+  ul.plain { padding-left: 1.3rem; }
+  ul.plain li { margin-bottom: .35rem; }
+
+  .badge {
+    display: inline-block; font-size: .72rem; font-weight: 600;
+    padding: .15rem .55rem; border-radius: 99px; margin-right: .3rem;
+    vertical-align: middle;
+  }
+  .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-yellow { background: #fef9c3; color: #a16207; }
+  .badge-red    { background: #fee2e2; color: #b91c1c; }
+  .badge-grey   { background: #e9ecf5; color: #475569; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .75rem; font-weight: 700; }
+  td { padding: .5rem .75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: .86em; background: #eef1f8; padding: .1rem .32rem; border-radius: 4px;
+  }
+  .code-block {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: .82rem; line-height: 1.55; white-space: pre; overflow-x: auto;
+    background: #1a1a2e; color: #e6e9f5; padding: .9rem 1.1rem;
+    border-radius: 8px; margin: .6rem 0;
+  }
+  .code-block .c { color: #7d8bb8; }
+  .code-block .bad { color: #ff9a9a; }
+  .code-block .good { color: #9ae6b4; }
+
+  .callout {
+    border-left: 4px solid #4361ee; background: #f0f4ff;
+    padding: .75rem 1rem; border-radius: 0 8px 8px 0;
+    font-size: .89rem; margin-top: .75rem;
+  }
+  .callout.warn { border-color: #f59e0b; background: #fffbeb; }
+  .callout.danger { border-color: #ef4444; background: #fef2f2; }
+  .callout.ok { border-color: #22c55e; background: #f0fdf4; }
+  .callout strong { display: inline; }
+
+  .kpi { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .5rem; }
+  .kpi div {
+    flex: 1 1 190px; background: #f7f9ff; border: 1px solid #e3e9f7;
+    border-radius: 8px; padding: .7rem .9rem;
+  }
+  .kpi span { display: block; font-size: .76rem; color: #64748b; text-transform: uppercase; letter-spacing: .03em; }
+  .kpi b { font-size: 1rem; color: #16213e; }
+
+  footer { text-align: center; font-size: .8rem; color: #94a3b8; padding: 1.5rem 0 .5rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>Refonte des prompts de recherche des faits contractuels</h1>
+  <p>Réaligner les 19 recherches Exa de PolicyBot pour qu'elles trouvent la bonne page, sur la bonne offre, dans la bonne juridiction — et qu'elles en extraient la bonne valeur.</p>
+  <div class="meta">
+    <span>Date : 23 juillet 2026</span>
+    <span>Portée : <code>configs/recherche_des_faits/</code> + code de support</span>
+    <span>Ambition : réécriture ciblée</span>
+  </div>
+</header>
+
+<!-- ================= CONSTAT ================= -->
+<div class="section">
+  <h2>Constat — ce que montre le dernier run debug</h2>
+  <p>
+    Le run <code>logs/runs/2026-07-23_10-51-26_18b6b812</code> (ChatGPT) donne trois
+    preuves concrètes que le problème n'est pas « le modèle est moins bon », mais que
+    <strong>les requêtes et les questions d'extraction ne demandent pas ce que PolicyBot veut savoir</strong>.
+  </p>
+
+  <h3>Symptôme 1 — la requête envoyée à Exa contient du jargon interne et des <code>unknown</code></h3>
+  <p>
+    Le gabarit impose <code>{plan} {deployment_mode} {contract_type} {contract_version}</code> en tête.
+    Or <code>build_offering_identity</code> remplit <code>deployment_mode</code> et <code>contract_type</code>
+    avec des valeurs d'énumération internes, et <code>_identity_values</code> remplace tout champ vide par
+    le littéral <code>unknown</code>. Pour ChatGPT public, la requête réellement envoyée ressemble à :
+  </p>
+  <div class="code-block"><span class="bad">unknown public_saas consumer_terms unknown</span> ChatGPT OpenAI terms customer content used to train models by default</div>
+  <p>
+    Trois de ces quatre premiers termes ne sont écrits nulle part sur le web. Ils diluent le signal
+    sémantique de la requête et, en mode <code>auto</code>, poussent Exa vers du bruit.
+  </p>
+
+  <h3>Symptôme 2 — la bonne juridiction n'est pas ciblée <span class="badge badge-red">le plus grave</span></h3>
+  <p>
+    Le fait <code>applicable_law</code> ressort <code>foreign</code>, statut <code>accepted</code>, avec pour
+    preuve <code>openai.com/<b>en-GB</b>/policies/<b>eu-terms-of-use</b>/</code>. La citation est
+    authentique et ancrée — mais elle vient des conditions <em>européennes</em>, qui ne régissent pas
+    un employé de l'UQAM. Le contrôle d'ancrage fait son travail ; c'est la <em>requête</em> qui ne
+    dit jamais qu'on évalue un usage québécois.
+  </p>
+  <div class="callout danger">
+    Un fait <em>faux mais accepté</em> est plus dangereux qu'un <code>unknown</code> : il alimente
+    silencieusement la grille et le rapport avec une preuve d'apparence solide. Ce mode d'échec est
+    prioritaire sur le taux de <code>unknown</code>.
+  </div>
+
+  <h3>Symptôme 3 — abstention du modèle sur le bon document</h3>
+  <p>
+    <code>contract_prohibits_reuse</code> ressort <code>unknown</code> avec le statut
+    <code>model_abstention</code>, alors que le document candidat retenu est bien les
+    <em>Terms of Use</em> d'OpenAI. La bonne page est là ; c'est la question
+    <code>summary.query</code> qui ne permet pas au modèle de trancher — soit parce qu'elle est
+    trop abstraite, soit parce que la contrainte de citation verbatim est plus exigeante que ce que
+    la page permet.
+  </p>
+
+  <h3>Symptôme 4 — les 5 places de résultats sont gaspillées</h3>
+  <p>
+    Les documents candidats du run sont massivement des variantes du <em>même</em> texte :
+    version française, version européenne, page « Mises à jour des conditions », traduction de
+    cette page de mises à jour. Avec <code>num_results: 5</code>, il ne reste presque aucune place
+    pour le document qui contiendrait réellement la réponse (Business Terms, DPA, Trust Center).
+  </p>
+  <div class="callout warn">
+    Un artefact suspect à vérifier en phase 1 : dans le run, le texte retourné pour la page
+    <em>Terms of Use</em> contient au milieu un paragraphe sur la configuration SSO. Si le contenu
+    Exa est contaminé entre documents, <code>_quote_is_anchored</code> peut valider une citation
+    contre le mauvais texte. À confirmer avant de conclure.
+  </div>
+</div>
+
+<!-- ================= OBJECTIF ================= -->
+<div class="section">
+  <h2>Objectif &amp; principes non négociables</h2>
+  <p>
+    <strong>But :</strong> que les 19 faits contractuels décrivent l'offre réellement évaluée, avec
+    une preuve issue de la bonne source et de la bonne juridiction — sans jamais assouplir les
+    garde-fous qui rendent PolicyBot auditable.
+  </p>
+  <ul class="plain">
+    <li><span class="badge badge-red">Interdit</span> Assouplir <code>_quote_is_anchored</code>. Une citation non retrouvée dans le contenu reste un rejet.</li>
+    <li><span class="badge badge-red">Interdit</span> Déduire une valeur en l'absence de preuve. <code>unknown</code> reste la valeur de repli légitime.</li>
+    <li><span class="badge badge-red">Interdit</span> Faire trancher un verdict par le LLM ou par Exa. Seule la grille décide ; ces faits sont des <em>entrées</em>.</li>
+    <li><span class="badge badge-green">Visé</span> Réduire les <code>unknown</code> <strong>uniquement</strong> quand la preuve existe et est vérifiable.</li>
+    <li><span class="badge badge-green">Visé</span> Éliminer les acceptations hors-offre et hors-juridiction, même au prix de quelques <code>unknown</code> de plus.</li>
+  </ul>
+</div>
+
+<!-- ================= ENVIRONNEMENT ================= -->
+<div class="section">
+  <h2>Environnement &amp; lancement</h2>
+  <div class="code-block">cd C:\code\05_Travail\PolicyBot
+python -m venv .venv
+
+<span class="c"># Windows (PowerShell)</span>
+.\.venv\Scripts\activate
+
+<span class="c"># macOS / Linux</span>
+source .venv/bin/activate
+
+pip install -e ".[dev]"
+pytest -v                       <span class="c"># le seul gate du projet</span>
+uvicorn policybot.api.app:app --reload</div>
+  <p>Pré-requis spécifiques à ce chantier :</p>
+  <ul class="plain">
+    <li><code>EXA_API_KEY</code> et <code>OPENROUTER_API_KEY</code> présents dans <code>.env</code> (jamais commité).</li>
+    <li><code>configs/policybot.yaml</code> → <code>debug_runs.enabled: true</code> (déjà actif) pour capturer les runs comparatifs.</li>
+    <li><code>cache.arp.mode: disabled</code> (déjà actif) — indispensable : un cache actif masquerait l'effet des changements.</li>
+  </ul>
+  <div class="callout warn">
+    <code>logs/runs/</code> contient les prompts, réponses et extraits <strong>en clair</strong>.
+    Usage local uniquement, jamais versionné, jamais partagé.
+  </div>
+</div>
+
+<!-- ================= PHASE 1 ================= -->
+<div class="section">
+  <h2>Phase 1 — Mesurer avant de toucher <span class="badge badge-grey">~2 h</span></h2>
+  <ol class="steps">
+    <li><strong>Choisir 3 offres de référence</strong> couvrant trois régimes contractuels distincts —
+      proposition : <em>ChatGPT (grand public, publique)</em>, <em>Microsoft&nbsp;365 Copilot (circuit fermé, entente institutionnelle)</em>,
+      <em>Claude.ai grand public</em>. Le contraste public / entreprise est ce qui révèle le problème d'identité d'offre.</li>
+    <li><strong>Écrire la vérité terrain à la main.</strong> Pour chacune des 3 offres, remplir un tableau
+      19 lignes × (valeur attendue, URL de la source qui la prouve). C'est du travail manuel de lecture
+      de conditions ; c'est aussi la seule référence qui permettra de dire « mieux » plutôt que « différent ».</li>
+    <li><strong>Capturer la ligne de base.</strong> Lancer une évaluation complète par offre, conserver les
+      3 <code>run.md</code> dans un dossier <code>baseline/</code> hors du dépôt.</li>
+    <li><strong>Outiller le dépouillement.</strong> Petit script jetable (dans le scratchpad, pas dans le paquet)
+      qui transforme un <code>run.md</code> en tableau <code>fait | valeur | statut | URL retenue | nb candidats</code>.
+      Sans ça, comparer 19 faits × 3 outils × 2 versions à l'œil est ingérable.</li>
+    <li><strong>Classer chaque échec</strong> dans une des cinq catégories : <em>mauvaise page</em>,
+      <em>bonne page / mauvaise juridiction</em>, <em>bonne page / abstention</em>,
+      <em>bonne page / mauvaise valeur</em>, <em>fait mal défini</em>. La répartition dicte l'ordre des phases 3 et 4.</li>
+    <li><strong>Trancher l'artefact de contamination</strong> repéré au symptôme 4 : le texte SSO dans la page ToU
+      vient-il d'Exa, du rendu du run debug, ou d'une vraie page ? Si c'est un bug de collecte, il devient
+      la priorité absolue et passe devant toute réécriture de prompt.</li>
+  </ol>
+  <div class="callout">
+    <strong>Sortie de phase :</strong> un tableau de bord 57 cases (19 faits × 3 outils) avec le statut actuel
+    et la catégorie d'échec. C'est le document contre lequel tout le reste sera jugé.
+  </div>
+</div>
+
+<!-- ================= PHASE 2 ================= -->
+<div class="section">
+  <h2>Phase 2 — Réparer le préfixe d'identité d'offre <span class="badge badge-yellow">code + tests</span> <span class="badge badge-grey">~3 h</span></h2>
+  <p>
+    Cette phase précède la réécriture des requêtes : réécrire 19 requêtes par-dessus un préfixe cassé
+    reviendrait à les réécrire deux fois.
+  </p>
+  <ol class="steps">
+    <li><strong>Traduire les énumérations internes en vocabulaire du web.</strong> Introduire une table de
+      correspondance (dans <code>offering.py</code> ou un module dédié) qui rend l'identité <em>cherchable</em> :
+      <div class="table-wrap"><table>
+        <tr><th>Valeur interne</th><th>Termes injectés dans la requête</th></tr>
+        <tr><td><code>public_saas</code> + <code>consumer_terms</code></td><td>« consumer terms of use for individuals »</td></tr>
+        <tr><td><code>managed_saas</code> + <code>institutional_agreement</code></td><td>« enterprise business terms institutional agreement »</td></tr>
+        <tr><td><code>sovereign_hosted</code></td><td>« sovereign hosted Quebec Canada region »</td></tr>
+        <tr><td><code>government_hosted</code></td><td>« government hosted on-premises tenant »</td></tr>
+      </table></div>
+    </li>
+    <li><strong>Omettre l'inconnu au lieu de l'écrire.</strong> Modifier <code>_identity_values</code> /
+      la construction de requête pour qu'un champ vide disparaisse de la requête plutôt que d'y injecter
+      le mot <code>unknown</code>. Le champ manquant continue d'être <em>consigné</em> comme identité
+      incomplète dans le rapport — ce comportement ne change pas, seule la chaîne envoyée à Exa change.</li>
+    <li><strong>Ajouter la juridiction d'évaluation.</strong> Faire de <code>{jurisdiction}</code> un élément
+      par défaut de l'identité (Québec / Canada) plutôt qu'un placeholder optionnel réservé à quelques faits,
+      pour que les requêtes cessent d'attirer les variantes UE/UK.</li>
+    <li><strong>Assouplir la contrainte de placeholders</strong> dans <code>fact_search.py</code> : elle exige
+      aujourd'hui les 6 placeholders dans <em>chaque</em> requête. Remplacer par un préfixe d'identité construit
+      par le code, que le YAML n'a plus à recopier — le YAML ne porte alors que la partie <em>spécifique au fait</em>.
+      Cela supprime 19 copies d'un même bout de gabarit.</li>
+    <li><strong>Mettre à jour les tests</strong> <code>tests/contract/test_fact_search.py</code> et
+      <code>test_exa.py</code> : validation des nouveaux gabarits, plus un test explicite « aucune requête
+      construite ne contient le littéral <code>unknown</code> ».</li>
+  </ol>
+  <div class="callout danger">
+    <strong>Risque de régression :</strong> la validation stricte au chargement est un garde-fou (un YAML
+    incomplet fait échouer le démarrage). En l'assouplissant, remplacer la contrainte par une autre, pas par rien :
+    le préfixe d'identité devient obligatoire <em>par construction</em> dans le code.
+  </div>
+</div>
+
+<!-- ================= PHASE 3 ================= -->
+<div class="section">
+  <h2>Phase 3 — Réécrire les requêtes Exa, par famille <span class="badge badge-grey">~4 h</span></h2>
+  <p>
+    Les 19 faits ne se cherchent pas au même endroit. Traiter une famille à la fois, en validant sur une
+    offre de référence avant de passer à la suivante.
+  </p>
+  <div class="table-wrap"><table>
+    <tr><th>Famille</th><th>Faits</th><th>Où vit vraiment la réponse</th></tr>
+    <tr>
+      <td><b>Usage des données</b></td>
+      <td><code>training_default</code>, <code>opt_out_available</code>, <code>opt_out_confirmed_enabled</code>, <code>contract_prohibits_reuse</code>, <code>provider_human_access</code></td>
+      <td>Conditions d'utilisation, politique de confidentialité, page « how we use your data » du fournisseur</td>
+    </tr>
+    <tr>
+      <td><b>Souveraineté &amp; hébergement</b></td>
+      <td><code>data_residency</code>, <code>sub_processors</code>, <code>foreign_vendor_dependency</code>, <code>applicable_law</code></td>
+      <td>DPA, liste de sous-traitants, page « data residency / regions », clause de droit applicable</td>
+    </tr>
+    <tr>
+      <td><b>Cadre contractuel</b></td>
+      <td><code>institutional_terms_available</code>, <code>institutional_use_restricted</code>, <code>dpa_available</code>, <code>ip_ownership</code>, <code>quebec_higher_ed_license</code></td>
+      <td>Business/Enterprise terms, addenda éducation, ententes de regroupement d'achat</td>
+    </tr>
+    <tr>
+      <td><b>Sécurité technique</b></td>
+      <td><code>encryption_standard</code>, <code>authentication_support</code>, <code>audit_logging</code>, <code>incident_response</code>, <code>data_retention</code></td>
+      <td>Trust center, documentation d'administration, rapport SOC&nbsp;2 public</td>
+    </tr>
+  </table></div>
+
+  <h3>Règles de réécriture appliquées à chaque requête</h3>
+  <ol class="steps">
+    <li><strong>Employer les mots de la page, pas ceux du domaine métier.</strong> Une clause ne dit jamais
+      « le fournisseur réutilise-t-il les contenus ». Elle dit « we do not use your content to train our models ».
+      La requête doit ressembler à la phrase cherchée.</li>
+    <li><strong>Nommer le document visé</strong> quand il est connu : « Business Terms », « Data Processing Addendum »,
+      « Trust Center », « subprocessor list ». C'est le levier le plus direct pour sortir des ToU grand public.</li>
+    <li><strong>Ajuster <code>include_domains</code> par famille.</strong> Les faits sécurité gagnent à être
+      restreints au domaine officiel du fournisseur ; les faits « licence québécoise en enseignement supérieur »
+      doivent au contraire pouvoir sortir du domaine du fournisseur.</li>
+    <li><strong>Revoir <code>num_results</code> à la hausse (8–10) sur les familles où les variantes
+      linguistiques saturent les résultats</strong> — le surcoût est faible comparé à un fait perdu.</li>
+    <li><strong>Réévaluer <code>type</code> par fait.</strong> <code>keyword</code> pour les faits qui visent une
+      clause à la formulation stable ; <code>neural</code> ou <code>deep</code> pour ceux qui exigent de recouper
+      plusieurs pages (<code>quebec_higher_ed_license</code>, <code>sub_processors</code>). Ne pas basculer
+      globalement en <code>deep</code> : le coût et la latence explosent.</li>
+    <li><strong>Écarter les variantes non applicables.</strong> Empêcher les conditions UE/UK de monopoliser
+      les places, via la juridiction ajoutée en phase 2 et, si nécessaire, un filtre de chemin d'URL.</li>
+  </ol>
+</div>
+
+<!-- ================= PHASE 4 ================= -->
+<div class="section">
+  <h2>Phase 4 — Réécrire l'extraction et redéfinir les faits flous <span class="badge badge-grey">~3 h</span></h2>
+  <ol class="steps">
+    <li><strong>Rendre <code>summary.query</code> décidable.</strong> La question actuelle est posée en termes
+      abstraits (« Does the assessed offering use submitted data to train models by default? »). La reformuler
+      en critère explicite : ce qui compte comme <code>yes</code>, ce qui compte comme <code>no</code>,
+      et l'instruction de répondre <code>unknown</code> si la page traite d'une <em>autre</em> offre.</li>
+    <li><strong>Attaquer les <code>model_abstention</code> en priorité</strong> — ce sont les cas où la bonne
+      page est déjà là. Chaque abstention corrigée est un gain net sans coût de recherche supplémentaire.</li>
+    <li><strong>Assouplir la citation sans casser l'ancrage.</strong> Autoriser une citation plus longue
+      (une à trois phrases contiguës) plutôt qu'une phrase courte : la contrainte « courte, continue, sans
+      ellipse » pousse le modèle à s'abstenir quand la clause pertinente est longue. L'exigence verbatim
+      et le contrôle d'ancrage restent intacts.</li>
+    <li><strong>Ajouter une contrainte d'applicabilité dans la question elle-même :</strong> « si le document
+      régit une offre ou une juridiction différente de celle décrite, répondre <code>unknown</code> ».
+      C'est le correctif direct du symptôme 2.</li>
+    <li><strong>Rouvrir <code>allowed_values</code> et <code>hint</code></strong> pour les faits identifiés
+      « mal définis » en phase 1. Toute modification d'énumération doit être répercutée à l'identique dans
+      <code>summary.schema.properties.value.enum</code> (même contenu, même ordre) — la validation au
+      chargement le vérifie — et confrontée à ce que <code>grille.yaml</code> consomme réellement :
+      un fait dont aucune règle ne se sert n'a pas besoin d'être finement gradué.</li>
+  </ol>
+  <div class="callout warn">
+    Modifier <code>allowed_values</code> touche <code>ContractFacts</code>, donc potentiellement
+    <code>grille.yaml</code> et les tests de la grille. À faire fait par fait, avec <code>pytest</code>
+    entre chaque, jamais en lot.
+  </div>
+</div>
+
+<!-- ================= PHASE 5 ================= -->
+<div class="section">
+  <h2>Phase 5 — Valider avant / après <span class="badge badge-grey">~2 h</span></h2>
+  <ol class="steps">
+    <li><strong>Rejouer les 3 offres de référence</strong> dans les mêmes conditions qu'en phase 1
+      (cache désactivé, runs debug activés).</li>
+    <li><strong>Produire le tableau comparatif</strong> avec le script de dépouillement : par fait,
+      <em>avant</em> → <em>après</em> → <em>vérité terrain</em>, plus l'URL retenue de part et d'autre.</li>
+    <li><strong>Compter séparément les quatre mouvements</strong> — les mélanger masquerait une régression :
+      <div class="kpi">
+        <div><span>Gain</span><b><code>unknown</code> → correct</b></div>
+        <div><span>Gain majeur</span><b>faux → correct ou <code>unknown</code></b></div>
+        <div><span>Régression tolérable</span><b>correct → <code>unknown</code></b></div>
+        <div><span>Régression bloquante</span><b>correct → faux</b></div>
+      </div>
+    </li>
+    <li><strong>Vérifier la qualité de source</strong> et pas seulement la valeur : un <code>yes</code> juste
+      appuyé sur une page marketing reste un mauvais résultat.</li>
+    <li><strong>Relancer la suite complète</strong> : <code>pytest -v</code>, et en particulier
+      <code>tests/test_golden_scenarios.py</code> qui doit continuer de produire <code>INTERDIT</code> /
+      <code>Refuser</code> sur le scénario UQAM.</li>
+    <li><strong>Boucle courte au besoin :</strong> si un fait reste faux, corriger seulement ce YAML et
+      rejouer cette offre-là — pas les trois.</li>
+  </ol>
+  <div class="callout">
+    <strong>Attention au bruit.</strong> Exa et le web ne sont pas déterministes : une variation d'un ou
+    deux faits entre deux exécutions identiques est du bruit, pas un résultat. Ne conclure que sur des
+    mouvements nets et répétés.
+  </div>
+</div>
+
+<!-- ================= PHASE 6 ================= -->
+<div class="section">
+  <h2>Phase 6 — Consolider <span class="badge badge-grey">~1 h</span></h2>
+  <ol class="steps">
+    <li><strong>Mettre à jour <code>configs/recherche_des_faits/README.md</code></strong> : il documente
+      aujourd'hui le préfixe obligatoire de 6 placeholders, la contrainte de citation courte et
+      <code>require_declared_source_url</code>. Chacun de ces points bouge en phase 2 ou 4.</li>
+    <li><strong>Mettre à jour <code>CLAUDE.md</code></strong> (section pipeline, étape 2) si la construction
+      de requête change de responsable.</li>
+    <li><strong>Consigner les décisions de rédaction</strong> — les règles de la phase 3 méritent d'être écrites
+      dans le README, sinon la prochaine modification de YAML les perdra. C'est précisément ce qui a permis
+      la dérive actuelle.</li>
+    <li><strong>Commit direct sur <code>main</code>.</strong> Les YAML de configuration et leur documentation
+      ne justifient pas de PR ; si les changements de <code>exa.py</code> / <code>fact_search.py</code>
+      s'avèrent substantiels, séparer ce commit-là.</li>
+  </ol>
+</div>
+
+<!-- ================= DEPENDANCES ================= -->
+<div class="section">
+  <h2>Dépendances &amp; ordre imposé</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Phase</th><th>Bloquée par</th><th>Pourquoi cet ordre</th></tr>
+    <tr><td>1 — Mesure</td><td>—</td><td>Sans ligne de base, « mieux » n'est pas démontrable.</td></tr>
+    <tr><td>2 — Identité d'offre</td><td>1</td><td>Réécrire les requêtes avant de corriger le préfixe oblige à tout réécrire deux fois.</td></tr>
+    <tr><td>3 — Requêtes</td><td>2</td><td>Le YAML ne porte plus le préfixe : les gabarits changent de forme.</td></tr>
+    <tr><td>4 — Extraction</td><td>3 (partiellement)</td><td>Corriger l'extraction sur des documents encore mauvais fausse le diagnostic. Exception : les <code>model_abstention</code> sur bon document peuvent être traités dès la phase 1.</td></tr>
+    <tr><td>5 — Validation</td><td>2, 3, 4</td><td>Chaque exécution coûte 19 recherches Exa par offre.</td></tr>
+    <tr><td>6 — Doc</td><td>5</td><td>Documenter des règles non encore validées.</td></tr>
+  </table></div>
+</div>
+
+<!-- ================= RISQUES ================= -->
+<div class="section">
+  <h2>Risques &amp; parades</h2>
+  <div class="callout danger">
+    <strong>1. Optimiser le taux de remplissage au détriment de la justesse.</strong>
+    Une requête plus large et une question plus permissive feront baisser les <code>unknown</code> —
+    en acceptant des preuves hors offre ou hors juridiction. <em>Parade :</em> compter séparément
+    « faux → correct » et « <code>unknown</code> → correct » (phase 5) et traiter tout
+    « correct → faux » comme bloquant.
+  </div>
+  <div class="callout warn">
+    <strong>2. Coût et latence Exa.</strong> 19 recherches × 3 offres par cycle de validation, plusieurs
+    cycles. <em>Parade :</em> boucles courtes sur une seule offre pendant la mise au point, cycle complet
+    seulement en phase 5 ; <code>deep</code> réservé à deux ou trois faits, pas globalement
+    (<code>POLICYBOT_EXA_SEARCH_TYPE</code> reste un outil de diagnostic ponctuel).
+  </div>
+  <div class="callout warn">
+    <strong>3. Non-déterminisme du web.</strong> Les pages et l'index Exa changent entre deux exécutions ;
+    une partie de la « dégradation récente » perçue peut venir de là plutôt que des prompts.
+    <em>Parade :</em> conserver les <code>run.md</code> de base, ne conclure que sur des écarts nets,
+    et rejouer une fois la ligne de base en fin de parcours pour estimer le bruit.
+  </div>
+  <div class="callout warn">
+    <strong>4. Effet de bord sur la grille.</strong> Un fait qui passe de <code>unknown</code> à une valeur
+    réelle peut activer des règles de <code>grille.yaml</code> jusqu'ici dormantes et changer des verdicts.
+    <em>Parade :</em> <code>pytest</code> après chaque fait modifié ; vérifier le scénario doré à chaque phase.
+  </div>
+</div>
+
+<!-- ================= QUESTIONS OUVERTES ================= -->
+<div class="section">
+  <h2>Questions ouvertes</h2>
+  <ul class="plain">
+    <li><b>Quelles 3 offres exactement ?</b> La proposition (ChatGPT public, M365 Copilot, Claude.ai) est
+      à confirmer — l'idéal est qu'au moins une soit une offre dont tu connais déjà les réponses par cœur.</li>
+    <li><b>La contamination de contenu du symptôme 4 est-elle réelle ?</b> Si oui, elle change l'ordre des priorités.</li>
+    <li><b>Faut-il traiter la juridiction comme une donnée d'entrée de l'entrevue</b> (toujours Québec pour l'UQAM)
+      ou comme un champ d'identité d'offre à deviner ? La première option est plus simple et plus juste.</li>
+    <li><b>Certains des 19 faits sont-ils réellement utilisés par <code>grille.yaml</code> ?</b> Un fait
+      inutilisé n'a pas besoin d'être réparé — à vérifier en phase 1, ça peut réduire la portée.</li>
+  </ul>
+</div>
+
+<!-- ================= SUCCES ================= -->
+<div class="section">
+  <h2>Critères de succès</h2>
+  <ol class="steps">
+    <li><strong>Zéro régression bloquante :</strong> aucun fait ne passe de correct à faux sur les 3 offres.</li>
+    <li><strong>Zéro preuve hors juridiction acceptée :</strong> plus aucune citation issue des conditions
+      UE/UK pour une évaluation québécoise.</li>
+    <li><strong>Les abstentions sur bon document disparaissent :</strong> tout fait dont le document candidat
+      retenu contient la réponse ressort avec une valeur.</li>
+    <li><strong>Le préfixe de requête est propre :</strong> aucune requête envoyée à Exa ne contient le
+      littéral <code>unknown</code> ni une valeur d'énumération interne.</li>
+    <li><strong><code>pytest -v</code> vert</strong>, scénario doré inclus.</li>
+    <li><strong>Les règles de rédaction sont écrites</strong> dans le README du dossier, pour que la prochaine
+      modification ne redérive pas.</li>
+  </ol>
+  <div class="callout ok">
+    Cible chiffrée à fixer après la phase 1, une fois la ligne de base connue. Un objectif posé avant la
+    mesure ne serait qu'un vœu.
+  </div>
+</div>
+
+<footer>PolicyBot — plan de refonte des prompts de recherche des faits · 23 juillet 2026</footer>
+
+</div>
+</body>
+</html>

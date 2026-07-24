@@ -1,0 +1,8 @@
+version: 2
+id: B02
+partie: B
+category: Gestion des données
+criterion: Compatibilité avec la LAI/PRP
+question: Quels engagements publiés du fournisseur permettent d'évaluer la compatibilité avec la LAI/PRP et la Loi 25 du Québec ?
+exa:
+  query: "{vendor} {tool} Quebec Law 25 privacy public body data protection DPA Canada {plan} {jurisdiction}"

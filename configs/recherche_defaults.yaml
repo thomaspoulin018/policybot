@@ -1,0 +1,67 @@
+version: 2
+exa:
+  type: neural
+  num_results: 5
+  include_domains: []
+  contents:
+    text:
+      max_characters: 24000
+    highlights:
+      num_sentences: 3
+budget:
+  max_cost_dollars_per_interview: 2.50
+  on_exceeded: degrade_to_neural
+schemas:
+  global:
+    type: object
+    additionalProperties: false
+    required: [answer, inherent_risk, justification]
+    properties:
+      answer:
+        type: string
+        description: Réponse complète et sourcée à la question, en français, en 2 à 4 phrases.
+      inherent_risk:
+        type: string
+        enum: [F, M, E]
+        description: Risque inhérent proposé pour une organisation universitaire québécoise.
+      justification:
+        type: string
+        description: Une à deux phrases justifiant le niveau attribué.
+  per_page:
+    type: object
+    additionalProperties: false
+    required: [answer, citation]
+    properties:
+      answer:
+        type: string
+      citation:
+        type: string
+        description: Extrait verbatim continu copié exactement de cette page, vide si non pertinent.
+      begin:
+        type: integer
+        description: Index de début de la citation dans le texte de la page.
+      end:
+        type: integer
+        description: Index de fin de la citation dans le texte de la page.
+prompts:
+  global_instruction: |
+    Tu évalues un outil d'IA générative pour une université québécoise soumise à la Loi 25.
+    Réponds à la question ci-dessous à partir des sources trouvées. Attribue ensuite un risque
+    inhérent proposé — F (faible), M (moyen) ou E (élevé) — avec une courte justification.
+    Si les sources ne répondent pas, dis-le explicitement plutôt que de supposer.
+    Question : {question}
+  per_page_instruction: |
+    En utilisant uniquement cette page, réponds à la question et appuie la réponse sur un extrait
+    court, continu et verbatim, copié exactement du texte de la page. Indique les index de début
+    et de fin de cet extrait. Si la page ne répond pas, retourne une citation vide.
+    Question : {question}
+max_citations_per_criterion: 3
+observation_template: |
+  {answer}
+
+  Risque inhérent proposé : {inherent_risk} — {justification}
+
+  Sources vérifiées :
+  {citations}
+citation_line_template: '- {source_type} — « {text} » ({deep_link})'
+citation_link_template: '{url}#:~:text={prefix},{suffix}'

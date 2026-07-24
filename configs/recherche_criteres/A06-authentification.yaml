@@ -1,0 +1,8 @@
+version: 2
+id: A06
+partie: A
+category: Sécurité de l'information
+criterion: Mécanismes d'authentification
+question: L'outil supporte-t-il l'authentification forte (SSO, MFA) ? Intégrable avec l'infrastructure UQAM ?
+exa:
+  query: "{vendor} {tool} SSO SAML MFA authentication identity provider enterprise {plan}"

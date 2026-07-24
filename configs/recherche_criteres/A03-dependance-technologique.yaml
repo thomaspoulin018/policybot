@@ -1,0 +1,8 @@
+version: 2
+id: A03
+partie: A
+category: Souveraineté et hébergement des données
+criterion: Dépendance technologique
+question: Le produit augmente-t-il la dépendance envers des fournisseurs étrangers?
+exa:
+  query: "{vendor} {tool} company headquarters ownership cloud infrastructure subcontractors vendor lock-in data portability {plan}"

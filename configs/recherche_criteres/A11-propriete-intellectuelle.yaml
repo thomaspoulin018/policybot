@@ -1,0 +1,10 @@
+version: 2
+id: A11
+partie: A
+category: Conformité légale et contractuelle
+criterion: Propriété intellectuelle
+question: Qui détient les droits sur les contenus générés ? Le contrat préserve-t-il la PI de l'UQAM ?
+exa:
+  query: "{vendor} {tool} terms ownership input output generated content intellectual property indemnity {plan} {contract_type}"
+  type: deep
+  num_results: 8

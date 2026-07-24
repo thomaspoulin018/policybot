@@ -5,9 +5,13 @@ from datetime import date
 import re
 from urllib.parse import urlparse
 
-from policybot.contract.evidence import SourceType
+from typing import Literal
 from policybot.classify.tool_registry import lookup_tool
 from policybot.models import ContractOfferingIdentity
+
+SourceType = Literal[
+    "contractual", "dpa", "official_technical", "commercial", "secondary",
+]
 
 
 _FORUM_OR_ARCHIVE_PATTERNS = (

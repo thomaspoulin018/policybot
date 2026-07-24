@@ -1,0 +1,10 @@
+version: 2
+id: A12
+partie: A
+category: Conformité légale et contractuelle
+criterion: Conditions d'utilisation acceptables
+question: Les conditions d'utilisation sont-elles acceptables pour un usage institutionnel ? Clauses problématiques ?
+exa:
+  query: "{vendor} {tool} institutional enterprise terms acceptable use DPA liability termination restrictions {plan} {contract_type} {contract_version}"
+  type: deep
+  num_results: 8

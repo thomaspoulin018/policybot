@@ -1,0 +1,8 @@
+version: 2
+id: A08
+partie: A
+category: Sécurité de l'information
+criterion: Journalisation et traçabilité
+question: L'outil génère-t-il des journaux d'accès et des journaux permettant d'auditer les entrées (prompts) et les sorties? Accessibles par l'organisation ?
+exa:
+  query: "{vendor} {tool} audit logs prompt output logs admin compliance API {plan}"

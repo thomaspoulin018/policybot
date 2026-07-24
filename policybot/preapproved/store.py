@@ -2,6 +2,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from datetime import date
+from pydantic import ValidationError
 from policybot.models import (
     ArpRecord,
     ContractOfferingIdentity,
@@ -79,7 +80,14 @@ class PreApprovedStore:
                     row = self._db.execute(
                         "SELECT json FROM arp WHERE tool_name = ?", (offering.lower(),)
                     ).fetchone()
-        return ArpRecord.model_validate_json(row[0]) if row else None
+        if not row:
+            return None
+        try:
+            return ArpRecord.model_validate_json(row[0])
+        except ValidationError:
+            # Les caches antérieurs au schéma 2 portaient des faits typés et
+            # ne doivent jamais être réinterprétés comme des constats.
+            return None
 
     def save_decision(self, rec: PreApprovedRecord) -> None:
         with self._lock:

@@ -1,0 +1,8 @@
+version: 2
+id: A01
+partie: A
+category: Souveraineté et hébergement des données
+criterion: Localisation des serveurs
+question: Les données sont-elles hébergées au Québec ou dans une juridiction équivalente ?
+exa:
+  query: Where does {vendor} host and process {tool} customer data? data residency regions {plan} {deployment_mode} {contract_type} {contract_version}

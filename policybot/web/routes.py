@@ -121,21 +121,22 @@ def _safe_source_url(value: str | None) -> str | None:
 
 
 def _contract_evidence_for_user(result_state) -> list[dict[str, str]]:
-    """Prépare les preuves acceptées pour la synthèse lisible par l'employé."""
+    """Prépare les citations ancrées pour la synthèse lisible par l'employé."""
     evidence: list[dict[str, str]] = []
     for tool in result_state.tools:
         if tool.arp is None:
             continue
-        for field_name, proof in tool.arp.contract_facts.evidence.items():
-            source_url = _safe_source_url(proof.source_url)
-            if proof.outcome != "accepted" or not proof.quote or not source_url:
-                continue
-            evidence.append({
-                "tool_name": tool.name,
-                "label": _FACT_LABELS.get(field_name, field_name.replace("_", " ")),
-                "quote": proof.quote,
-                "source_url": source_url,
-            })
+        for finding in tool.arp.findings:
+            for citation in finding.citations:
+                source_url = _safe_source_url(citation.deep_link or citation.url)
+                if not citation.anchored or not citation.text or not source_url:
+                    continue
+                evidence.append({
+                    "tool_name": tool.name,
+                    "label": finding.criterion,
+                    "quote": citation.text,
+                    "source_url": source_url,
+                })
     return evidence
 
 
@@ -486,8 +487,8 @@ async def wizard_contexte_affaires_submit(request: Request):
     return templates.TemplateResponse(request, "resultat.html.j2", {
         "active_step": "resultat",
         "report_html": report_html,
-        "recommendation": result_state.result_global.recommendation,
         "contract_evidence": _contract_evidence_for_user(result_state),
+        "total_cost": result_state.tools[0].arp.total_cost_dollars,
         "pdf_filename": pdf_path.name if pdf_path else None,
         "pdf_error": pdf_error,
         "docx_filename": docx_path.name if docx_path else None,

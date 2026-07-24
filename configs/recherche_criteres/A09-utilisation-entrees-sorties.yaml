@@ -1,0 +1,8 @@
+version: 2
+id: A09
+partie: A
+category: Sécurité de l'information
+criterion: Utilisation des entrées et des sorties
+question: Existe-t-il une façon d'interdire le réentraînement du modèle à partir des données soumises par l'utilisateur et de celles qui sont produites?
+exa:
+  query: "{vendor} {tool} disable model training inputs outputs data controls opt out retention {plan} {contract_type}"
