@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from html import escape as html_escape
 from io import BytesIO
 import os
 from pathlib import Path
@@ -10,13 +9,10 @@ from urllib.parse import urlsplit
 import zipfile
 import xml.etree.ElementTree as ET
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
-
 from policybot.criteria import ARP_CRITERIA, USAGE_CRITERIA
 from policybot.models import CriterionCitation, CriterionFinding, InterviewState
 
 
-_TEMPLATES = Path(__file__).with_name("templates")
 _DEFAULT_PDF_OUTPUT_DIR = Path("output") / "pdf"
 _DEFAULT_DOCX_OUTPUT_DIR = Path("output") / "docx"
 _DEFAULT_FICHE_TEMPLATE = (
@@ -161,28 +157,6 @@ def _finding_observation(finding: CriterionFinding | None) -> str:
             f"\n{finding.rejected_citations} citation(s) non ancrée(s) rejetée(s)."
         )
     return text
-
-
-def _context(state: InterviewState) -> dict:
-    tool = _first_tool(state)
-    arp = tool.arp if tool else None
-    return {
-        "state": state,
-        "tool": tool,
-        "arp": arp,
-        "partie_a": _group(_ordered_rows(_findings(state, "A"), ARP_CRITERIA)),
-        "partie_b": _group(_ordered_rows(_findings(state, "B"), USAGE_CRITERIA)),
-        "sources": _unique_sources(state),
-        "total_cost": arp.total_cost_dollars if arp else 0.0,
-    }
-
-
-def render_html(state: InterviewState) -> str:
-    env = Environment(
-        loader=FileSystemLoader(_TEMPLATES, encoding="utf-8"),
-        autoescape=select_autoescape(("html", "j2")),
-    )
-    return env.get_template("report.html.j2").render(**_context(state))
 
 
 def _text(value: object | None) -> str:
@@ -742,8 +716,3 @@ def write_docx(
     path = directory / docx_filename(state)
     path.write_bytes(render_docx(state))
     return path
-
-
-def html_to_pdf(html: str) -> bytes:
-    from weasyprint import HTML
-    return HTML(string=html).write_pdf()

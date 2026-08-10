@@ -8,7 +8,7 @@ from policybot.intake.formulaire import formulaire
 from policybot.interview.orchestrator import Interview
 from policybot.llm.fake import FakeLLMProvider
 from policybot.models import CriterionCitation, CriterionFinding
-from policybot.preapproved.store import PreApprovedStore
+from policybot.contract.cache import ArpCache
 
 from tests.helpers.forms import FIXTURE, colonne_index, ecrire_export, lignes
 
@@ -97,7 +97,7 @@ def test_un_fichier_absent_est_signale_sans_trace_d_exception(tmp_path):
 def test_ingerer_produit_un_dossier_par_demande(tmp_path, monkeypatch):
     interview = Interview(
         llm=FakeLLMProvider(json_responses=[_classification()] * 3),
-        store=PreApprovedStore(str(tmp_path / "pb.db")),
+        store=ArpCache(str(tmp_path / "pb.db")),
         exa_search=lambda tool_name, offering: [_finding()],
     )
     monkeypatch.setattr(
@@ -131,7 +131,7 @@ def test_une_demande_en_echec_n_arrete_pas_le_lot(tmp_path, monkeypatch):
 
     interview = Interview(
         llm=FakeLLMProvider(json_responses=[_classification()] * 3),
-        store=PreApprovedStore(str(tmp_path / "pb.db")),
+        store=ArpCache(str(tmp_path / "pb.db")),
         exa_search=exa_qui_plante,
     )
     monkeypatch.setattr(

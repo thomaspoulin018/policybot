@@ -14,27 +14,6 @@ llm:
       temperature: 0.0
       timeout: 60
 
-    tool_type_detection:
-      model: openai/gpt-5.6-luna
-      reasoning_effort: low
-      max_tokens: 4096
-      temperature: 0.0
-      timeout: 30
-
-    mode_detection:
-      model: openai/gpt-5.6-luna
-      reasoning_effort: low
-      max_tokens: 1024
-      temperature: 0.0
-      timeout: 30
-
-    form_suggestions:
-      model: openai/gpt-5.6-luna
-      reasoning_effort: low
-      max_tokens: 2048
-      temperature: 0.2
-      timeout: 45
-
 cache:
   arp:
     # read_write: lit le cache et enregistre les nouvelles analyses

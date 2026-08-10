@@ -8,12 +8,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 
-LLMTask: TypeAlias = Literal[
-    "data_classification",
-    "tool_type_detection",
-    "mode_detection",
-    "form_suggestions",
-]
+LLMTask: TypeAlias = Literal["data_classification"]
 ArpCacheMode: TypeAlias = Literal[
     "read_write",
     "refresh",
@@ -21,12 +16,7 @@ ArpCacheMode: TypeAlias = Literal[
     "disabled",
 ]
 
-LLM_TASKS: tuple[LLMTask, ...] = (
-    "data_classification",
-    "tool_type_detection",
-    "mode_detection",
-    "form_suggestions",
-)
+LLM_TASKS: tuple[LLMTask, ...] = ("data_classification",)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "configs" / "policybot.yaml"
@@ -46,9 +36,6 @@ class LLMTasksConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data_classification: ModelTaskConfig
-    tool_type_detection: ModelTaskConfig
-    mode_detection: ModelTaskConfig
-    form_suggestions: ModelTaskConfig
 
 
 class LLMConfig(BaseModel):

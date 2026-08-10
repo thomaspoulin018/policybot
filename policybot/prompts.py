@@ -37,9 +37,6 @@ class PromptTasks(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data_classification: PromptDefinition
-    tool_type_detection: PromptDefinition
-    mode_detection: PromptDefinition
-    form_suggestions: PromptDefinition
 
 
 class PromptConfig(BaseModel):

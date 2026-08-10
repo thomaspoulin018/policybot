@@ -22,18 +22,12 @@ def test_repository_catalog_declares_every_llm_task():
 
 def test_prompt_variables_are_rendered_from_the_catalog():
     catalog = load_prompts(PROMPTS_PATH, env={})
-    prompt = catalog.prompts.form_suggestions
+    prompt = catalog.prompts.data_classification
 
-    system = prompt.render_system(
-        question="Quelles données?",
-        existing="Données publiques",
-        free_text="Dossiers étudiants",
-    )
-    user = prompt.render_user(free_text="Dossiers étudiants")
+    system = prompt.render_system()
+    user = prompt.render_user(description="Dossiers étudiants")
 
-    assert "Quelles données?" in system
-    assert "Données publiques" in system
-    assert "Dossiers étudiants" in system
+    assert "DESCRIPTION of data" in system
     assert user == "Dossiers étudiants"
 
 

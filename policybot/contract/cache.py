@@ -1,18 +1,21 @@
+"""Cache local des analyses ARP, indexé par identité d'offre.
+
+Anciennement `PreApprovedStore` : le nom mentait sur le contenu depuis que
+les décisions préapprouvées ont été retirées du produit. Rien ici ne décide
+quoi que ce soit — le cache évite seulement de repayer une recherche déjà
+faite pour la même offre contractuelle.
+"""
 from __future__ import annotations
+
 import sqlite3
 import threading
-from datetime import date
+
 from pydantic import ValidationError
-from policybot.models import (
-    ArpRecord,
-    ContractOfferingIdentity,
-    PreApprovedRecord,
-    DataClass,
-    IagType,
-)
+
+from policybot.models import ArpRecord, ContractOfferingIdentity
 
 
-class PreApprovedStore:
+class ArpCache:
     def __init__(self, db_path: str):
         self._db = sqlite3.connect(db_path, check_same_thread=False)
         self._lock = threading.Lock()
@@ -22,11 +25,6 @@ class PreApprovedStore:
         self._db.execute(
             "CREATE TABLE IF NOT EXISTS arp_offering ("
             "offering_key TEXT PRIMARY KEY, tool_name TEXT NOT NULL, json TEXT NOT NULL)"
-        )
-        self._db.execute(
-            "CREATE TABLE IF NOT EXISTS decision ("
-            "id TEXT PRIMARY KEY, tool_name TEXT, data_classification TEXT, "
-            "iag_type TEXT, expires_at TEXT, json TEXT)"
         )
         self._db.commit()
 
@@ -88,31 +86,3 @@ class PreApprovedStore:
             # Les caches antérieurs au schéma 2 portaient des faits typés et
             # ne doivent jamais être réinterprétés comme des constats.
             return None
-
-    def save_decision(self, rec: PreApprovedRecord) -> None:
-        with self._lock:
-            self._db.execute(
-                "INSERT OR REPLACE INTO decision VALUES (?, ?, ?, ?, ?, ?)",
-                (rec.id, rec.tool_name.lower(), rec.data_classification, rec.iag_type,
-                 rec.expires_at.isoformat() if rec.expires_at else "",
-                 rec.model_dump_json()),
-            )
-            self._db.commit()
-
-    def find_decision(
-        self, tool_name: str, data_classification: DataClass, iag_type: IagType,
-        today: date | None = None,
-    ) -> PreApprovedRecord | None:
-        today = today or date.today()
-        today_iso = today.isoformat()
-        with self._lock:
-            row = self._db.execute(
-                "SELECT json, expires_at FROM decision WHERE tool_name = ? "
-                "AND data_classification = ? AND iag_type = ? "
-                "AND (expires_at = '' OR expires_at >= ?) "
-                "ORDER BY expires_at DESC",
-                (tool_name.lower(), data_classification, iag_type, today_iso),
-            ).fetchone()
-        if not row:
-            return None
-        return PreApprovedRecord.model_validate_json(row[0])

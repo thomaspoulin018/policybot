@@ -12,14 +12,14 @@ def test_router_selects_provider_for_explicit_task():
     }
     router = TaskRoutingLLMProvider(providers)
 
-    result = router.complete_json("system", "user", task="mode_detection")
+    result = router.complete_json("system", "user", task="data_classification")
 
-    assert result == {"task": "mode_detection"}
-    assert len(providers["mode_detection"].calls) == 1
+    assert result == {"task": "data_classification"}
+    assert len(providers["data_classification"].calls) == 1
     assert all(
         not provider.calls
         for task, provider in providers.items()
-        if task != "mode_detection"
+        if task != "data_classification"
     )
 
 

@@ -1,10 +1,10 @@
 from policybot.contract.offering import build_offering_identity
 from policybot.models import ArpRecord, CriterionFinding
-from policybot.preapproved.store import PreApprovedStore
+from policybot.contract.cache import ArpCache
 
 
 def test_arp_v2_round_trip_is_keyed_by_offering(tmp_path):
-    store = PreApprovedStore(str(tmp_path / "cache.db"))
+    store = ArpCache(str(tmp_path / "cache.db"))
     offering = build_offering_identity(
         "ToolX", "publique", vendor="Vendor", plan="Enterprise",
         deployment_mode="managed_saas", contract_type="institutional_agreement",
@@ -27,7 +27,7 @@ def test_arp_v2_round_trip_is_keyed_by_offering(tmp_path):
 
 
 def test_legacy_cache_payload_is_ignored(tmp_path):
-    store = PreApprovedStore(str(tmp_path / "cache.db"))
+    store = ArpCache(str(tmp_path / "cache.db"))
     offering = build_offering_identity(
         "ToolX", "publique", vendor="Vendor", plan="Enterprise",
         deployment_mode="managed_saas", contract_type="institutional_agreement",

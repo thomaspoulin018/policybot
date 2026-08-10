@@ -24,7 +24,7 @@ from policybot.models import (
     ToolRef,
     Usage,
 )
-from policybot.preapproved.store import PreApprovedStore
+from policybot.contract.cache import ArpCache
 from policybot.tracing import collect_llm_usage, mask_text, trace_step
 
 
@@ -53,7 +53,7 @@ class Interview:
     def __init__(
         self,
         llm: LLMProvider,
-        store: PreApprovedStore,
+        store: ArpCache,
         exa_search: Optional[Callable] = None,
         arp_cache_mode: ArpCacheMode = "read_write",
         debug_runs_enabled: bool = False,

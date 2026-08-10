@@ -1,4 +1,4 @@
-from policybot.classify.tool_type import classify_tool_type, tool_type_question
+from policybot.classify.tool_type import classify_tool_type
 from policybot.classify.tool_registry import lookup_tool
 
 
@@ -18,9 +18,3 @@ def test_unknown_tool_returns_none():
 def test_lookup_returns_terms_url():
     entry = lookup_tool("ChatGPT")
     assert entry["terms_url"].startswith("http")
-
-
-def test_question_has_four_iag_options():
-    q = tool_type_question()
-    assert len(q.options) == 4
-    assert q.multi_select is False

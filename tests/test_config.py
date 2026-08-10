@@ -14,9 +14,6 @@ def test_repository_config_declares_all_llm_tasks_and_cache_mode():
 
     assert config.llm.provider == "openrouter"
     assert config.llm.tasks.data_classification.model
-    assert config.llm.tasks.tool_type_detection.model
-    assert config.llm.tasks.mode_detection.model
-    assert config.llm.tasks.form_suggestions.model
     assert config.cache.arp.mode == "disabled"
     assert not config.debug_runs.enabled
     assert config.debug_runs.output_dir == "logs/runs"
@@ -31,8 +28,8 @@ def test_environment_overrides_global_then_task_specific_values():
         "POLICYBOT_ARP_CACHE_MODE": "read_only",
     })
 
-    assert config.llm.tasks.mode_detection.model == "global/model"
-    assert config.llm.tasks.mode_detection.max_tokens == 3000
+    # L'override specifique a la tache l'emporte sur l'override global.
+    assert config.llm.tasks.data_classification.max_tokens == 3000
     assert config.llm.tasks.data_classification.model == "classification/model"
     assert config.llm.tasks.data_classification.temperature == 0.4
     assert config.cache.arp.mode == "read_only"

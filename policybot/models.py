@@ -65,20 +65,6 @@ class ContractOfferingIdentity(BaseModel):
         return " — ".join(part for part in parts if part and part != "unknown")
 
 
-class QuestionOption(BaseModel):
-    label: str
-    description: str = ""
-
-
-class QuestionSpec(BaseModel):
-    id: str
-    header: str
-    question: str
-    options: list[QuestionOption] = Field(default_factory=list)
-    multi_select: bool = False
-    allow_other: bool = True
-
-
 class CriterionCitation(BaseModel):
     url: str
     title: str = ""
@@ -107,18 +93,6 @@ class CriterionFinding(BaseModel):
     outcome: Literal["ok", "no_answer", "search_failed"] = "ok"
 
 
-class RiskFactor(BaseModel):
-    category: str
-    criterion: str
-    inherent: RiskLetter | None = None
-    mitigation: str = ""
-    residual: RiskLetter | None = None
-    responsable: str = ""
-    observations: str = ""
-    origin: Literal["llm_proposed"] = "llm_proposed"
-    proposed: bool = True
-
-
 class ArpRecord(BaseModel):
     tool_name: str
     iag_type: IagType
@@ -128,20 +102,6 @@ class ArpRecord(BaseModel):
     schema_version: int = 2
     fetched_at: date | None = None
     expires_at: date | None = None
-
-
-class PreApprovedRecord(BaseModel):
-    """Legacy officer record, retained without an automated decision."""
-
-    id: str
-    tool_name: str
-    data_classification: DataClass
-    iag_type: IagType
-    conditions: list[str] = Field(default_factory=list)
-    arp_ref: Optional[str] = None
-    approved_by: Optional[str] = None
-    approved_at: Optional[date] = None
-    expires_at: Optional[date] = None
 
 
 class RequestInfo(BaseModel):

@@ -6,7 +6,7 @@ from policybot.llm.debug_provider import DebugRecordingProvider
 from policybot.llm.openrouter import OpenRouterProvider
 from policybot.llm.fake import FakeLLMProvider
 from policybot.llm.router import TaskRoutingLLMProvider
-from policybot.preapproved.store import PreApprovedStore
+from policybot.contract.cache import ArpCache
 from policybot.interview.orchestrator import Interview
 
 
@@ -35,7 +35,7 @@ def default_interview(
         llm = DebugRecordingProvider(llm)
     return Interview(
         llm=llm,
-        store=PreApprovedStore(db_path),
+        store=ArpCache(db_path),
         arp_cache_mode=config.cache.arp.mode,
         debug_runs_enabled=config.debug_runs.enabled,
         debug_runs_output_dir=config.debug_runs.output_dir,
