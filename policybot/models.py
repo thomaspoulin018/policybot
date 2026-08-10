@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from datetime import date as _date
 import hashlib
 import json
 from typing import Literal, Optional
@@ -147,7 +148,9 @@ class RequestInfo(BaseModel):
     numero: str
     demandeur: str = ""
     unite: str = ""
-    date: Optional[date] = None
+    # Le champ « date » masque le type « date » dans le corps de la classe :
+    # sans l'alias, l'annotation se résout sur l'attribut et n'accepte que None.
+    date: Optional[_date] = None
 
 
 class QualificationProfile(BaseModel):
