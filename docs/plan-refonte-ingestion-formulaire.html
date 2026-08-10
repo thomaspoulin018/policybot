@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan : PolicyBot — du wizard au formulaire ingéré</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.6; color: #1a1a2e;
+    background: #f4f6fb; padding: 2rem 1rem;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff; border-radius: 12px; padding: 2rem 2.5rem; margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.8rem; font-weight: 700; line-height: 1.25; }
+  header p  { margin-top: .5rem; opacity: .8; font-size: .98rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.1rem; font-size: .85rem; opacity: .65; }
+
+  .section {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    padding: 1.5rem 2rem; margin-bottom: 1.25rem;
+  }
+  .section h2 {
+    font-size: 1.05rem; font-weight: 700; color: #16213e;
+    border-left: 4px solid #4361ee; padding-left: .75rem;
+    margin-bottom: 1rem;
+  }
+  .section h3 {
+    font-size: .95rem; font-weight: 700; color: #16213e;
+    margin: 1.25rem 0 .5rem;
+  }
+  .section h3:first-of-type { margin-top: .25rem; }
+  .section p { margin-bottom: .7rem; }
+  .section p:last-child { margin-bottom: 0; }
+
+  ol.steps, ul.steps { padding-left: 1.3rem; }
+  ol.steps li, ul.steps li { margin-bottom: .55rem; }
+  ol.steps li strong { color: #4361ee; }
+  ul.plain { list-style: none; padding-left: 0; }
+  ul.plain li { margin-bottom: .45rem; padding-left: 1.2rem; position: relative; }
+  ul.plain li::before { content: "—"; position: absolute; left: 0; color: #94a3b8; }
+
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: .87em; background: #eef2ff; color: #3730a3;
+    padding: .1rem .32rem; border-radius: 4px;
+  }
+  .code-block {
+    background: #0f172a; color: #e2e8f0; border-radius: 8px;
+    padding: .9rem 1.1rem; font-family: ui-monospace, Consolas, monospace;
+    font-size: .84rem; line-height: 1.6; white-space: pre;
+    overflow-x: auto; margin: .6rem 0;
+  }
+  .code-block .c { color: #64748b; }
+  .code-block .g { color: #4ade80; }
+  .code-block .r { color: #f87171; }
+  .code-block .y { color: #fbbf24; }
+
+  .badge {
+    display: inline-block; font-size: .72rem; font-weight: 600;
+    padding: .15rem .55rem; border-radius: 99px; margin-right: .3rem;
+    white-space: nowrap;
+  }
+  .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-yellow { background: #fef9c3; color: #a16207; }
+  .badge-red    { background: #fee2e2; color: #b91c1c; }
+  .badge-grey   { background: #e5e7eb; color: #4b5563; }
+
+  .table-wrap { overflow-x: auto; margin: .5rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th { background: #f0f4ff; color: #16213e; text-align: left; padding: .55rem .7rem; font-weight: 700; white-space: nowrap; }
+  td { padding: .5rem .7rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.mono { font-family: ui-monospace, Consolas, monospace; font-size: .84rem; }
+
+  .callout {
+    border-left: 4px solid #4361ee; background: #f0f4ff;
+    padding: .75rem 1rem; border-radius: 0 8px 8px 0;
+    font-size: .9rem; margin: .75rem 0;
+  }
+  .callout.warn { border-color: #f59e0b; background: #fffbeb; }
+  .callout.danger { border-color: #ef4444; background: #fef2f2; }
+  .callout.ok { border-color: #16a34a; background: #f0fdf4; }
+  .callout strong { display: inline; }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+  .stat { background: #f8fafc; border-radius: 8px; padding: .9rem 1rem; }
+  .stat .n { font-size: 1.5rem; font-weight: 700; color: #4361ee; line-height: 1.1; }
+  .stat .l { font-size: .8rem; color: #64748b; margin-top: .2rem; }
+
+  .arrow { color: #94a3b8; padding: 0 .3rem; }
+  hr.soft { border: none; border-top: 1px solid #eef2f7; margin: 1.2rem 0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>PolicyBot — du wizard au formulaire ingéré</h1>
+  <p>Le formulaire sort du produit. PolicyBot devient une bibliothèque et une commande qui avalent un export Microsoft&nbsp;Forms et rendent 17 constats sourcés.</p>
+  <div class="meta">
+    <span>Date : 2026-08-10</span>
+    <span>Branche : <code style="background:rgba(255,255,255,.14);color:#e2e8f0">main</code></span>
+    <span>État de départ vérifié : 126 tests au vert</span>
+  </div>
+</header>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Le virage en une phrase</h2>
+  <p>Aujourd'hui PolicyBot <em>est</em> un wizard web en 7 étapes qui, à la fin, lance des recherches. Demain PolicyBot <em>n'a plus d'interface</em> : tu envoies un formulaire Microsoft&nbsp;Forms aux demandeurs, tu télécharges l'export Excel des réponses, et une commande transforme chaque réponse en dossier de constats.</p>
+
+  <div class="code-block"><span class="c"># aujourd'hui</span>
+navigateur <span class="arrow">→</span> wizard 7 étapes (HTMX, 1004 lignes) <span class="arrow">→</span> 17 recherches Exa <span class="arrow">→</span> rapport
+
+<span class="c"># demain</span>
+Microsoft Forms <span class="arrow">→</span> export .xlsx <span class="arrow">→</span> <span class="g">policybot ingerer</span> <span class="arrow">→</span> 17 recherches Exa <span class="arrow">→</span> rapport</div>
+
+  <p>Ce que ça change vraiment : le cœur du produit (les 17 recherches, l'ancrage des citations, le cache ARP, le rendu) ne bouge pas d'un octet. C'est tout ce qui l'entoure qui disparaît.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Décisions arrêtées</h2>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Question</th><th>Décision</th></tr>
+    <tr><td>Le formulaire</td><td>Externe (Microsoft&nbsp;Forms). PolicyBot n'en héberge aucun.</td></tr>
+    <tr><td>Ses questions</td><td>Exactement celles du wizard actuel, reprises une à une.</td></tr>
+    <tr><td>Format d'entrée</td><td><strong>.xlsx seulement</strong> — l'export natif de Forms. Le JSON reste un format de <em>sortie</em>.</td></tr>
+    <tr><td>Déclenchement</td><td>Manuel : <code>policybot ingerer reponses.xlsx</code>. Pas de webhook.</td></tr>
+    <tr><td><code>policybot/web/</code></td><td>Supprimé en entier.</td></tr>
+    <tr><td><code>policybot/api/</code></td><td>Supprimé aussi — plus aucun client une fois le wizard parti.</td></tr>
+    <tr><td>Formats de rapport</td><td><strong>DOCX + PDF</strong>. Le rendu HTML disparaît.</td></tr>
+    <tr><td>Code mort</td><td>Supprimé (liste vérifiée plus bas).</td></tr>
+    <tr><td>Artefacts obsolètes versionnés</td><td>Supprimés.</td></tr>
+    <tr><td>Harnais d'évaluation</td><td><span class="badge badge-grey">hors périmètre</span> Reporté — voir « Ce qui manquera encore ».</td></tr>
+    <tr><td>Registre de sources canoniques</td><td><span class="badge badge-grey">hors périmètre</span> Reporté.</td></tr>
+  </table>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>État de départ — ce qui est vrai aujourd'hui</h2>
+  <p>Vérifié dans le dépôt, pas déduit de la documentation.</p>
+
+  <div class="cols" style="margin:.8rem 0 1rem">
+    <div class="stat"><div class="n">126</div><div class="l">tests au vert (<code>pytest -q</code>)</div></div>
+    <div class="stat"><div class="n">0</div><div class="l">module en échec d'import</div></div>
+    <div class="stat"><div class="n">17</div><div class="l">critères validés à l'import</div></div>
+    <div class="stat"><div class="n">4 313</div><div class="l">lignes de Python dans <code>policybot/</code></div></div>
+  </div>
+
+  <div class="callout warn">
+    <strong>Le <code>TODO.md</code> décrit un projet qui n'existe plus.</strong> Il parle de <code>policybot/grille/</code>, de Tavily et de <code>extraction_eval</code> — ces trois modules ont été supprimés lors du pivot vers Exa. Il annonce « 278 passed, 2 failed » alors que la suite en compte 126, toutes vertes. Le <code>README.md</code>, lui, est à jour.
+  </div>
+
+  <h3>Code mort confirmé (aucun appelant dans tout le dépôt)</h3>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Symbole</th><th>Fichier</th><th>Constat</th></tr>
+    <tr><td class="mono">build_source_policy</td><td class="mono">contract/source_policy.py</td><td>Jamais appelé</td></tr>
+    <tr><td class="mono">source_is_allowed</td><td class="mono">contract/source_policy.py</td><td>Jamais appelé</td></tr>
+    <tr><td class="mono">contract_source_urls</td><td class="mono">contract/source_policy.py</td><td>Jamais appelé</td></tr>
+    <tr><td class="mono">source_effective_date</td><td class="mono">contract/source_policy.py</td><td>Jamais appelé</td></tr>
+    <tr><td class="mono">finding_observation</td><td class="mono">contract/arp.py</td><td><code>renderer.py</code> a sa propre copie privée</td></tr>
+    <tr><td class="mono">finding_to_risk_factor</td><td class="mono">contract/arp.py</td><td>Jamais appelé</td></tr>
+    <tr><td class="mono">RiskFactor</td><td class="mono">models.py</td><td>Plus produit ni consommé</td></tr>
+    <tr><td class="mono">PreApprovedRecord</td><td class="mono">models.py</td><td>Vestige des décisions préapprouvées</td></tr>
+    <tr><td class="mono">html_to_pdf</td><td class="mono">report/renderer.py</td><td>Jamais appelé — le PDF passe par reportlab</td></tr>
+    <tr><td class="mono">_FACT_LABELS</td><td class="mono">web/routes.py</td><td>19 libellés de l'ère Tavily</td></tr>
+    <tr><td class="mono">tool_type_question</td><td class="mono">classify/tool_type.py</td><td>Ne sert qu'au wizard</td></tr>
+  </table>
+  </div>
+
+  <div class="callout">
+    <strong>Trois des quatre tâches LLM sont déjà mortes.</strong> <code>tool_type_detection</code> a un prompt configuré mais <code>classify_tool_type()</code> ne fait qu'une recherche dans le registre — aucun modèle n'est appelé. <code>mode_detection</code> et <code>form_suggestions</code> n'existent que pour l'assistance du wizard. Seule <code>data_classification</code> survit à la refonte.
+  </div>
+
+  <h3>Dépendances déclarées mais jamais importées</h3>
+  <p><code>httpx</code>, <code>beautifulsoup4</code>, <code>langsmith</code>, <code>python-multipart</code>, <code>uvicorn</code> : zéro <code>import</code> dans <code>policybot/</code>. <code>weasyprint</code> n'est importé que par <code>html_to_pdf</code>, qui n'a aucun appelant.</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Phase 0 — Le filet de sécurité <span class="badge badge-red">à faire en premier</span></h2>
+  <div class="callout danger">
+    Les questions du formulaire n'existent nulle part ailleurs que dans les gabarits Jinja du wizard. <strong>Si le wizard est supprimé avant d'être transcrit, le contenu du formulaire est perdu.</strong> Cette phase précède toute suppression.
+  </div>
+  <ol class="steps">
+    <li><strong>Étape 1 :</strong> transcrire les 35 questions du wizard dans <code>configs/formulaire.yaml</code> — intitulé exact, type, choix, champ du schéma alimenté, caractère obligatoire. Le catalogue complet est donné plus bas dans ce plan.</li>
+    <li><strong>Étape 2 :</strong> committer ce fichier <em>seul</em>, avant de toucher au reste. Il devient la source de vérité du formulaire.</li>
+  </ol>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Phase 1 — Le contrat d'entrée</h2>
+  <p>Un module <code>policybot/intake/</code> avec trois fichiers et une règle : le schéma et le catalogue de questions se valident mutuellement <em>à l'import</em>, exactement comme <code>contract/criteres.py</code> valide déjà la couverture des 17 critères. Une question qui ne pointe vers aucun champ, ou un champ obligatoire que le formulaire ne demande pas, fait planter l'import.</p>
+
+  <ol class="steps">
+    <li><strong>Étape 1 :</strong> <code>intake/schema.py</code> — <code>DemandeIAG</code> (Pydantic). Reprend les 35 champs du <code>WizardState</code>, moins la mécanique de navigation. C'est ce que la CLI produit et ce que l'orchestrateur consomme.</li>
+    <li><strong>Étape 2 :</strong> <code>intake/formulaire.py</code> — charge <code>configs/formulaire.yaml</code>, le valide contre <code>DemandeIAG</code>, et expose le catalogue. Refuse un champ inconnu et un champ obligatoire non couvert.</li>
+    <li><strong>Étape 3 :</strong> une fonction <code>devis()</code> qui imprime le formulaire à recopier dans Microsoft&nbsp;Forms, avec pour chaque question le champ qu'elle alimente.</li>
+    <li><strong>Étape 4 :</strong> <code>DemandeIAG.vers_entrees_orchestrateur()</code> — produit le <code>RequestInfo</code>, la liste <code>usage_inputs</code> et le <code>ContractOfferingIdentity</code> attendus par <code>Interview.assess()</code>. Aucune signature existante n'est modifiée.</li>
+  </ol>
+
+  <div class="callout warn">
+    <strong>Perte de capacité assumée.</strong> Le wizard gérait plusieurs usages par demande (<code>saved_usages</code>). Microsoft&nbsp;Forms n'a pas de section répétable : une réponse = un usage. Pour deux usages, le demandeur remplit le formulaire deux fois. À écrire noir sur blanc dans le formulaire lui-même.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Phase 2 — Le lecteur d'export</h2>
+  <ol class="steps">
+    <li><strong>Étape 1 :</strong> <code>intake/reponses.py</code> — lit un <code>.xlsx</code> Forms (ligne&nbsp;1 = intitulés des questions, une ligne par réponse) via <code>openpyxl</code> et rend une <code>list[DemandeIAG]</code>.</li>
+    <li><strong>Étape 2 :</strong> l'appariement se fait sur l'intitulé <em>normalisé</em> (espaces réduits, casse et accents ignorés, ponctuation finale tolérée). Microsoft&nbsp;Forms ajoute ses propres colonnes — <code>ID</code>, <code>Heure de début</code>, <code>Heure de fin</code>, <code>Adresse de courriel</code>, <code>Nom</code> — qui sont ignorées sans bruit.</li>
+    <li><strong>Étape 3 :</strong> les choix multiples arrivent joints par <code>;</code> et sont redécoupés vers <code>list[str]</code>. Les oui/non deviennent des booléens.</li>
+    <li><strong>Étape 4 :</strong> une colonne attendue et absente <strong>ne fait pas planter le lot</strong> : la demande concernée est rejetée avec son motif, les autres passent. Même principe que l'isolation d'une recherche Exa en échec.</li>
+    <li><strong>Étape 5 :</strong> un <code>.xlsx</code> de fixture committé sous <code>tests/fixtures/</code>, généré par le code de test lui-même pour rester lisible en diff.</li>
+  </ol>
+  <div class="callout">
+    Les intitulés de questions sont du texte de formulaire, pas des données de demandeur : ils peuvent apparaître en clair dans les messages d'erreur. Les <em>réponses</em>, elles, restent soumises à <code>mask_text()</code> dans les traces.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Phase 3 — La ligne de commande</h2>
+  <p><code>policybot/cli.py</code>, sur <code>argparse</code> — aucune dépendance nouvelle.</p>
+
+  <div class="code-block"><span class="g">$ policybot devis-formulaire</span>
+<span class="c"># imprime les 35 questions à recopier dans Microsoft Forms</span>
+
+<span class="g">$ policybot ingerer reponses.xlsx --dry-run</span>
+3 réponses lues, 3 demandes valides, 0 rejetée
+
+  1. ChatGPT           OpenAI / ChatGPT / Enterprise
+                       managed_saas · institutional_agreement · QC-CA
+  2. Microsoft Copilot Microsoft / Copilot / M365 E5
+                       managed_saas · institutional_agreement · QC-CA
+  3. Gemini            Google / Gemini / Workspace Business
+                       managed_saas · institutional_agreement · QC-CA
+
+<span class="y">--dry-run : aucune recherche lancée, aucun coût engagé.</span>
+
+<span class="g">$ policybot ingerer reponses.xlsx</span>
+  1. ChatGPT   17 constats · 14 ok · 2 sans réponse · 1 échec · 0,31 $
+     <span class="c">output/docx/IAG-2026-a1b2c3_2026-08-10_14-22-01.docx</span>
+     <span class="c">output/pdf/IAG-2026-a1b2c3_2026-08-10_14-22-01.pdf</span>
+  ...
+coût Exa total : 0,88 $</div>
+
+  <ol class="steps">
+    <li><strong>Étape 1 :</strong> <code>devis-formulaire</code> — imprime le catalogue. Aucun effet de bord.</li>
+    <li><strong>Étape 2 :</strong> <code>ingerer &lt;fichier&gt;</code> — lit, valide, lance <code>Interview.assess()</code> par demande, écrit DOCX + PDF, et un <code>.json</code> des <code>CriterionFinding</code> à côté.</li>
+    <li><strong>Étape 3 :</strong> <code>--dry-run</code> — lit, valide, affiche l'identité d'offre résolue, <strong>n'appelle rien</strong>. C'est le mode qui rend la chaîne testable hors ligne et vérifiable sans brûler un sou.</li>
+    <li><strong>Étape 4 :</strong> une demande en échec n'arrête pas le lot ; le récapitulatif final distingue traitées et rejetées, et le code de sortie vaut 1 si au moins une a été rejetée.</li>
+    <li><strong>Étape 5 :</strong> déclarer le point d'entrée dans <code>pyproject.toml</code> : <code>[project.scripts] policybot = "policybot.cli:main"</code>.</li>
+  </ol>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Phase 4 — Démolition</h2>
+  <p>Uniquement après que la Phase&nbsp;3 tourne. L'ordre compte : ce qui est supprimé ici n'a plus de consommateur.</p>
+
+  <div class="table-wrap">
+  <table>
+    <tr><th>Supprimé</th><th>Poids</th><th>Pourquoi</th></tr>
+    <tr><td class="mono">policybot/web/ (entier)</td><td class="num">1 004 l. + 11 gabarits</td><td>Remplacé par Microsoft&nbsp;Forms</td></tr>
+    <tr><td class="mono">policybot/api/ (entier)</td><td class="num">~110 l.</td><td>Plus aucun client</td></tr>
+    <tr><td class="mono">tests/web/, tests/api/</td><td class="num">9 fichiers</td><td>Testent du code supprimé</td></tr>
+    <tr><td class="mono">interview/graph.py</td><td class="num">43 l.</td><td>Un graphe LangGraph à un seul nœud</td></tr>
+    <tr><td class="mono">interview/questions.py</td><td class="num">37 l.</td><td>Les questions vivent dans le YAML</td></tr>
+    <tr><td class="mono">llm/ (3 tâches sur 4)</td><td class="num">config + prompts</td><td>N'existaient que pour le wizard</td></tr>
+    <tr><td class="mono">report/ — rendu HTML</td><td class="num">~40 l. + 1 gabarit</td><td>DOCX et PDF suffisent</td></tr>
+    <tr><td class="mono">source_policy — 4 fonctions</td><td class="num">~90 l.</td><td>Code mort vérifié</td></tr>
+    <tr><td class="mono">arp.py — 2 fonctions</td><td class="num">~30 l.</td><td>Code mort vérifié</td></tr>
+    <tr><td class="mono">models.py — 4 classes</td><td class="num">~40 l.</td><td><code>RiskFactor</code>, <code>PreApprovedRecord</code>, <code>QuestionSpec</code>, <code>QuestionOption</code></td></tr>
+  </table>
+  </div>
+
+  <p><code>PreApprovedStore</code> est renommé <code>ArpCache</code> et déplacé sous <code>policybot/contract/cache.py</code> : il ne stocke plus aucune décision préapprouvée, seulement des analyses ARP. Le nom actuel ment sur son contenu.</p>
+
+  <div class="callout ok">
+    <strong>Dépendances retirées :</strong> <code>langgraph</code>, <code>langsmith</code>, <code>fastapi</code>, <code>uvicorn</code>, <code>jinja2</code>, <code>httpx</code>, <code>beautifulsoup4</code>, <code>python-multipart</code>, <code>weasyprint</code>, <code>pytest-asyncio</code>. <strong>Ajoutée :</strong> <code>openpyxl</code>. Solde&nbsp;: <strong>−9</strong>.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Phase 5 — Ménage du dépôt</h2>
+  <ol class="steps">
+    <li><strong>Étape 1 :</strong> <code>git rm -r</code> sur <code>runs/arp/2026-07-16/</code> (56 fichiers de l'ère Tavily, sans valeur depuis le pivot) et <code>docs/archive/</code>.</li>
+    <li><strong>Étape 2 :</strong> supprimer <em>ces quatre fichiers et uniquement ceux-là</em> : <code>plan-debug-runs.html</code>, <code>plan-filtre-applicabilite-post-traitement.html</code>, <code>plan-refonte-recherche-par-critere.html</code>, <code>goal-arp-extraction-experiments.html</code>.
+      <div class="callout danger" style="margin-top:.5rem">
+        <strong>Ne pas supprimer <code>plan-refonte-ingestion-formulaire.html</code> ni <code>goal-refonte-ingestion-formulaire.html</code>.</strong> Ce sont le présent plan et son goal : ils pilotent le travail en cours. Les déplacer vers <code>docs/</code> une fois la refonte terminée, pas avant.
+      </div>
+    </li>
+    <li><strong>Étape 3 :</strong> supprimer les débris non suivis <code>sites.txt</code> et <code>test.py</code>, et le répertoire <code>build/</code> ainsi que <code>policybot.egg-info/</code>.</li>
+    <li><strong>Étape 4 :</strong> déplacer <code>ANALYSE_AMELIORATION_RECHERCHE_CONTRACTUELLE.md</code> vers <code>docs/</code> — c'est de l'analyse utile, mal rangée.</li>
+    <li><strong>Étape 5 :</strong> corriger le packaging. <code>pyproject.toml</code> déclare <code>configs/</code> en <code>data-files</code> mais oublie <code>policybot/preapproved/known_tools.yaml</code> et le gabarit DOCX de référence : une installation depuis un wheel casserait aujourd'hui.</li>
+  </ol>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Phase 6 — Documentation</h2>
+  <ol class="steps">
+    <li><strong>Étape 1 :</strong> réécrire <code>TODO.md</code> de zéro. Le fichier actuel décrit trois modules supprimés et un compte de tests faux.</li>
+    <li><strong>Étape 2 :</strong> <code>README.md</code> — remplacer la section « Lancer le projet » (<code>uvicorn</code>) par la CLI, et documenter la boucle Forms → xlsx → <code>ingerer</code>.</li>
+    <li><strong>Étape 3 :</strong> <code>CLAUDE.md</code> — le schéma d'architecture commence par « Wizard / API ». Le remplacer par la nouvelle chaîne.</li>
+    <li><strong>Étape 4 :</strong> <code>HOW_TO_RUN.md</code> — vérifier et corriger.</li>
+    <li><strong>Étape 5 :</strong> committer le résultat de <code>devis-formulaire</code> dans <code>docs/formulaire-microsoft-forms.md</code>, pour qu'on puisse le recopier sans installer le projet.</li>
+  </ol>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Le catalogue des 35 questions</h2>
+  <p>Repris tels quels du wizard. La colonne « champ » est ce que <code>configs/formulaire.yaml</code> doit déclarer.</p>
+
+  <h3>Section 1 — La demande</h3>
+  <div class="table-wrap">
+  <table>
+    <tr><th style="width:2.5rem">#</th><th>Question</th><th>Type</th><th>Champ</th></tr>
+    <tr><td>1</td><td>Nom du demandeur</td><td>texte <span class="badge badge-red">requis</span></td><td class="mono">demandeur</td></tr>
+    <tr><td>2</td><td>Unité administrative</td><td>texte <span class="badge badge-red">requis</span></td><td class="mono">unite</td></tr>
+  </table>
+  </div>
+
+  <h3>Section 2 — L'outil et son offre contractuelle</h3>
+  <div class="table-wrap">
+  <table>
+    <tr><th style="width:2.5rem">#</th><th>Question</th><th>Type</th><th>Champ</th></tr>
+    <tr><td>3</td><td>Quel outil d'IA générative comptes-tu utiliser ?</td><td>texte <span class="badge badge-red">requis</span></td><td class="mono">tool_name</td></tr>
+    <tr><td>4</td><td>Type d'outil, si l'outil n'est pas dans notre registre</td><td>choix : IAG publique · IAG circuit fermé · IAG souveraine · IAG gouvernementale</td><td class="mono">tool_type_override</td></tr>
+    <tr><td>5</td><td>Version ou plan tarifaire</td><td>texte</td><td class="mono">version_plan_tarifaire</td></tr>
+    <tr><td>6</td><td>Mode de déploiement</td><td>choix : Service public · Service institutionnel géré · Hébergement souverain · Hébergement gouvernemental · Sur site</td><td class="mono">deployment_mode</td></tr>
+    <tr><td>7</td><td>Type de contrat</td><td>choix : Conditions grand public · Contrat institutionnel · Entente gouvernementale · Entente de traitement des données</td><td class="mono">contract_type</td></tr>
+    <tr><td>8</td><td>Version du contrat</td><td>texte</td><td class="mono">contract_version</td></tr>
+    <tr><td>9</td><td>Date d'effet du contrat</td><td>date</td><td class="mono">contract_effective_date</td></tr>
+    <tr><td>10</td><td>Territoire ou compétence applicable</td><td>texte</td><td class="mono">jurisdiction</td></tr>
+  </table>
+  </div>
+  <div class="callout warn">
+    Les questions 5 à 10 déterminent l'identité de l'offre, et donc la pertinence des 17 recherches. C'est le constat n°1 du document d'analyse : sans forfait ni type de contrat, une garantie Enterprise peut être attribuée à une offre grand public. Elles méritent un texte d'aide explicite dans le formulaire.
+  </div>
+
+  <h3>Section 3 — Qui utilisera l'outil</h3>
+  <div class="table-wrap">
+  <table>
+    <tr><th style="width:2.5rem">#</th><th>Question</th><th>Type</th><th>Champ</th></tr>
+    <tr><td>11</td><td>Nombre d'utilisateurs visés</td><td>nombre</td><td class="mono">nb_utilisateurs_vises</td></tr>
+    <tr><td>12</td><td>Fonctions et rôles concernés</td><td>texte long</td><td class="mono">fonctions_roles</td></tr>
+    <tr><td>13</td><td>Niveau de maîtrise numérique</td><td>choix : débutant · intermédiaire · avancé</td><td class="mono">niveau_maitrise_ti</td></tr>
+    <tr><td>14</td><td>Formation en IAG reçue</td><td>choix : aucune · partielle · complète</td><td class="mono">formation_iag_recue</td></tr>
+    <tr><td>15</td><td>Accès à de l'information Protégé A ou plus</td><td>choix : oui · non · à vérifier</td><td class="mono">acces_protege_a_ou_plus</td></tr>
+  </table>
+  </div>
+
+  <h3>Section 4 — Les données soumises</h3>
+  <div class="table-wrap">
+  <table>
+    <tr><th style="width:2.5rem">#</th><th>Question</th><th>Type</th><th>Champ</th></tr>
+    <tr><td>16</td><td>Quel type de données comptez-vous soumettre à l'outil ?</td><td>choix multiple : Information déjà publique · Documents internes de travail · Renseignements personnels · Données stratégiques ou confidentielles</td><td class="mono">data_checked</td></tr>
+    <tr><td>17</td><td>Décris ces données dans tes mots</td><td>texte long <span class="badge badge-red">requis</span></td><td class="mono">data_free_text</td></tr>
+  </table>
+  </div>
+  <div class="callout danger">
+    <strong>Question 17 : la seule qui alimente encore un modèle.</strong> Sa réponse part à <code>classify_data()</code> (OpenRouter). Le formulaire doit dire explicitement : <em>décris la nature des données, ne colle jamais les données elles-mêmes</em>. C'est ce que le prompt suppose déjà (« the DESCRIPTION of data, never the data itself ») ; le formulaire doit le rendre impossible à ignorer.
+  </div>
+
+  <h3>Section 5 — L'usage prévu</h3>
+  <div class="table-wrap">
+  <table>
+    <tr><th style="width:2.5rem">#</th><th>Question</th><th>Type</th><th>Champ</th></tr>
+    <tr><td>18</td><td>Comment vas-tu utiliser cet outil ?</td><td>texte long <span class="badge badge-red">requis</span></td><td class="mono">usage_description</td></tr>
+    <tr><td>19</td><td>Mode d'utilisation</td><td>choix : messages directs (prompt) · intégration technique (api)</td><td class="mono">mode</td></tr>
+    <tr><td>20</td><td>Fréquence d'utilisation</td><td>texte</td><td class="mono">frequence_utilisation</td></tr>
+    <tr><td>21</td><td>Nombre d'utilisateurs pour cet usage</td><td>nombre</td><td class="mono">nb_utilisateurs</td></tr>
+    <tr><td>22</td><td>Systèmes ou API visés par l'intégration</td><td>texte</td><td class="mono">systemes_api_cibles</td></tr>
+    <tr><td>23</td><td>Comment comptez-vous utiliser les résultats ?</td><td>choix multiple : Prise de décision · Publication · Intrant dans un autre processus · Aide à la rédaction ou diffusion interne</td><td class="mono">result_use_checked</td></tr>
+    <tr><td>24</td><td>Précisions sur l'utilisation des résultats</td><td>texte</td><td class="mono">result_use_free_text</td></tr>
+    <tr><td>25</td><td>Les résultats déclenchent-ils une décision sans révision humaine ?</td><td>choix : oui · non</td><td class="mono">automated_decisions</td></tr>
+  </table>
+  </div>
+
+  <h3>Section 6 — Le contexte d'affaires</h3>
+  <div class="table-wrap">
+  <table>
+    <tr><th style="width:2.5rem">#</th><th>Question</th><th>Type</th><th>Champ</th></tr>
+    <tr><td>26</td><td>Quel besoin d'affaires cet outil répond-il ?</td><td>texte long <span class="badge badge-red">requis</span></td><td class="mono">besoin_affaires</td></tr>
+    <tr><td>27</td><td>Gains qualitatifs attendus</td><td>texte long</td><td class="mono">gains_qualitatifs</td></tr>
+    <tr><td>28</td><td>Gains quantitatifs attendus</td><td>texte long</td><td class="mono">gains_quantitatifs</td></tr>
+    <tr><td>29</td><td>Alternatives considérées</td><td>texte long</td><td class="mono">alternatives_considerees</td></tr>
+    <tr><td>30</td><td>Urgence perçue</td><td>choix : faible · modérée · élevée</td><td class="mono">urgence_percue</td></tr>
+    <tr><td>31</td><td>Coût annuel par utilisateur</td><td>texte</td><td class="mono">cout_annuel_par_utilisateur</td></tr>
+    <tr><td>32</td><td>Coût total annuel</td><td>texte</td><td class="mono">cout_total_annuel</td></tr>
+    <tr><td>33</td><td>Mode d'acquisition</td><td>choix : Achat direct · SEAO · Appel d'offres · Contrat existant</td><td class="mono">mode_acquisition</td></tr>
+    <tr><td>34</td><td>Durée du contrat</td><td>texte</td><td class="mono">duree_contrat</td></tr>
+    <tr><td>35</td><td>Responsable budgétaire</td><td>texte</td><td class="mono">responsable_budgetaire</td></tr>
+  </table>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Ce qui manquera encore après ce lot</h2>
+  <p>Inventaire honnête, classé par gravité. Rien de tout ceci n'est dans le périmètre — c'est ce qui reste sur la table.</p>
+
+  <div class="table-wrap">
+  <table>
+    <tr><th>Manque</th><th>Gravité</th><th>Ce que ça coûte</th></tr>
+    <tr>
+      <td><strong>Aucune mesure de la qualité des recherches</strong><br><span style="color:#64748b;font-size:.85rem">Le harnais d'évaluation est mort avec le pivot vers Exa.</span></td>
+      <td><span class="badge badge-red">critique</span></td>
+      <td>Modifier un YAML de critère est un pari. Le document d'analyse mesurait 8 faits acceptés sur 19 ; aujourd'hui plus rien ne mesure. On ne peut ni prouver un progrès ni détecter une régression.</td>
+    </tr>
+    <tr>
+      <td><strong>Le périmètre de l'offre n'est pas contrôlé</strong><br><span style="color:#64748b;font-size:.85rem">Aucun filtre n'écarte une page hors-offre avant extraction.</span></td>
+      <td><span class="badge badge-red">critique</span></td>
+      <td>Une garantie Enterprise peut être présentée comme applicable à une offre grand public — avec une citation ancrée, donc crédible. C'est le seul défaut du système qui produit une <em>fausse</em> conclusion plutôt qu'une absence de conclusion.</td>
+    </tr>
+    <tr>
+      <td><strong><code>expires_at</code> jamais renseigné ni respecté</strong></td>
+      <td><span class="badge badge-yellow">élevé</span></td>
+      <td>Le cache ARP n'expire que par version de schéma. Une analyse d'août&nbsp;2026 sera resservie intacte en 2028, alors que les conditions du fournisseur auront changé plusieurs fois.</td>
+    </tr>
+    <tr>
+      <td><strong>Aucun test avec une vraie réponse Exa</strong></td>
+      <td><span class="badge badge-yellow">élevé</span></td>
+      <td>Toute la suite passe par un faux client. Un changement de forme de la réponse Exa ne serait vu qu'en production.</td>
+    </tr>
+    <tr>
+      <td><strong>Aucune intégration continue</strong></td>
+      <td><span class="badge badge-blue">moyen</span></td>
+      <td>Les tests ne tournent que sur ta machine, quand tu y penses.</td>
+    </tr>
+    <tr>
+      <td><strong>Le gabarit DOCX dépend du dépôt</strong><br><span class="mono" style="font-size:.8rem">_DEFAULT_FICHE_TEMPLATE → documents_reference/</span></td>
+      <td><span class="badge badge-blue">moyen</span></td>
+      <td>Un chemin remontant de deux niveaux depuis le module. Hors dépôt, l'export DOCX casse.</td>
+    </tr>
+    <tr>
+      <td><strong>Aucun suivi du coût cumulé</strong></td>
+      <td><span class="badge badge-blue">moyen</span></td>
+      <td>Le plafond budgétaire est par exécution. Rien n'empêche cinquante exécutions à 0,90&nbsp;$.</td>
+    </tr>
+    <tr>
+      <td><strong>Rien ne relie les constats à une recommandation</strong></td>
+      <td><span class="badge badge-grey">par conception</span></td>
+      <td>La grille MCN a été supprimée et le README assume que l'officier décide. C'est cohérent, mais ce n'est écrit nulle part comme une décision de conception — seulement comme une absence.</td>
+    </tr>
+  </table>
+  </div>
+
+  <div class="callout">
+    <strong>Si un seul de ces points devait passer devant les autres :</strong> le harnais d'évaluation. Sans lui, les deux critiques suivants ne peuvent même pas être travaillés — il n'y a aucun moyen de savoir si une correction corrige quoi que ce soit.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Risques</h2>
+  <div class="callout danger">
+    <strong>Perdre les questions du wizard.</strong> Elles ne vivent que dans les gabarits Jinja. <em>Parade :</em> la Phase&nbsp;0 les transcrit et les committe avant toute suppression, et l'ordre des phases est non négociable.
+  </div>
+  <div class="callout warn">
+    <strong>Les intitulés du formulaire dérivent.</strong> Renommer une question dans Microsoft&nbsp;Forms casse silencieusement l'appariement des colonnes. <em>Parade :</em> l'appariement se fait sur intitulé normalisé, une colonne attendue absente est signalée nommément, et <code>--dry-run</code> permet de le vérifier avant toute dépense.
+  </div>
+  <div class="callout warn">
+    <strong>Supprimer plus que du mort.</strong> Onze symboles ont été vérifiés sans appelant, mais la suite passe de 126 tests à moins — supprimer <code>tests/web/</code> fait baisser le compte, ce qui masque une régression réelle. <em>Parade :</em> juger sur « zéro échec » et sur les nouveaux tests d'ingestion, jamais sur le total.
+  </div>
+  <div class="callout warn">
+    <strong>Le vrai export Forms ne ressemble pas à la fixture.</strong> La fixture est écrite par nous. <em>Parade :</em> faire un envoi réel du formulaire à soi-même, exporter, et passer ce fichier en <code>--dry-run</code> avant de déclarer la chaîne bonne. C'est la seule étape que le code ne peut pas vérifier tout seul.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Environnement &amp; lancement</h2>
+  <div class="code-block">cd C:\code\05_Travail\PolicyBot
+python -m venv .venv
+
+<span class="c"># Windows</span>
+.\.venv\Scripts\activate
+
+<span class="c"># macOS / Linux</span>
+source .venv/bin/activate
+
+pip install -e ".[dev,pdf]"
+pytest -q
+
+<span class="c"># après la refonte</span>
+policybot devis-formulaire
+policybot ingerer reponses.xlsx --dry-run
+policybot ingerer reponses.xlsx</div>
+  <div class="callout">
+    Toujours activer le venv avant de lancer quoi que ce soit : <code>.\.venv\Scripts\activate</code> (Windows) ou <code>source .venv/bin/activate</code> (macOS/Linux). La clé <code>EXA_API_KEY</code> vit dans <code>.env</code>, jamais dans le dépôt.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<div class="section">
+  <h2>Critères de succès</h2>
+  <ul class="plain">
+    <li><code>pytest -q</code> : zéro échec, zéro erreur.</li>
+    <li><code>tests/intake/</code> existe et compte au moins 12 tests.</li>
+    <li><code>policybot devis-formulaire</code> imprime les 35 questions avec leur champ.</li>
+    <li><code>policybot ingerer &lt;fixture&gt; --dry-run</code> lit au moins 2 demandes et affiche pour chacune l'identité d'offre résolue, sans aucun appel réseau.</li>
+    <li><code>policybot/web/</code>, <code>policybot/api/</code>, <code>tests/web/</code>, <code>tests/api/</code>, <code>interview/graph.py</code>, <code>interview/questions.py</code> n'existent plus.</li>
+    <li>Les onze symboles morts ne sont plus trouvables dans <code>policybot/</code>.</li>
+    <li>Les neuf dépendances retirées ne sont plus dans <code>pyproject.toml</code>.</li>
+    <li><code>runs/</code>, <code>docs/archive/</code>, les plans HTML échoués, <code>sites.txt</code> et <code>test.py</code> ne sont plus suivis par git.</li>
+    <li><code>TODO.md</code>, <code>README.md</code> et <code>CLAUDE.md</code> décrivent la chaîne réelle.</li>
+    <li>Un vrai export Microsoft&nbsp;Forms passe en <code>--dry-run</code>. <span class="badge badge-yellow">manuel</span></li>
+  </ul>
+</div>
+
+</div>
+</body>
+</html>

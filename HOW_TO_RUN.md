@@ -1,89 +1,98 @@
 # Comment lancer PolicyBot
 
-Guide rapide pour démarrer l'application en local. Pour le contexte fonctionnel
-et l'architecture, voir [`README.md`](README.md).
+Guide rapide. Pour le contexte fonctionnel et l'architecture, voir
+[`README.md`](README.md).
 
 ## Prérequis
 
 - Python 3.11+
-- (Optionnel) une clé OpenRouter + un compte LangSmith si tu veux des réponses
-  LLM réelles et la traçabilité — sans ça, l'app tourne avec le `FakeLLMProvider`.
+- (Optionnel) une clé OpenRouter pour la classification des données, et une clé
+  Exa pour les recherches contractuelles. Sans clé OpenRouter, PolicyBot bascule
+  sur le `FakeLLMProvider` et ne fait aucun appel réseau.
 
-## 1. Installer les dépendances
+## 1. Installer
 
-```bash
-pip install -e ".[dev]"
-```
-
-Ajoute l'extra `pdf` pour que chaque resultat genere aussi un PDF dans `output/pdf/` :
-
-```bash
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate           # macOS / Linux : source .venv/bin/activate
 pip install -e ".[dev,pdf]"
 ```
 
-Les dossiers `output/pdf/` et `output/docx/` sont crees automatiquement. Tu peux changer leurs destinations avec `POLICYBOT_PDF_OUTPUT_DIR` et `POLICYBOT_DOCX_OUTPUT_DIR`.
+L'extra `pdf` ajoute `reportlab`, nécessaire à l'export PDF. Les répertoires
+`output/pdf/`, `output/docx/` et `output/json/` sont créés automatiquement ;
+`POLICYBOT_PDF_OUTPUT_DIR` et `POLICYBOT_DOCX_OUTPUT_DIR` changent leur
+destination, tout comme les options `--sortie-pdf`, `--sortie-docx` et
+`--sortie-json`.
 
 ## 2. Configurer les variables d'environnement (optionnel)
-
-Copie `.env.example` vers `.env` et remplis les clés si tu veux des appels LLM
-réels et le traçage LangSmith :
 
 ```bash
 cp .env.example .env
 ```
 
-Sans `OPENROUTER_API_KEY`, PolicyBot utilise automatiquement le
-`FakeLLMProvider` (pas d'appel réseau). Le `.env` est chargé automatiquement au
-démarrage et n'est jamais lu sous `pytest`.
+Sans `OPENROUTER_API_KEY`, PolicyBot utilise le `FakeLLMProvider`. Sans
+`EXA_API_KEY`, aucune recherche contractuelle n'aboutit. Le `.env` n'est jamais
+lu sous `pytest`.
 
+## 3. Préparer le formulaire
 
-### Recherche contractuelle Tavily
-
-Pour utiliser Tavily comme source de recherche des faits contractuels ARP, ajoute ces variables dans `.env` :
-
-```bash
-TAVILY_API_KEY=<ta cle Tavily>
-POLICYBOT_CONTRACT_SEARCH=tavily
+```powershell
+policybot devis-formulaire
 ```
 
-Au premier passage d'un outil, PolicyBot genere automatiquement `configs/tavily_contracts/<outil>.yaml`. Ce YAML contient 5 recherches ciblées, une par famille de critères (entreposage, utilisation, gouvernance, sécurité, propriété intellectuelle), chacune avec ses propres mots-clés et champs de extraction — 16 champs au total répartis sur les 5 familles. Les URLs trouvees sont envoyees a Tavily Extract pour recuperer le contenu complet avant la normalisation LLM. Tavily Extract accepte au maximum 20 URLs par appel; ajuste `extract_defaults.max_urls` dans le YAML pour reduire ce nombre au besoin.
+La sortie liste les 35 questions, leur type, leurs choix et le champ que
+chacune alimente. Recopie-les dans Microsoft Forms **en conservant les
+intitulés** : c'est sur eux que l'appariement des colonnes se fait. Une
+divergence de casse, d'accents ou de ponctuation finale reste tolérée ; un
+intitulé réécrit, non.
 
-Tester Tavily sans lancer le serveur web :
+La même liste est versionnée sous
+[`docs/formulaire-microsoft-forms.md`](docs/formulaire-microsoft-forms.md).
 
-```bash
-python -m policybot.contract.tavily_probe "ChatGPT" --show-config --evidence-out output/tavily-chatgpt.md
+## 4. Ingérer les réponses
+
+Télécharge l'export Excel depuis Microsoft Forms, puis :
+
+```powershell
+policybot ingerer reponses.xlsx --dry-run
 ```
 
-Pour aller jusqu'aux `ContractFacts`, ajoute `--facts` avec `OPENROUTER_API_KEY` defini. Pour construire aussi l'ARP Partie A :
+`--dry-run` lit, valide et affiche l'identité d'offre résolue de chaque
+demande. Il n'appelle ni modèle, ni recherche, et n'écrit aucun fichier :
+c'est le mode qui permet de vérifier un export avant toute dépense. Vérifie-le
+sur un vrai export avant de déclarer la chaîne bonne — le code ne peut pas
+faire cette vérification à ta place.
 
-```bash
-python -m policybot.contract.tavily_probe "ChatGPT" --facts --arp --iag-type publique --evidence-out output/tavily-chatgpt.md
-```
-## 3. Lancer le serveur web
+Puis, pour de vrai :
 
-```bash
-uvicorn policybot.api.app:app --reload
-```
-
-L'app démarre sur http://127.0.0.1:8000 :
-
-- L'assistant (wizard web) est servi via les routes de `policybot/web/routes.py`.
-- `POST /assess` et `POST /report` exposent le pipeline brut (API JSON).
-
-## 4. Lancer les tests
-
-```bash
-pytest -v
+```powershell
+policybot ingerer reponses.xlsx
 ```
 
-Tous les tests tournent hors-ligne (LLM factice, fixtures HTML pour les
-fetchers de conditions d'utilisation) — aucun appel réseau n'est fait.
+Le code de sortie vaut 1 dès qu'une demande a été rejetée ou a échoué. Une
+demande en échec n'arrête jamais le lot.
+
+## 5. Lancer les tests
+
+```powershell
+pytest -q
+```
+
+Toute la suite tourne hors ligne : LLM factice, recherche Exa injectée,
+export Forms produit par `tests/helpers/forms.py`. Aucun appel réseau.
+
+Pour régénérer la fixture d'export après un changement du catalogue :
+
+```powershell
+python -m tests.helpers.forms
+```
 
 ## Dépannage rapide
 
-- **Port déjà utilisé** : `uvicorn policybot.api.app:app --reload --port 8001`
-- **`policybot.db` verrouillée ou corrompue** : le fichier SQLite à la racine
-  sert de cache pour les fiches ARP/pré-approuvées ; tu peux le supprimer, il
-  sera recréé au prochain démarrage.
-- **Pas de réponses LLM réelles** : vérifie que `OPENROUTER_API_KEY` est bien
-  défini dans `.env` (et que le serveur a été redémarré après modification).
+- **« colonne absente de l'export »** : un intitulé de question a été réécrit
+  dans Microsoft Forms. Compare avec `policybot devis-formulaire`.
+- **« réponse « X » hors des choix proposés »** : un choix a été renommé dans
+  le formulaire sans l'être dans `configs/formulaire.yaml`.
+- **`policybot.db` verrouillée ou corrompue** : ce fichier SQLite à la racine
+  n'est qu'un cache d'analyses ARP ; tu peux le supprimer, il sera recréé.
+- **Pas de réponses LLM réelles** : vérifie `OPENROUTER_API_KEY` dans `.env`.

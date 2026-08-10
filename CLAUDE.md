@@ -10,7 +10,8 @@ si la citation n’est pas ancrée dans le texte de sa propre page.
 .\.venv\Scripts\activate
 pip install -e ".[dev,pdf]"
 pytest -q
-uvicorn policybot.api.app:app --reload
+policybot devis-formulaire
+policybot ingerer reponses.xlsx --dry-run
 ```
 
 Ne jamais créer de worktree. Travailler dans le répertoire courant. Ne jamais
@@ -19,14 +20,23 @@ versionner `.env`, les réponses Exa brutes, les journaux ni les rapports.
 ## Architecture
 
 ```text
-Wizard / API
+Microsoft Forms (externe)
+  -> export .xlsx
+  -> policybot.intake.reponses : une ligne = une DemandeIAG
   -> identification de l’offre
   -> classification des données par usage
   -> cache ARP SQLite (schéma 2)
   -> 17 recherches Exa parallèles, une par critère
   -> CriterionFinding[]
-  -> rapport HTML / PDF / DOCX
+  -> rapport PDF / DOCX + constats .json
 ```
+
+PolicyBot n’héberge aucun formulaire et n’expose aucune interface web. Le
+catalogue `configs/formulaire.yaml` et le schéma `DemandeIAG` se valident
+mutuellement à l’import, comme `criteres.py` valide la couverture des 17
+critères : une question qui pointe vers un champ inexistant, un champ
+obligatoire que le formulaire ne demande pas, ou une valeur de choix que le
+schéma refuse font échouer le chargement.
 
 Les 13 critères de partie A correspondent exactement à `ARP_CRITERIA`. Les
 quatre critères de partie B recherchés correspondent à :
@@ -71,4 +81,6 @@ La suite est entièrement hors ligne. Les points essentiels sont :
 - parsing de la sortie structurée et du coût Exa;
 - isolation d’une recherche en échec;
 - validation et liens profonds des citations;
-- rendu HTML, PDF et DOCX.
+- rendu PDF et DOCX;
+- appariement des colonnes d’un export Forms et isolation d’une demande
+  rejetée.
