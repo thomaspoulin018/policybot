@@ -180,7 +180,14 @@ def construire_parseur() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None, flux=None) -> int:
-    flux = flux or sys.stdout
+    if flux is None:
+        # La console Windows n'est pas en UTF-8 par défaut : sans cela, le
+        # premier accent du formulaire fait tomber la commande.
+        for canal in (sys.stdout, sys.stderr):
+            reconfigure = getattr(canal, "reconfigure", None)
+            if reconfigure is not None:
+                reconfigure(encoding="utf-8", errors="replace")
+        flux = sys.stdout
     args = construire_parseur().parse_args(argv)
     try:
         return args.fonction(args, flux)
