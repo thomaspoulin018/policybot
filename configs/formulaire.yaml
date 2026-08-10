@@ -1,0 +1,363 @@
+# Catalogue du formulaire de demande PolicyBot.
+#
+# Source de vérité des questions à recopier dans Microsoft Forms. Chaque
+# question déclare le champ de `policybot.intake.schema.DemandeIAG` qu'elle
+# alimente ; `policybot/intake/formulaire.py` valide cette correspondance à
+# l'import et refuse un champ inconnu ou un champ obligatoire non couvert.
+#
+# Types acceptés : texte, texte_long, nombre, date, choix, choix_multiple, oui_non.
+version: 1
+
+titre: "Demande d'utilisation d'un outil d'IA générative"
+
+introduction: |
+  Ce formulaire sert à documenter une demande d'utilisation d'un outil d'IA
+  générative. Il ne rend aucune décision : il produit un dossier de constats
+  sourcés qu'une personne responsable examine ensuite.
+
+  Une réponse = un usage. Si tu prévois plusieurs usages distincts du même
+  outil, remplis le formulaire une fois par usage.
+
+  Ne colle jamais de données réelles dans tes réponses : décris-les.
+
+sections:
+  - titre: "Section 1 — La demande"
+    questions:
+      - numero: 1
+        intitule: "Nom du demandeur"
+        type: texte
+        obligatoire: true
+        champ: demandeur
+
+      - numero: 2
+        intitule: "Unité administrative"
+        type: texte
+        obligatoire: true
+        champ: unite
+
+  - titre: "Section 2 — L'outil et son offre contractuelle"
+    aide: |
+      Les questions 5 à 10 déterminent l'identité de l'offre contractuelle
+      évaluée. Sans forfait ni type de contrat, une garantie réservée aux
+      offres Entreprise peut être attribuée à tort à une offre grand public.
+    questions:
+      - numero: 3
+        intitule: "Quel outil d'IA générative comptes-tu utiliser ?"
+        type: texte
+        obligatoire: true
+        champ: tool_name
+        aide: "Nom commercial de l'outil, par exemple ChatGPT, Microsoft Copilot, Gemini."
+
+      - numero: 4
+        intitule: "Type d'outil, si l'outil n'est pas dans notre registre"
+        type: choix
+        obligatoire: false
+        champ: tool_type_override
+        aide: "À remplir seulement si l'outil est peu connu ; sinon laisser vide."
+        choix:
+          - libelle: "IAG publique"
+            valeur: publique
+            description: "Ex. ChatGPT, Claude.ai, Perplexity"
+          - libelle: "IAG circuit fermé"
+            valeur: circuit_ferme
+            description: "Ex. Microsoft Copilot Entreprise"
+          - libelle: "IAG souveraine"
+            valeur: souveraine
+            description: "Hébergée au Québec"
+          - libelle: "IAG gouvernementale"
+            valeur: gouvernementale
+            description: "Hébergée par l'UQAM / le gouvernement"
+
+      - numero: 5
+        intitule: "Version ou plan tarifaire"
+        type: texte
+        obligatoire: false
+        champ: version_plan_tarifaire
+        aide: "Ex. Plan Plus, Licence institutionnelle Entreprise, Workspace Business."
+
+      - numero: 6
+        intitule: "Mode de déploiement"
+        type: choix
+        obligatoire: false
+        champ: deployment_mode
+        aide: "Laisser vide pour le déduire du type d'outil."
+        choix:
+          - libelle: "Service public"
+            valeur: public_saas
+          - libelle: "Service institutionnel géré"
+            valeur: managed_saas
+          - libelle: "Hébergement souverain"
+            valeur: sovereign_hosted
+          - libelle: "Hébergement gouvernemental"
+            valeur: government_hosted
+          - libelle: "Sur site"
+            valeur: on_premise
+
+      - numero: 7
+        intitule: "Type de contrat"
+        type: choix
+        obligatoire: false
+        champ: contract_type
+        aide: "Laisser vide pour le déduire du plan tarifaire."
+        choix:
+          - libelle: "Conditions grand public"
+            valeur: consumer_terms
+          - libelle: "Contrat institutionnel"
+            valeur: institutional_agreement
+          - libelle: "Entente gouvernementale"
+            valeur: government_agreement
+          - libelle: "Entente de traitement des données"
+            valeur: dpa
+
+      - numero: 8
+        intitule: "Version du contrat"
+        type: texte
+        obligatoire: false
+        champ: contract_version
+        aide: "Ex. DPA-2026-07."
+
+      - numero: 9
+        intitule: "Date d'effet du contrat"
+        type: date
+        obligatoire: false
+        champ: contract_effective_date
+
+      - numero: 10
+        intitule: "Territoire ou compétence applicable"
+        type: texte
+        obligatoire: false
+        champ: jurisdiction
+        aide: "Ex. Québec, Canada ; Californie, États-Unis."
+
+  - titre: "Section 3 — Qui utilisera l'outil"
+    questions:
+      - numero: 11
+        intitule: "Nombre d'utilisateurs visés"
+        type: nombre
+        obligatoire: false
+        champ: nb_utilisateurs_vises
+
+      - numero: 12
+        intitule: "Fonctions et rôles concernés"
+        type: texte_long
+        obligatoire: false
+        champ: fonctions_roles
+
+      - numero: 13
+        intitule: "Niveau de maîtrise numérique"
+        type: choix
+        obligatoire: false
+        champ: niveau_maitrise_ti
+        choix:
+          - libelle: "Débutant"
+            valeur: débutant
+          - libelle: "Intermédiaire"
+            valeur: intermédiaire
+          - libelle: "Avancé"
+            valeur: avancé
+
+      - numero: 14
+        intitule: "Formation en IAG reçue"
+        type: choix
+        obligatoire: false
+        champ: formation_iag_recue
+        choix:
+          - libelle: "Aucune"
+            valeur: aucune
+            description: "Aucune formation formelle ou rappel sur les bonnes pratiques."
+          - libelle: "Partielle"
+            valeur: partielle
+            description: "Quelques notions vues, mais pas encore un parcours complet."
+          - libelle: "Complète (MCN)"
+            valeur: complète
+            description: "Le groupe a déjà suivi la formation complète prévue par l'organisation."
+
+      - numero: 15
+        intitule: "Accès à de l'information Protégé A ou plus"
+        type: choix
+        obligatoire: false
+        champ: acces_protege_a_ou_plus
+        choix:
+          - libelle: "Oui"
+            valeur: oui
+            description: "Le groupe a accès à de l'information Protégé A, B ou plus."
+          - libelle: "Non"
+            valeur: non
+            description: "Le groupe ne manipule pas ce niveau d'information dans son travail courant."
+          - libelle: "À vérifier"
+            valeur: à vérifier
+            description: "L'information n'est pas confirmée pour l'instant."
+
+  - titre: "Section 4 — Les données soumises"
+    questions:
+      - numero: 16
+        intitule: "Quel type de données comptez-vous soumettre à l'outil ?"
+        type: choix_multiple
+        obligatoire: false
+        champ: data_checked
+        choix:
+          - libelle: "Information déjà publique"
+            valeur: "Information déjà publique"
+            description: "Statistiques publiées, communiqués, code public"
+          - libelle: "Documents internes de travail"
+            valeur: "Documents internes de travail"
+            description: "Notes, brouillons, code applicatif privé"
+          - libelle: "Renseignements personnels"
+            valeur: "Renseignements personnels"
+            description: "Noms, dossiers, coordonnées de personnes"
+          - libelle: "Données stratégiques / confidentielles"
+            valeur: "Données stratégiques / confidentielles"
+            description: "Informations sensibles pour l'institution"
+
+      - numero: 17
+        intitule: "Décris ces données dans tes mots"
+        type: texte_long
+        obligatoire: true
+        champ: data_free_text
+        aide: |
+          Décris la NATURE des données, jamais les données elles-mêmes.
+          Ne colle ici aucun nom, aucun numéro de dossier, aucun extrait réel.
+          Exemple correct : « notes de travail internes non publiques, sans
+          renseignement personnel ».
+
+  - titre: "Section 5 — L'usage prévu"
+    questions:
+      - numero: 18
+        intitule: "Comment vas-tu utiliser cet outil ?"
+        type: texte_long
+        obligatoire: true
+        champ: usage_description
+
+      - numero: 19
+        intitule: "Mode d'utilisation"
+        type: choix
+        obligatoire: false
+        champ: mode
+        choix:
+          - libelle: "Messages directs (prompt)"
+            valeur: prompt
+          - libelle: "Intégration technique (API)"
+            valeur: api
+
+      - numero: 20
+        intitule: "Fréquence d'utilisation"
+        type: texte
+        obligatoire: false
+        champ: frequence_utilisation
+
+      - numero: 21
+        intitule: "Nombre d'utilisateurs pour cet usage"
+        type: nombre
+        obligatoire: false
+        champ: nb_utilisateurs
+
+      - numero: 22
+        intitule: "Systèmes ou API visés par l'intégration"
+        type: texte
+        obligatoire: false
+        champ: systemes_api_cibles
+
+      - numero: 23
+        intitule: "Comment comptez-vous utiliser les résultats ?"
+        type: choix_multiple
+        obligatoire: false
+        champ: result_use_checked
+        choix:
+          - libelle: "Prise de décision"
+            valeur: "Prise de décision"
+          - libelle: "Publication"
+            valeur: "Publication"
+          - libelle: "Intrant dans un autre processus"
+            valeur: "Intrant dans un autre processus"
+          - libelle: "Aide à la rédaction / diffusion interne"
+            valeur: "Aide à la rédaction / diffusion interne"
+
+      - numero: 24
+        intitule: "Précisions sur l'utilisation des résultats"
+        type: texte
+        obligatoire: false
+        champ: result_use_free_text
+
+      - numero: 25
+        intitule: "Les résultats déclenchent-ils une décision sans révision humaine ?"
+        type: oui_non
+        obligatoire: false
+        champ: automated_decisions
+
+  - titre: "Section 6 — Le contexte d'affaires"
+    questions:
+      - numero: 26
+        intitule: "Quel besoin d'affaires cet outil répond-il ?"
+        type: texte_long
+        obligatoire: true
+        champ: besoin_affaires
+
+      - numero: 27
+        intitule: "Gains qualitatifs attendus"
+        type: texte_long
+        obligatoire: false
+        champ: gains_qualitatifs
+
+      - numero: 28
+        intitule: "Gains quantitatifs attendus"
+        type: texte_long
+        obligatoire: false
+        champ: gains_quantitatifs
+
+      - numero: 29
+        intitule: "Alternatives considérées"
+        type: texte_long
+        obligatoire: false
+        champ: alternatives_considerees
+
+      - numero: 30
+        intitule: "Urgence perçue"
+        type: choix
+        obligatoire: false
+        champ: urgence_percue
+        choix:
+          - libelle: "Faible"
+            valeur: faible
+          - libelle: "Modérée"
+            valeur: modérée
+          - libelle: "Élevée"
+            valeur: élevée
+
+      - numero: 31
+        intitule: "Coût annuel par utilisateur"
+        type: texte
+        obligatoire: false
+        champ: cout_annuel_par_utilisateur
+
+      - numero: 32
+        intitule: "Coût total annuel"
+        type: texte
+        obligatoire: false
+        champ: cout_total_annuel
+
+      - numero: 33
+        intitule: "Mode d'acquisition"
+        type: choix
+        obligatoire: false
+        champ: mode_acquisition
+        choix:
+          - libelle: "Achat direct"
+            valeur: achat_direct
+          - libelle: "Via SEAO"
+            valeur: seao
+          - libelle: "Via appel d'offres"
+            valeur: appel_offres
+          - libelle: "Contrat existant"
+            valeur: contrat_existant
+
+      - numero: 34
+        intitule: "Durée du contrat"
+        type: texte
+        obligatoire: false
+        champ: duree_contrat
+
+      - numero: 35
+        intitule: "Responsable budgétaire"
+        type: texte
+        obligatoire: false
+        champ: responsable_budgetaire
