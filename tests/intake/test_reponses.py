@@ -5,15 +5,11 @@ import pytest
 from policybot.intake.formulaire import formulaire
 from policybot.intake.reponses import lire_export
 
-from tests.helpers.forms import FIXTURE, ecrire_export, entetes, lignes
+from tests.helpers.forms import FIXTURE, colonne_index as colonne, ecrire_export, entetes, lignes
 
 
 def question(champ: str):
     return next(q for q in formulaire().questions if q.champ == champ)
-
-
-def colonne(champ: str) -> int:
-    return entetes().index(question(champ).intitule)
 
 
 @pytest.fixture

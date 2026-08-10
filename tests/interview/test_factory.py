@@ -1,4 +1,4 @@
-import policybot.api.deps as deps
+import policybot.interview.factory as factory
 from policybot.config import LLM_TASKS, load_config
 from policybot.llm.fake import FakeLLMProvider
 from policybot.llm.debug_provider import DebugRecordingProvider
@@ -15,9 +15,9 @@ def test_default_interview_builds_one_configured_provider_per_task(
         return FakeLLMProvider()
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setattr(deps, "OpenRouterProvider", provider_factory)
+    monkeypatch.setattr(factory, "OpenRouterProvider", provider_factory)
 
-    interview = deps.default_interview(str(tmp_path / "pb.db"))
+    interview = factory.default_interview(str(tmp_path / "pb.db"))
 
     assert isinstance(interview.llm, TaskRoutingLLMProvider)
     assert len(created) == len(LLM_TASKS)
@@ -34,8 +34,8 @@ def test_default_interview_wraps_provider_when_yaml_enables_debug_runs(
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     config = load_config()
     config.debug_runs.enabled = True
-    monkeypatch.setattr(deps, "load_config", lambda _path: config)
+    monkeypatch.setattr(factory, "load_config", lambda _path: config)
 
-    interview = deps.default_interview(str(tmp_path / "pb.db"))
+    interview = factory.default_interview(str(tmp_path / "pb.db"))
 
     assert isinstance(interview.llm, DebugRecordingProvider)

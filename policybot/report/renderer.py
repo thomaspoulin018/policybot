@@ -39,14 +39,22 @@ def _safe_filename(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "rapport"
 
 
+def _filename_stem(state: InterviewState) -> str:
+    """Le numéro de demande précède l'horodatage.
+
+    Sans lui, deux demandes d'un même lot traitées dans la même seconde
+    écriraient dans le même fichier.
+    """
+    numero = _safe_filename(state.request.numero) if state.request.numero else "policybot"
+    return f"{numero}_{datetime.now():{_FILENAME_TIMESTAMP_FORMAT}}"
+
+
 def pdf_filename(state: InterviewState) -> str:
-    del state
-    return f"policybot-{datetime.now():{_FILENAME_TIMESTAMP_FORMAT}}.pdf"
+    return f"{_filename_stem(state)}.pdf"
 
 
 def docx_filename(state: InterviewState) -> str:
-    del state
-    return f"policybot-{datetime.now():{_FILENAME_TIMESTAMP_FORMAT}}-fiche.docx"
+    return f"{_filename_stem(state)}-fiche.docx"
 
 
 def pdf_output_dir() -> Path:

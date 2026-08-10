@@ -139,6 +139,12 @@ def entetes() -> list[str]:
     return list(COLONNES_TECHNIQUES) + [q.intitule for q in formulaire().questions]
 
 
+def colonne_index(champ: str) -> int:
+    """La position, dans l'export, de la colonne qui alimente `champ`."""
+    question = next(q for q in formulaire().questions if q.champ == champ)
+    return entetes().index(question.intitule)
+
+
 def lignes() -> list[list[str]]:
     par_champ = {q.champ: q for q in formulaire().questions}
     resultat: list[list[str]] = []
