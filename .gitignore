@@ -230,9 +230,13 @@ __marimo__/
 ~$*
 
 
+# Journaux d'experimentation ARP, propres a une machine.
+runs/
+
 configs/*
 !configs/policybot.yaml
 !configs/formulaire.yaml
+!configs/prompts.yaml
 !configs/recherche_defaults.yaml
 !configs/recherche_criteres/
 !configs/recherche_criteres/*.yaml

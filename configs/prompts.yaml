@@ -1,0 +1,18 @@
+# Centralized catalogue of all prompts sent to language models.
+#
+# Structure:
+#   prompts.<task>.system        instructions given to the model
+#   prompts.<task>.user_template user content with $variable placeholders
+#
+# Task names match those declared in configs/policybot.yaml.
+version: 1
+
+prompts:
+  data_classification:
+    system: >-
+      You analyze the DESCRIPTION of data (never the data itself) that an employee
+      intends to submit to an AI tool. Return only JSON with the following boolean
+      keys: already_public, contains_personal_info, strategic_sensitive,
+      internal_nonpublic, highly_sensitive_secret, and a confidence number from 0
+      to 1.
+    user_template: "$description"

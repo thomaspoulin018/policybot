@@ -26,9 +26,20 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["policybot*"]
 
+[tool.setuptools.package-data]
+# Le registre d'outils et le gabarit DOCX sont lus par le code du package :
+# sans eux, une installation depuis un wheel casse au premier appel.
+"policybot.preapproved" = ["known_tools.yaml"]
+
 [tool.setuptools.data-files]
-"configs" = ["configs/recherche_defaults.yaml"]
+"configs" = [
+    "configs/policybot.yaml",
+    "configs/prompts.yaml",
+    "configs/formulaire.yaml",
+    "configs/recherche_defaults.yaml",
+]
 "configs/recherche_criteres" = ["configs/recherche_criteres/*.yaml"]
+"documents_reference" = ["documents_reference/SI_-_Fiche_de_qualification.docx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
