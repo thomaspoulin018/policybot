@@ -1,13 +1,11 @@
+import pytest
+
 import policybot.interview.factory as factory
-from policybot.config import LLM_TASKS, load_config
-from policybot.llm.fake import FakeLLMProvider
-from policybot.llm.debug_provider import DebugRecordingProvider
-from policybot.llm.router import TaskRoutingLLMProvider
+from policybot.config import CleApiManquante
+from policybot.llm import FakeLLMProvider
 
 
-def test_default_interview_builds_one_configured_provider_per_task(
-    monkeypatch, tmp_path,
-):
+def test_default_interview_configures_the_provider_from_yaml(monkeypatch):
     created = []
 
     def provider_factory(api_key, **kwargs):
@@ -17,25 +15,21 @@ def test_default_interview_builds_one_configured_provider_per_task(
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr(factory, "OpenRouterProvider", provider_factory)
 
-    interview = factory.default_interview(str(tmp_path / "pb.db"))
+    factory.default_interview()
 
-    assert isinstance(interview.llm, TaskRoutingLLMProvider)
-    assert len(created) == len(LLM_TASKS)
-    assert {kwargs["model"] for _, kwargs in created} == {"openai/gpt-5.6-luna"}
-    assert all(api_key == "test-key" for api_key, _ in created)
-    assert all(kwargs["max_tokens"] > 0 for _, kwargs in created)
-    assert all(kwargs["timeout"] > 0 for _, kwargs in created)
-    assert interview._arp_cache_mode == "disabled"
+    assert len(created) == 1
+    api_key, kwargs = created[0]
+    assert api_key == "test-key"
+    assert kwargs["model"] == "openai/gpt-5.6-luna"
+    assert kwargs["max_tokens"] > 0
+    assert kwargs["timeout"] > 0
 
 
-def test_default_interview_wraps_provider_when_yaml_enables_debug_runs(
-    monkeypatch, tmp_path,
-):
+def test_default_interview_refuses_to_run_without_an_api_key(monkeypatch):
+    """Le repli hors ligne silencieux levait `IndexError` au premier appel."""
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    config = load_config()
-    config.debug_runs.enabled = True
-    monkeypatch.setattr(factory, "load_config", lambda _path: config)
 
-    interview = factory.default_interview(str(tmp_path / "pb.db"))
+    with pytest.raises(CleApiManquante) as erreur:
+        factory.default_interview()
 
-    assert isinstance(interview.llm, DebugRecordingProvider)
+    assert "OPENROUTER_API_KEY" in str(erreur.value)

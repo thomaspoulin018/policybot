@@ -1,5 +1,4 @@
-from policybot.classify.tool_type import classify_tool_type
-from policybot.classify.tool_registry import lookup_tool
+from policybot.classify.tool_registry import classify_tool_type, lookup_tool
 
 
 def test_known_public_tool():
@@ -15,6 +14,7 @@ def test_unknown_tool_returns_none():
     assert classify_tool_type("OutilInconnu 9000") is None
 
 
-def test_lookup_returns_terms_url():
-    entry = lookup_tool("ChatGPT")
-    assert entry["terms_url"].startswith("http")
+def test_registry_only_carries_what_the_pipeline_reads():
+    """`terms_url` et `contract_sources` n'avaient aucun lecteur : les garder
+    revenait à entretenir des listes d'adresses que rien ne vérifiait."""
+    assert lookup_tool("ChatGPT") == {"iag_type": "publique", "vendor": "OpenAI"}

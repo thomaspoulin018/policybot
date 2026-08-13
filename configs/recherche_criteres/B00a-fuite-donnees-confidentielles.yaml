@@ -1,0 +1,6 @@
+version: 2
+id: B05
+partie: B
+category: Gestion des données
+criterion: Fuite de données confidentielles
+question: Risque de soumettre des données institutionnelles sensibles ou stratégiques à un outil public non sécurisé.

@@ -9,9 +9,6 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from policybot.criteria import ARP_CRITERIA, USAGE_CRITERIA
-
-
 EXA_SEARCH_TYPES = {
     "auto", "fast", "neural", "instant", "deep-lite", "deep", "deep-reasoning",
 }
@@ -58,14 +55,16 @@ class ExaCriterionConfig(BaseModel):
 class CriterionSearchConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: Literal[2]
-    id: str = Field(pattern=r"^[AB]\d{2}$")
+    id: str = Field(pattern=r"^[AB][A-Za-z0-9_-]+$")
     partie: Literal["A", "B"]
     category: str = Field(min_length=1)
     criterion: str = Field(min_length=1)
     question: str = Field(min_length=1)
-    exa: ExaCriterionConfig
+    exa: ExaCriterionConfig | None = None
 
     def render_query(self, **values: str) -> str:
+        if self.exa is None:
+            raise ValueError(f"le critère {self.id} ne configure aucune recherche Exa")
         rendered = self.exa.query.format(**{
             key: values.get(key, "") for key in QUERY_FIELDS
         })
@@ -76,13 +75,9 @@ class SearchDefaults(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: Literal[2]
     exa: dict[str, Any]
-    budget: dict[str, Any]
     schemas: dict[str, dict[str, Any]]
     prompts: dict[str, str]
     max_citations_per_criterion: int = Field(default=3, gt=0)
-    observation_template: str
-    citation_line_template: str
-    citation_link_template: str
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -108,32 +103,25 @@ def load_criterion_searches(
     searches = []
     for path in sorted(directory.glob("*.yaml")):
         raw = _read_yaml(path)
-        raw["exa"] = _deep_merge(shared_exa, raw.get("exa") or {})
+        if "exa" in raw and raw["exa"] is not None:
+            raw["exa"] = _deep_merge(shared_exa, raw["exa"])
         searches.append(CriterionSearchConfig.model_validate(raw))
 
     ids = [item.id for item in searches]
     if len(ids) != len(set(ids)):
         raise ValueError("les identifiants de critères doivent être uniques")
-    expected_a = {(category, criterion) for category, criterion, _ in ARP_CRITERIA}
-    usage_by_name = {criterion: (category, criterion) for category, criterion, _ in USAGE_CRITERIA}
-    expected_b = {
-        usage_by_name[name] for name in (
-            "Utilisation de données pour entraînement",
-            "Compatibilité avec la LAI/PRP",
-            "Biais algorithmiques",
-            "Image et réputation institutionnelle",
-        )
-    }
-    actual_a = {(item.category, item.criterion) for item in searches if item.partie == "A"}
-    actual_b = {(item.category, item.criterion) for item in searches if item.partie == "B"}
-    if actual_a != expected_a:
-        raise ValueError(f"les critères A ne correspondent pas à ARP_CRITERIA: {actual_a ^ expected_a}")
-    if actual_b != expected_b:
-        raise ValueError(f"les critères B ne correspondent pas à USAGE_CRITERIA: {actual_b ^ expected_b}")
-    if len(searches) != 17:
-        raise ValueError(f"17 configurations attendues, {len(searches)} trouvées")
+    for item in searches:
+        if not item.id.startswith(item.partie):
+            raise ValueError(
+                f"le critère {item.id} appartient à la partie {item.partie}"
+            )
+    parties = {item.partie for item in searches}
+    if parties != {"A", "B"}:
+        raise ValueError("au moins un critère est requis dans chaque partie A et B")
     return defaults, tuple(searches)
 
 
-SEARCH_DEFAULTS, CRITERIA_SEARCHES = load_criterion_searches()
+SEARCH_DEFAULTS, CRITERIA = load_criterion_searches()
+CRITERIA_BY_ID = {item.id: item for item in CRITERIA}
+CRITERIA_SEARCHES = tuple(item for item in CRITERIA if item.exa is not None)
 CRITERIA_SEARCH_BY_ID = {item.id: item for item in CRITERIA_SEARCHES}

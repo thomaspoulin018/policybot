@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from datetime import date
 from datetime import date as _date
-import hashlib
-import json
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -24,33 +22,18 @@ class ContractOfferingIdentity(BaseModel):
     jurisdiction: str = ""
     effective_date: Optional[date] = None
 
-    def canonical_payload(self) -> dict[str, str]:
-        return {
-            "vendor": self.vendor.strip().casefold(),
-            "product": self.product.strip().casefold(),
-            "plan": self.plan.strip().casefold(),
-            "deployment_mode": self.deployment_mode.strip().casefold(),
-            "contract_type": self.contract_type.strip().casefold(),
-            "contract_version": self.contract_version.strip().casefold(),
-            "jurisdiction": self.jurisdiction.strip().casefold(),
-            "effective_date": self.effective_date.isoformat() if self.effective_date else "",
-        }
-
-    def cache_key(self) -> str:
-        encoded = json.dumps(
-            self.canonical_payload(), ensure_ascii=False, sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-        return f"offering:{hashlib.sha256(encoded).hexdigest()}"
-
     def missing_search_identity_fields(self) -> tuple[str, ...]:
+        # `contract_version` est volontairement absent : la plupart des
+        # demandeurs utilisent un outil aux conditions publiques de son site,
+        # sans document signé. Un champ vide y est la réponse normale, pas le
+        # signe d'une offre mal identifiée — le signaler noyait les vraies
+        # lacunes sous une alerte permanente.
         values = {
             "vendor": self.vendor,
             "product": self.product,
             "plan": self.plan,
             "deployment_mode": self.deployment_mode,
             "contract_type": self.contract_type,
-            "contract_version": self.contract_version,
         }
         return tuple(
             name for name, value in values.items()
@@ -93,17 +76,6 @@ class CriterionFinding(BaseModel):
     outcome: Literal["ok", "no_answer", "search_failed"] = "ok"
 
 
-class ArpRecord(BaseModel):
-    tool_name: str
-    iag_type: IagType
-    offering: ContractOfferingIdentity | None = None
-    findings: list[CriterionFinding] = Field(default_factory=list)
-    total_cost_dollars: float = 0.0
-    schema_version: int = 2
-    fetched_at: date | None = None
-    expires_at: date | None = None
-
-
 class RequestInfo(BaseModel):
     numero: str
     demandeur: str = ""
@@ -134,12 +106,24 @@ class QualificationProfile(BaseModel):
 
 
 class ToolRef(BaseModel):
+    """Un outil évalué et ses constats recherchés pour son offre.
+
+    Les constats étaient auparavant enveloppés dans un `ArpRecord` porteur d'un
+    numéro de schéma et d'une date de péremption. Ces champs n'existaient que
+    pour le cache local, qui a été retiré : une recherche coûte moins cher que
+    la maintenance d'un cache indexé par identité d'offre.
+    """
+
     name: str
     vendor: Optional[str] = None
     iag_type: Optional[IagType] = None
-    arp: Optional[ArpRecord] = None
+    findings: list[CriterionFinding] = Field(default_factory=list)
     version_plan_tarifaire: str = ""
     offering: Optional[ContractOfferingIdentity] = None
+
+    @property
+    def total_cost_dollars(self) -> float:
+        return round(sum(item.cost_dollars for item in self.findings), 8)
 
 
 class Usage(BaseModel):

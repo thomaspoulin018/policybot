@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import json
 import os
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
 from typing import Any, Iterable, Mapping, Protocol
 
 from policybot.classify.tool_registry import lookup_tool
+from policybot.config import CleApiManquante
 from policybot.contract.citations import validated_citation
 from policybot.contract.criteres import (
     CRITERIA_SEARCHES,
@@ -137,8 +136,6 @@ def _collect_one(
     defaults: SearchDefaults,
     tool_name: str,
     offering: ContractOfferingIdentity,
-    *,
-    exa_type: str | None = None,
 ) -> CriterionFinding:
     vendor = offering.vendor or (lookup_tool(tool_name) or {}).get("vendor") or tool_name
     search_query = definition.render_query(
@@ -150,7 +147,7 @@ def _collect_one(
             question=definition.question
         ).strip(),
     ))
-    search_type = exa_type or definition.exa.type
+    search_type = definition.exa.type
     contents = dict(definition.exa.contents)
     contents["summary"] = {
         "query": defaults.prompts["per_page_instruction"].format(
@@ -190,7 +187,7 @@ def _collect_one(
         rejected = 0
         results = list(_field(response, "results", default=[]) or [])
         for result in sorted(
-            results, key=lambda item: source_sort_key(dict(_mapping(item)), None)
+            results, key=lambda item: source_sort_key(dict(_mapping(item)))
         ):
             summary = _page_summary(result)
             quote_text = str(summary.get("citation") or "").strip()
@@ -248,38 +245,18 @@ def collect_criteria_from_exa(
     max_workers: int = DEFAULT_MAX_WORKERS,
 ) -> list[CriterionFinding]:
     definitions = tuple(definitions)
-    budget = float(defaults.budget.get("max_cost_dollars_per_interview", 0) or 0)
-    policy = str(defaults.budget.get("on_exceeded") or "continue")
-    spent = 0.0
-    lock = threading.Lock()
 
     def run(definition: CriterionSearchConfig) -> CriterionFinding:
-        nonlocal spent
-        with lock:
-            force_neural = budget > 0 and spent >= budget and policy == "degrade_to_neural"
-            stop = budget > 0 and spent >= budget and policy == "stop"
-        if stop:
+        """Isole l'échec d'un critère : les seize autres poursuivent."""
+        try:
+            return _collect_one(client, definition, defaults, tool_name, offering)
+        except Exception:
             return CriterionFinding(
                 id=definition.id, partie=definition.partie,
                 category=definition.category, criterion=definition.criterion,
                 question=definition.question, outcome="search_failed",
                 exa_type=definition.exa.type,
             )
-        try:
-            finding = _collect_one(
-                client, definition, defaults, tool_name, offering,
-                exa_type="neural" if force_neural else None,
-            )
-        except Exception:
-            return CriterionFinding(
-                id=definition.id, partie=definition.partie,
-                category=definition.category, criterion=definition.criterion,
-                question=definition.question, outcome="search_failed",
-                exa_type="neural" if force_neural else definition.exa.type,
-            )
-        with lock:
-            spent += finding.cost_dollars
-        return finding
 
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
         futures = {executor.submit(run, item): item.id for item in definitions}
@@ -296,11 +273,13 @@ def search_criteria_with_exa(
     definitions: Iterable[CriterionSearchConfig] = CRITERIA_SEARCHES,
     defaults: SearchDefaults = SEARCH_DEFAULTS,
     max_workers: int = DEFAULT_MAX_WORKERS,
-) -> list[CriterionFinding] | None:
+) -> list[CriterionFinding]:
     if client is None:
         key = os.environ.get("EXA_API_KEY")
         if not key:
-            return None
+            # Rendre None produisait des constats vides, puis un rapport complet
+            # d'apparence légitime sans le moindre constat ni avertissement.
+            raise CleApiManquante("EXA_API_KEY")
         from exa_py import Exa
         client = Exa(key)
     return collect_criteria_from_exa(

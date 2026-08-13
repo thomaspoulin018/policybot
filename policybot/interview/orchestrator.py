@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 from datetime import date
-import inspect
-from pathlib import Path
 from typing import Callable, Optional
 import uuid
 
 from policybot.classify.data_classifier import classify_data
-from policybot.classify.tool_registry import lookup_tool
-from policybot.classify.tool_type import classify_tool_type
-from policybot.config import ArpCacheMode
-from policybot.contract.arp import CURRENT_ARP_SCHEMA_VERSION, build_arp
+from policybot.classify.tool_registry import classify_tool_type, lookup_tool
 from policybot.contract.criteres import CRITERIA_SEARCHES
 from policybot.contract.offering import build_offering_identity
-from policybot.llm.provider import LLMProvider
+from policybot.llm import LLMProvider
 from policybot.models import (
     ContractOfferingIdentity,
     CriterionFinding,
@@ -24,7 +19,6 @@ from policybot.models import (
     ToolRef,
     Usage,
 )
-from policybot.contract.cache import ArpCache
 from policybot.tracing import collect_llm_usage, mask_text, trace_step
 
 
@@ -50,62 +44,43 @@ def _empty_findings(outcome: str = "no_answer") -> list[CriterionFinding]:
 
 
 class Interview:
+    """Une demande à la fois : classification des données puis recherches configurées.
+
+    `exa_search(tool_name, offering)` n'existe que pour substituer la recherche
+    en test. Sa signature est fixe : la version précédente inspectait la
+    signature de l'objet reçu pour deviner s'il acceptait `offering`.
+    """
+
     def __init__(
         self,
         llm: LLMProvider,
-        store: ArpCache,
-        exa_search: Optional[Callable] = None,
-        arp_cache_mode: ArpCacheMode = "read_write",
-        debug_runs_enabled: bool = False,
-        debug_runs_output_dir: str | Path = "logs/runs",
+        exa_search: Optional[Callable[..., list[CriterionFinding]]] = None,
     ):
         self._llm = llm
-        self._store = store
         self._exa_search = exa_search
-        self._arp_cache_mode = arp_cache_mode
-        self._debug_runs_enabled = debug_runs_enabled
-        self._debug_runs_output_dir = debug_runs_output_dir
 
     @property
     def llm(self) -> LLMProvider:
         return self._llm
 
-    def _resolve_arp(
+    def _rechercher_constats(
         self,
         tool_name: str,
-        iag_type: IagType,
         offering: ContractOfferingIdentity,
-    ):
-        with trace_step(None, "resolve_arp", tool_name=tool_name) as extra:
-            cached = None
-            if self._arp_cache_mode in ("read_write", "read_only"):
-                cached = self._store.get_arp(offering)
-            if cached and cached.schema_version >= CURRENT_ARP_SCHEMA_VERSION:
-                extra["cache"] = "hit"
-                return cached
-            extra["cache"] = "stale" if cached else "miss"
-
-            if self._arp_cache_mode == "read_only":
-                findings = _empty_findings()
-            elif self._exa_search is not None:
-                parameters = inspect.signature(self._exa_search).parameters
-                if "offering" in parameters:
-                    result = self._exa_search(tool_name, offering=offering)
-                else:
-                    result = self._exa_search(tool_name)
-                findings = result if isinstance(result, list) else _empty_findings()
-            else:
+    ) -> list[CriterionFinding]:
+        with trace_step(None, "recherche_criteres", tool_name=tool_name) as extra:
+            search = self._exa_search
+            if search is None:
                 from policybot.contract.exa import search_criteria_with_exa
-                findings = search_criteria_with_exa(tool_name, offering) or _empty_findings()
-
-            arp = build_arp(tool_name, iag_type, findings, offering)
+                search = search_criteria_with_exa
+            findings = list(search(tool_name, offering) or []) or _empty_findings()
             extra.update(
                 finding_count=len(findings),
-                total_cost_dollars=arp.total_cost_dollars,
+                total_cost_dollars=round(
+                    sum(item.cost_dollars for item in findings), 8
+                ),
             )
-            if self._arp_cache_mode in ("read_write", "refresh"):
-                self._store.save_arp(arp)
-            return arp
+            return findings
 
     def assess(
         self,
@@ -179,10 +154,8 @@ class Interview:
                         automated_decisions=item.get("automated_decisions", False),
                     ))
 
-                tool.arp = self._resolve_arp(tool_name, iag_type, offering)
+                tool.findings = self._rechercher_constats(tool_name, offering)
                 state.status = "complete"
         state.audit["llm_usage"] = llm_usage.as_dict()
-        state.audit["search_cost_dollars"] = (
-            state.tools[0].arp.total_cost_dollars if state.tools[0].arp else 0.0
-        )
+        state.audit["search_cost_dollars"] = state.tools[0].total_cost_dollars
         return state

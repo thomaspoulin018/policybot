@@ -1,6 +1,9 @@
 # Catalogue du formulaire de demande PolicyBot.
+# Pour ajouter une question : insère un bloc dans la bonne section, sans numéro.
+# Donne-lui un `champ`; si celui-ci manque au schéma, `policybot devis-formulaire`
+# affiche la déclaration exacte à copier dans `policybot/intake/schema.py`.
 #
-# Source de vérité des questions à recopier dans Microsoft Forms. Chaque
+# Source de vérité du formulaire créé par l'API Google Forms. Chaque
 # question déclare le champ de `policybot.intake.schema.DemandeIAG` qu'elle
 # alimente ; `policybot/intake/formulaire.py` valide cette correspondance à
 # l'import et refuse un champ inconnu ou un champ obligatoire non couvert.
@@ -20,6 +23,30 @@ introduction: |
 
   Ne colle jamais de données réelles dans tes réponses : décris-les.
 
+# Première page du formulaire. Un outil déjà approuvé n'a pas besoin d'un
+# nouveau dossier de constats : la personne est renvoyée vers la sécurité
+# informatique. La liste doit être validée par la sécurité informatique
+# avant toute publication du formulaire — n'y inscrire que des outils dont
+# l'approbation est écrite quelque part.
+#
+# Format d'une entrée :
+#   - nom: "Microsoft Copilot Entreprise"
+#     precision: "Licence institutionnelle, données en circuit fermé"
+outils_approuves:
+  titre: "Page 1 — Outils déjà approuvés"
+  consigne: |
+    Avant de remplir quoi que ce soit : si l'outil que tu veux utiliser
+    figure dans la liste ci-dessous, il a déjà été évalué et approuvé.
+
+    N'utilise pas ce formulaire : écris directement à la sécurité informatique
+    (ADRESSE À COMPLÉTER) pour demander l'accès.
+
+    Continue seulement si ton outil n'apparaît pas dans la liste, ou si
+    ton usage sort de ce qui a été approuvé pour cet outil.
+  outils:
+    - nom: "À COMPLÉTER"
+      precision: "Aucun outil approuvé n'est encore inscrit dans le catalogue"
+
 sections:
   - titre: "Section 1 — La demande"
     questions:
@@ -37,9 +64,12 @@ sections:
 
   - titre: "Section 2 — L'outil et son offre contractuelle"
     aide: |
-      Les questions 5 à 10 déterminent l'identité de l'offre contractuelle
+      Les questions 5 à 9 déterminent l'identité de l'offre contractuelle
       évaluée. Sans forfait ni type de contrat, une garantie réservée aux
       offres Entreprise peut être attribuée à tort à une offre grand public.
+
+      Aucune de ces questions n'est obligatoire : une réponse laissée vide
+      est traitée comme « à déterminer », jamais comme une réponse fausse.
     questions:
       - numero: 3
         intitule: "Quel outil d'IA générative comptes-tu utiliser ?"
@@ -75,23 +105,33 @@ sections:
         champ: version_plan_tarifaire
         aide: "Ex. Plan Plus, Licence institutionnelle Entreprise, Workspace Business."
 
+      # Cette question ne sert qu'à récupérer le cas « sur site », le seul que
+      # le type d'outil ne permet pas de déduire. Les quatre autres modes de
+      # déploiement sont déduits automatiquement (contract/offering.py) : les
+      # exposer ici invitait une personne non technique à écraser une déduction
+      # correcte par une supposition. Ne rajoute pas de choix : une réponse
+      # laissée vide vaut « déduis-le », et c'est le comportement voulu.
       - numero: 6
-        intitule: "Mode de déploiement"
+        intitule: "L'outil est-il installé sur des serveurs de l'UQAM ?"
         type: choix
         obligatoire: false
         champ: deployment_mode
-        aide: "Laisser vide pour le déduire du type d'outil."
+        aide: |
+          Réponds seulement si le logiciel a été installé par l'UQAM sur ses
+          propres serveurs, sans passer par le site web ni l'infonuagique du
+          fournisseur. C'est un cas rare.
+
+          Exemple de « oui » : un modèle de langage installé par le Service
+          des technologies sur un serveur de l'université, accessible
+          uniquement depuis le réseau interne.
+
+          Dans tous les autres cas — tu ouvres l'outil dans ton navigateur ou
+          dans une application, comme ChatGPT, Copilot ou Gemini — laisse la
+          question vide. Nous déduisons l'hébergement du type d'outil.
         choix:
-          - libelle: "Service public"
-            valeur: public_saas
-          - libelle: "Service institutionnel géré"
-            valeur: managed_saas
-          - libelle: "Hébergement souverain"
-            valeur: sovereign_hosted
-          - libelle: "Hébergement gouvernemental"
-            valeur: government_hosted
-          - libelle: "Sur site"
+          - libelle: "Oui, installé sur des serveurs de l'UQAM"
             valeur: on_premise
+            description: "Le logiciel tourne sur nos serveurs, pas chez le fournisseur"
 
       - numero: 7
         intitule: "Type de contrat"
@@ -110,40 +150,57 @@ sections:
             valeur: dpa
 
       - numero: 8
-        intitule: "Version du contrat"
+        intitule: "Une entente écrite a-t-elle été signée avec le fournisseur ? Si oui, laquelle ?"
         type: texte
         obligatoire: false
         champ: contract_version
-        aide: "Ex. DPA-2026-07."
+        aide: |
+          Réponds seulement si ton unité ou l'UQAM a signé un document avec le
+          fournisseur : contrat, entente de service, entente de traitement des
+          données. Donne le nom du document et son année.
+
+          Exemples : « Microsoft Customer Agreement 2026 » ; « Entente de
+          traitement des données Google Workspace, mars 2026 ».
+
+          Laisse vide si tu utilises simplement l'outil aux conditions
+          affichées sur son site web, sans rien avoir signé : c'est le cas le
+          plus courant et ce n'est pas un problème.
 
       - numero: 9
-        intitule: "Date d'effet du contrat"
-        type: date
-        obligatoire: false
-        champ: contract_effective_date
-
-      - numero: 10
-        intitule: "Territoire ou compétence applicable"
+        intitule: "Le contrat indique-t-il de quel pays ou province relèvent les règles applicables ?"
         type: texte
         obligatoire: false
         champ: jurisdiction
-        aide: "Ex. Québec, Canada ; Californie, États-Unis."
+        aide: |
+          On cherche le lieu dont les lois s'appliquent en cas de litige avec
+          le fournisseur, ou le pays où les données sont hébergées.
+          L'information se trouve souvent à la fin des conditions
+          d'utilisation, sous « droit applicable » ou « governing law ».
+
+          Exemples : « Québec, Canada » ; « Californie, États-Unis » ;
+          « Irlande ».
+
+          Laisse vide si tu ne trouves pas : l'analyse ira chercher
+          l'information elle-même.
 
   - titre: "Section 3 — Qui utilisera l'outil"
     questions:
-      - numero: 11
+      - numero: 10
         intitule: "Nombre d'utilisateurs visés"
         type: nombre
         obligatoire: false
         champ: nb_utilisateurs_vises
+        aide: |
+          Indique un nombre entier, en chiffres seulement — par exemple 25.
+          N'écris pas « une vingtaine » ni « env. 25 » : la réponse serait rejetée.
 
-      - numero: 12
+      - numero: 11
         intitule: "Fonctions et rôles concernés"
         type: texte_long
         obligatoire: false
         champ: fonctions_roles
 
-      - numero: 13
+      - numero: 12
         intitule: "Niveau de maîtrise numérique"
         type: choix
         obligatoire: false
@@ -156,7 +213,7 @@ sections:
           - libelle: "Avancé"
             valeur: avancé
 
-      - numero: 14
+      - numero: 13
         intitule: "Formation en IAG reçue"
         type: choix
         obligatoire: false
@@ -172,7 +229,7 @@ sections:
             valeur: complète
             description: "Le groupe a déjà suivi la formation complète prévue par l'organisation."
 
-      - numero: 15
+      - numero: 14
         intitule: "Accès à de l'information Protégé A ou plus"
         type: choix
         obligatoire: false
@@ -190,7 +247,7 @@ sections:
 
   - titre: "Section 4 — Les données soumises"
     questions:
-      - numero: 16
+      - numero: 15
         intitule: "Quel type de données comptez-vous soumettre à l'outil ?"
         type: choix_multiple
         obligatoire: false
@@ -209,7 +266,7 @@ sections:
             valeur: "Données stratégiques / confidentielles"
             description: "Informations sensibles pour l'institution"
 
-      - numero: 17
+      - numero: 16
         intitule: "Décris ces données dans tes mots"
         type: texte_long
         obligatoire: true
@@ -222,13 +279,13 @@ sections:
 
   - titre: "Section 5 — L'usage prévu"
     questions:
-      - numero: 18
+      - numero: 17
         intitule: "Comment vas-tu utiliser cet outil ?"
         type: texte_long
         obligatoire: true
         champ: usage_description
 
-      - numero: 19
+      - numero: 18
         intitule: "Mode d'utilisation"
         type: choix
         obligatoire: false
@@ -239,25 +296,48 @@ sections:
           - libelle: "Intégration technique (API)"
             valeur: api
 
-      - numero: 20
-        intitule: "Fréquence d'utilisation"
-        type: texte
+      # Fermée en choix : la réponse est reprise telle quelle dans le rapport
+      # (report/renderer.py, « Fréquence : … »). En texte libre, elle produisait
+      # des réponses incomparables d'un dossier à l'autre.
+      - numero: 19
+        intitule: "À quelle fréquence chaque personne utilisera-t-elle l'outil ?"
+        type: choix
         obligatoire: false
         champ: frequence_utilisation
+        aide: |
+          Estime pour une personne du groupe, pas pour le groupe entier.
 
-      - numero: 21
+          Exemple : douze personnes s'en servent chacune deux ou trois fois
+          par semaine → « quelques fois par semaine ».
+        choix:
+          - libelle: "Ponctuellement"
+            valeur: ponctuelle
+            description: "Quelques fois par année, pour un projet précis"
+          - libelle: "Quelques fois par mois"
+            valeur: mensuelle
+          - libelle: "Quelques fois par semaine"
+            valeur: hebdomadaire
+          - libelle: "Tous les jours"
+            valeur: quotidienne
+          - libelle: "En continu, intégré au travail courant"
+            valeur: continue
+
+      - numero: 20
         intitule: "Nombre d'utilisateurs pour cet usage"
         type: nombre
         obligatoire: false
         champ: nb_utilisateurs
+        aide: |
+          Indique un nombre entier, en chiffres seulement — par exemple 25.
+          N'écris pas « une vingtaine » ni « env. 25 » : la réponse serait rejetée.
 
-      - numero: 22
+      - numero: 21
         intitule: "Systèmes ou API visés par l'intégration"
         type: texte
         obligatoire: false
         champ: systemes_api_cibles
 
-      - numero: 23
+      - numero: 22
         intitule: "Comment comptez-vous utiliser les résultats ?"
         type: choix_multiple
         obligatoire: false
@@ -272,13 +352,13 @@ sections:
           - libelle: "Aide à la rédaction / diffusion interne"
             valeur: "Aide à la rédaction / diffusion interne"
 
-      - numero: 24
+      - numero: 23
         intitule: "Précisions sur l'utilisation des résultats"
         type: texte
         obligatoire: false
         champ: result_use_free_text
 
-      - numero: 25
+      - numero: 24
         intitule: "Les résultats déclenchent-ils une décision sans révision humaine ?"
         type: oui_non
         obligatoire: false
@@ -286,31 +366,31 @@ sections:
 
   - titre: "Section 6 — Le contexte d'affaires"
     questions:
-      - numero: 26
+      - numero: 25
         intitule: "Quel besoin d'affaires cet outil répond-il ?"
         type: texte_long
         obligatoire: true
         champ: besoin_affaires
 
-      - numero: 27
+      - numero: 26
         intitule: "Gains qualitatifs attendus"
         type: texte_long
         obligatoire: false
         champ: gains_qualitatifs
 
-      - numero: 28
+      - numero: 27
         intitule: "Gains quantitatifs attendus"
         type: texte_long
         obligatoire: false
         champ: gains_quantitatifs
 
-      - numero: 29
+      - numero: 28
         intitule: "Alternatives considérées"
         type: texte_long
         obligatoire: false
         champ: alternatives_considerees
 
-      - numero: 30
+      - numero: 29
         intitule: "Urgence perçue"
         type: choix
         obligatoire: false
@@ -323,19 +403,19 @@ sections:
           - libelle: "Élevée"
             valeur: élevée
 
-      - numero: 31
+      - numero: 30
         intitule: "Coût annuel par utilisateur"
         type: texte
         obligatoire: false
         champ: cout_annuel_par_utilisateur
 
-      - numero: 32
+      - numero: 31
         intitule: "Coût total annuel"
         type: texte
         obligatoire: false
         champ: cout_total_annuel
 
-      - numero: 33
+      - numero: 32
         intitule: "Mode d'acquisition"
         type: choix
         obligatoire: false
@@ -350,13 +430,13 @@ sections:
           - libelle: "Contrat existant"
             valeur: contrat_existant
 
-      - numero: 34
+      - numero: 33
         intitule: "Durée du contrat"
         type: texte
         obligatoire: false
         champ: duree_contrat
 
-      - numero: 35
+      - numero: 34
         intitule: "Responsable budgétaire"
         type: texte
         obligatoire: false

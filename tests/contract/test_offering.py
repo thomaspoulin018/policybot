@@ -3,32 +3,6 @@ from datetime import date
 from policybot.models import ContractOfferingIdentity
 
 
-def test_offering_identity_key_covers_every_contract_dimension():
-    base = ContractOfferingIdentity(
-        vendor="OpenAI",
-        product="ChatGPT",
-        plan="Enterprise",
-        deployment_mode="managed_saas",
-        contract_type="institutional_agreement",
-        contract_version="2026-01",
-        jurisdiction="Québec",
-        effective_date=date(2026, 1, 1),
-    )
-
-    assert base.cache_key() == base.model_copy().cache_key()
-    for field, replacement in {
-        "vendor": "Anthropic",
-        "product": "Claude",
-        "plan": "Edu",
-        "deployment_mode": "public_saas",
-        "contract_type": "consumer_terms",
-        "contract_version": "2026-02",
-        "jurisdiction": "Ontario",
-        "effective_date": date(2026, 2, 1),
-    }.items():
-        assert base.model_copy(update={field: replacement}).cache_key() != base.cache_key()
-
-
 def test_offering_identity_has_a_human_readable_label():
     offering = ContractOfferingIdentity(
         vendor="Microsoft",
@@ -56,6 +30,8 @@ def test_missing_search_identity_fields_treats_empty_and_unknown_as_incomplete()
         contract_version="",
     )
 
+    # `contract_version` vide n'est pas une lacune : la plupart des offres
+    # évaluées n'ont aucun document signé, seulement les conditions du site.
     assert offering.missing_search_identity_fields() == (
-        "plan", "deployment_mode", "contract_version",
+        "plan", "deployment_mode",
     )

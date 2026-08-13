@@ -1,7 +1,7 @@
-"""Le schéma d'une demande, tel que le formulaire externe la remplit.
+"""Le schéma d'une demande, tel que Google Forms la remplit.
 
 `DemandeIAG` est le contrat d'entrée de PolicyBot : c'est ce que le lecteur
-d'export Microsoft Forms produit et ce que l'orchestrateur consomme. Les
+d'un JSON de réponses produit et ce que l'orchestrateur consomme. Les
 noms de champs sont ceux que `configs/formulaire.yaml` déclare, question
 par question.
 """
@@ -14,7 +14,7 @@ import uuid
 from pydantic import BaseModel, Field, field_validator
 
 from policybot.classify.tool_registry import lookup_tool
-from policybot.classify.tool_type import classify_tool_type
+from policybot.classify.tool_registry import classify_tool_type
 from policybot.contract.offering import build_offering_identity
 from policybot.models import (
     ContractOfferingIdentity,
@@ -61,7 +61,10 @@ class DemandeIAG(BaseModel):
     deployment_mode: str = ""
     contract_type: str = ""
     contract_version: str = ""
-    contract_effective_date: Optional[date] = None
+    # Pas de date d'effet : elle n'entrait dans aucune requête de recherche
+    # (contract/criteres.py, QUERY_FIELDS) et ne servait qu'à l'étiquette
+    # d'affichage de l'offre. `ContractOfferingIdentity.effective_date` reste
+    # disponible pour un appelant qui la connaît par un autre chemin.
     jurisdiction: str = ""
 
     # Section 3 — qui utilisera l'outil
@@ -176,7 +179,6 @@ class DemandeIAG(BaseModel):
             contract_type=self.contract_type or None,
             contract_version=self.contract_version or None,
             jurisdiction=self.jurisdiction or None,
-            effective_date=self.contract_effective_date,
         )
         today = today or date.today()
         return EntreesOrchestrateur(

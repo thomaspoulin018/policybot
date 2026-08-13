@@ -1,6 +1,6 @@
-"""Le catalogue de questions, validé contre `DemandeIAG` à l'import.
+"""Le catalogue Google Forms, validé contre `DemandeIAG` à l'import.
 
-Même principe que `contract/criteres.py` pour les 17 critères : le fichier
+Même principe que `contract/criteres.py` pour les critères : le fichier
 `configs/formulaire.yaml` et le schéma se contrôlent mutuellement. Une
 question qui pointe vers un champ inexistant, un champ obligatoire que le
 formulaire ne demande pas, ou une valeur de choix que le schéma refuse font
@@ -17,7 +17,7 @@ import typing
 import unicodedata
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from policybot.intake.schema import DemandeIAG
 
@@ -35,21 +35,6 @@ TYPES_QUESTION = (
     "oui_non",
 )
 
-# Colonnes que Microsoft Forms ajoute d'office à tout export.
-COLONNES_TECHNIQUES: tuple[str, ...] = (
-    "ID",
-    "Heure de début",
-    "Heure de fin",
-    "Adresse de courriel",
-    "Nom",
-    "Heure de la dernière modification",
-    "Start time",
-    "Completion time",
-    "Email",
-    "Name",
-    "Last modified time",
-)
-
 _PONCTUATION_FINALE = " \t.:;!?…*"
 
 
@@ -58,11 +43,11 @@ class FormulaireInvalideError(ValueError):
 
 
 def normaliser_intitule(valeur: str) -> str:
-    """Réduit un intitulé à sa forme comparable.
+    """Réduit un libellé à sa forme comparable.
 
     Casse, accents, apostrophes typographiques, espaces multiples et
-    ponctuation finale sont neutralisés : c'est cette forme qui apparie une
-    colonne d'export avec une question du catalogue.
+    ponctuation finale sont neutralisés pour traduire les choix affichés vers
+    leurs valeurs de schéma.
     """
     texte = unicodedata.normalize("NFKD", valeur or "")
     texte = "".join(c for c in texte if not unicodedata.combining(c))
@@ -83,7 +68,7 @@ class ChoixFormulaire(BaseModel):
 class QuestionFormulaire(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    numero: int = Field(gt=0)
+    numero: int | None = Field(default=None, gt=0)
     intitule: str = Field(min_length=1)
     type: str
     obligatoire: bool = False
@@ -99,11 +84,38 @@ class QuestionFormulaire(BaseModel):
         """Traduit un libellé de choix en valeur de schéma."""
         cible = normaliser_intitule(libelle)
         for choix in self.choix:
+            affiche = choix.libelle
+            if choix.description:
+                affiche += f" — {choix.description}"
             if normaliser_intitule(choix.libelle) == cible:
+                return choix.valeur
+            if normaliser_intitule(affiche) == cible:
                 return choix.valeur
             if normaliser_intitule(choix.valeur) == cible:
                 return choix.valeur
         return None
+
+
+class OutilApprouve(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nom: str = Field(min_length=1)
+    precision: str = ""
+
+
+class OutilsApprouves(BaseModel):
+    """La page d'entrée qui détourne les demandes déjà tranchées.
+
+    Un outil déjà approuvé n'a pas besoin d'un nouveau dossier de constats :
+    la consigne renvoie la personne vers la sécurité informatique. La liste
+    ne peut pas être affichée sans consigne, ni la consigne sans liste.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    titre: str = Field(min_length=1)
+    consigne: str = Field(min_length=1)
+    outils: list[OutilApprouve] = Field(min_length=1)
 
 
 class SectionFormulaire(BaseModel):
@@ -120,6 +132,7 @@ class CatalogueFormulaire(BaseModel):
     version: typing.Literal[1] = 1
     titre: str = Field(min_length=1)
     introduction: str = ""
+    outils_approuves: OutilsApprouves | None = None
     sections: list[SectionFormulaire] = Field(min_length=1)
 
     @property
@@ -166,17 +179,29 @@ _TYPE_ATTENDU = {
 }
 
 
+def _declaration_schema(question: QuestionFormulaire) -> str:
+    """Propose la déclaration minimale à copier dans ``DemandeIAG``."""
+    champ = question.champ
+    if question.type in {"texte", "texte_long"}:
+        return f'{champ}: str = ""'
+    if question.type == "nombre":
+        return f"{champ}: Optional[int] = None"
+    if question.type == "date":
+        return f"{champ}: Optional[date] = None"
+    if question.type == "oui_non":
+        return f"{champ}: bool = False"
+    valeurs = ", ".join(repr(choix.valeur) for choix in question.choix)
+    literal = f"Literal[{valeurs}]" if valeurs else "str"
+    if question.type == "choix_multiple":
+        return f"{champ}: list[{literal}] = Field(default_factory=list)"
+    return f"{champ}: Optional[{literal}] = None"
+
+
 def _valider(catalogue: CatalogueFormulaire, chemin: Path) -> CatalogueFormulaire:
     from datetime import date as _date
 
     champs_schema = DemandeIAG.model_fields
     questions = catalogue.questions
-
-    numeros = [q.numero for q in questions]
-    if numeros != list(range(1, len(numeros) + 1)):
-        raise FormulaireInvalideError(
-            f"{chemin} : les numéros de questions doivent être consécutifs à partir de 1."
-        )
 
     vus: dict[str, QuestionFormulaire] = {}
     for question in questions:
@@ -195,7 +220,9 @@ def _valider(catalogue: CatalogueFormulaire, chemin: Path) -> CatalogueFormulair
         if question.champ not in champs_schema:
             raise FormulaireInvalideError(
                 f"{chemin} : la question {question.numero} alimente le champ "
-                f"« {question.champ} », absent de DemandeIAG."
+                f"« {question.champ} », absent de DemandeIAG. Ajoute cette ligne "
+                "dans policybot/intake/schema.py :\n    "
+                f"{_declaration_schema(question)}"
             )
         if question.type in ("choix", "choix_multiple") and not question.choix:
             raise FormulaireInvalideError(
@@ -253,7 +280,13 @@ def charger_formulaire(path: str | Path | None = None) -> CatalogueFormulaire:
         raise FormulaireInvalideError(
             f"Le catalogue de formulaire doit être un mappage YAML : {chemin}"
         )
-    return _valider(CatalogueFormulaire.model_validate(raw), chemin)
+    try:
+        catalogue = CatalogueFormulaire.model_validate(raw)
+    except ValidationError as erreur:
+        raise FormulaireInvalideError(f"Catalogue invalide ({chemin}) : {erreur}") from erreur
+    for numero, question in enumerate(catalogue.questions, start=1):
+        question.numero = numero
+    return _valider(catalogue, chemin)
 
 
 @lru_cache(maxsize=1)
@@ -263,11 +296,22 @@ def formulaire() -> CatalogueFormulaire:
 
 
 def devis(catalogue: CatalogueFormulaire | None = None) -> str:
-    """Le formulaire à recopier dans Microsoft Forms, question par question."""
+    """Aperçu texte hors ligne du formulaire, question par question."""
     catalogue = catalogue or formulaire()
     lignes: list[str] = [catalogue.titre, "=" * len(catalogue.titre), ""]
     if catalogue.introduction:
         lignes.extend(catalogue.introduction.rstrip().splitlines())
+        lignes.append("")
+    approuves = catalogue.outils_approuves
+    if approuves is not None:
+        lignes.append(approuves.titre)
+        lignes.append("-" * len(approuves.titre))
+        for ligne in approuves.consigne.rstrip().splitlines():
+            lignes.append(f"  {ligne}" if ligne else "")
+        lignes.append("")
+        for outil in approuves.outils:
+            suffixe = f" — {outil.precision}" if outil.precision else ""
+            lignes.append(f"  - {outil.nom}{suffixe}")
         lignes.append("")
     for section in catalogue.sections:
         lignes.append(section.titre)

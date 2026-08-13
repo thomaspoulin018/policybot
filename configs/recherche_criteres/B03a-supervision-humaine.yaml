@@ -1,0 +1,6 @@
+version: 2
+id: B08
+partie: B
+category: Éthique et fiabilité des résultats
+criterion: Supervision humaine insuffisante
+question: Les décisions ou contenus générés sont utilisés sans validation humaine adéquate avant diffusion ou action.

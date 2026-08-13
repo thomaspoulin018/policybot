@@ -1,11 +1,13 @@
 """La ligne de commande de PolicyBot.
 
-Deux verbes, aucune dépendance nouvelle :
+Le téléchargement est séparé de l'ingestion pour que cette dernière reste
+hors ligne et rejouable :
 
-    policybot devis-formulaire            imprime le formulaire à recopier
-    policybot ingerer reponses.xlsx       traite un export Microsoft Forms
+    policybot creer-formulaire
+    policybot recuperer-reponses -o reponses.json
+    policybot ingerer reponses.json --dry-run
 
-`--dry-run` lit et valide l'export, affiche l'identité d'offre résolue pour
+`--dry-run` lit et valide le JSON, affiche l'identité d'offre résolue pour
 chaque demande, et n'appelle rien : ni modèle, ni recherche, ni écriture.
 """
 from __future__ import annotations
@@ -16,8 +18,19 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-from policybot.intake.formulaire import devis
-from policybot.intake.reponses import LotReponses, lire_export
+from policybot.config import CleApiManquante
+from policybot.intake.formulaire import FormulaireInvalideError, devis
+from policybot.intake.google_api import GoogleFormsError
+from policybot.intake.google_forms import (
+    ConfigurationGoogleFormsError,
+    creer_formulaire_google,
+    recuperer_reponses_google,
+)
+from policybot.intake.reponses import (
+    FichierReponsesInvalideError,
+    LotReponses,
+    lire_reponses,
+)
 from policybot.intake.schema import DemandeIAG, TypeIagInconnuError
 
 
@@ -31,13 +44,11 @@ def _ecrire(flux, texte: str = "") -> None:
 def _resume_lot(lot: LotReponses, flux) -> None:
     _ecrire(
         flux,
-        f"{lot.lignes_lues} réponse(s) lue(s), {len(lot.demandes)} demande(s) valide(s), "
+        f"{lot.reponses_lues} réponse(s) lue(s), {len(lot.demandes)} demande(s) valide(s), "
         f"{len(lot.rejets)} rejetée(s)",
     )
-    for colonne in lot.colonnes_ignorees:
-        _ecrire(flux, f"  colonne ignorée : {colonne}")
-    for colonne in lot.colonnes_manquantes:
-        _ecrire(flux, f"  colonne absente de l'export : {colonne}")
+    for question_id in lot.question_ids_inconnus:
+        _ecrire(flux, f"  questionId absent du mapping : {question_id}")
     _ecrire(flux)
 
 
@@ -70,7 +81,7 @@ def _afficher_offre(index: int, demande: DemandeIAG, flux) -> bool:
 
 def _afficher_rejets(lot: LotReponses, flux) -> None:
     for rejet in lot.rejets:
-        _ecrire(flux, f"  ligne {rejet.ligne} rejetée : {rejet.motif}")
+        _ecrire(flux, f"  réponse {rejet.response_id} rejetée : {rejet.motif}")
     if lot.rejets:
         _ecrire(flux)
 
@@ -80,10 +91,30 @@ def commande_devis(args: argparse.Namespace, flux) -> int:
     return 0
 
 
+def commande_creer_formulaire(args: argparse.Namespace, flux) -> int:
+    if args.force:
+        _ecrire(
+            flux,
+            "AVERTISSEMENT — --force crée un nouveau formulaire : l'URL diffusée "
+            "sera perdue et les réponses déjà collectées deviendront illisibles "
+            "avec le nouveau mapping.",
+        )
+    configuration = creer_formulaire_google(force=args.force)
+    _ecrire(flux, "Formulaire Google créé et publié.")
+    _ecrire(flux, configuration["responder_uri"])
+    return 0
+
+
+def commande_recuperer_reponses(args: argparse.Namespace, flux) -> int:
+    compte, chemin = recuperer_reponses_google(args.sortie)
+    _ecrire(flux, f"{compte} réponse(s) téléchargée(s) dans {chemin}")
+    return 0
+
+
 def _ecrire_constats(state, repertoire: Path) -> Path:
     repertoire.mkdir(parents=True, exist_ok=True)
     tool = state.tools[0] if state.tools else None
-    findings = [f.model_dump(mode="json") for f in (tool.arp.findings if tool and tool.arp else [])]
+    findings = [f.model_dump(mode="json") for f in (tool.findings if tool else [])]
     chemin = repertoire / f"{state.request.numero}.json"
     chemin.write_text(
         json.dumps(findings, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -92,7 +123,7 @@ def _ecrire_constats(state, repertoire: Path) -> Path:
 
 
 def commande_ingerer(args: argparse.Namespace, flux) -> int:
-    lot = lire_export(args.fichier)
+    lot = lire_reponses(args.fichier)
     _resume_lot(lot, flux)
     _afficher_rejets(lot, flux)
 
@@ -105,7 +136,8 @@ def commande_ingerer(args: argparse.Namespace, flux) -> int:
         return 1 if lot.rejets or non_resolues else 0
 
     from policybot.interview.factory import default_interview
-    from policybot.report.renderer import write_docx, write_pdf
+    from policybot.report.grille import write_grille
+    from policybot.report.renderer import write_docx
 
     itv = default_interview()
     cout_total = 0.0
@@ -122,12 +154,16 @@ def commande_ingerer(args: argparse.Namespace, flux) -> int:
                 qualification=entrees.qualification,
                 offering_override=entrees.offering,
             )
+        except CleApiManquante:
+            # Une clé absente ne concerne pas cette demande-là : elle vaut pour
+            # tout le lot. Poursuivre produirait des dossiers sans constats.
+            raise
         except Exception as erreur:  # une demande en échec n'arrête pas le lot
             echecs += 1
             _ecrire(flux, f"     échec : {type(erreur).__name__} — {erreur}")
             continue
-        findings = state.tools[0].arp.findings if state.tools[0].arp else []
-        cout = state.tools[0].arp.total_cost_dollars if state.tools[0].arp else 0.0
+        findings = state.tools[0].findings
+        cout = state.tools[0].total_cost_dollars
         cout_total += cout
         compte = {"ok": 0, "no_answer": 0, "search_failed": 0}
         for finding in findings:
@@ -140,7 +176,7 @@ def commande_ingerer(args: argparse.Namespace, flux) -> int:
         )
         for chemin in (
             write_docx(state, args.sortie_docx),
-            write_pdf(state, args.sortie_pdf),
+            write_grille(state, args.sortie_docx),
             _ecrire_constats(state, Path(args.sortie_json or "output/json")),
         ):
             _ecrire(flux, f"     {chemin}")
@@ -152,28 +188,47 @@ def commande_ingerer(args: argparse.Namespace, flux) -> int:
 def construire_parseur() -> argparse.ArgumentParser:
     parseur = argparse.ArgumentParser(
         prog="policybot",
-        description="Transforme un export Microsoft Forms en dossiers de constats sourcés.",
+        description="Transforme les réponses Google Forms en dossiers de constats sourcés.",
     )
     sous = parseur.add_subparsers(dest="commande", required=True)
 
     devis_ = sous.add_parser(
         "devis-formulaire",
-        help="imprime les questions à recopier dans Microsoft Forms",
+        help="imprime un aperçu hors ligne des questions",
     )
     devis_.set_defaults(fonction=commande_devis)
 
+    creer = sous.add_parser(
+        "creer-formulaire",
+        help="crée et publie le formulaire Google depuis le catalogue YAML",
+    )
+    creer.add_argument(
+        "--force",
+        action="store_true",
+        help="crée une nouvelle URL même si un mapping existe déjà",
+    )
+    creer.set_defaults(fonction=commande_creer_formulaire)
+
+    recuperer = sous.add_parser(
+        "recuperer-reponses",
+        help="télécharge les réponses Google Forms dans un JSON local",
+    )
+    recuperer.add_argument(
+        "-o", "--sortie", required=True, help="fichier JSON de destination"
+    )
+    recuperer.set_defaults(fonction=commande_recuperer_reponses)
+
     ingerer = sous.add_parser(
         "ingerer",
-        help="lit un export .xlsx de réponses et produit un dossier par demande",
+        help="lit un JSON de réponses et produit un dossier par demande",
     )
-    ingerer.add_argument("fichier", help="export Microsoft Forms au format .xlsx")
+    ingerer.add_argument("fichier", help="réponses Google Forms au format JSON")
     ingerer.add_argument(
         "--dry-run",
         action="store_true",
         help="lit et valide sans lancer aucune recherche",
     )
     ingerer.add_argument("--sortie-docx", default=None, help="répertoire des .docx")
-    ingerer.add_argument("--sortie-pdf", default=None, help="répertoire des .pdf")
     ingerer.add_argument("--sortie-json", default=None, help="répertoire des constats .json")
     ingerer.set_defaults(fonction=commande_ingerer)
     return parseur
@@ -188,10 +243,28 @@ def main(argv: Sequence[str] | None = None, flux=None) -> int:
             if reconfigure is not None:
                 reconfigure(encoding="utf-8", errors="replace")
         flux = sys.stdout
+        # Rien ne lisait `.env` : les clés n'atteignaient le pipeline que si
+        # elles étaient exportées à la main. La suite de tests appelle `main`
+        # avec un flux explicite et reste donc hors ligne.
+        from dotenv import load_dotenv
+        load_dotenv()
     args = construire_parseur().parse_args(argv)
     try:
         return args.fonction(args, flux)
     except FileNotFoundError as erreur:
+        print(str(erreur), file=sys.stderr)
+        return 2
+    except FormulaireInvalideError as erreur:
+        _ecrire(flux, str(erreur))
+        return 2
+    except (
+        ConfigurationGoogleFormsError,
+        FichierReponsesInvalideError,
+        GoogleFormsError,
+    ) as erreur:
+        print(str(erreur), file=sys.stderr)
+        return 2
+    except CleApiManquante as erreur:
         print(str(erreur), file=sys.stderr)
         return 2
 

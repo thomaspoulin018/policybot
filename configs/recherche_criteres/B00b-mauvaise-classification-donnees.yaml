@@ -1,0 +1,6 @@
+version: 2
+id: B06
+partie: B
+category: Gestion des données
+criterion: Mauvaise classification des données
+question: Le personnel soumet des données d'une classification supérieure à ce que l'outil permet.

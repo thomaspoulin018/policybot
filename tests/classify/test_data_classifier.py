@@ -1,5 +1,5 @@
 # tests/classify/test_data_classifier.py
-from policybot.llm.fake import FakeLLMProvider
+from policybot.llm import FakeLLMProvider
 from policybot.classify.data_classifier import classify_data
 
 
@@ -15,7 +15,7 @@ def test_public_data_is_non_classifie():
     assert out.data_classification == "Non classifié"
     assert out.rens_personnels is False
     assert out.needs_officer_confirmation is False
-    assert llm.tasks == ["data_classification"]
+    assert len(llm.calls) == 1
 
 
 def test_personal_info_is_protege_b():

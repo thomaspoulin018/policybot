@@ -135,27 +135,6 @@ _current_llm_usage: contextvars.ContextVar[LLMUsage | None] = contextvars.Contex
 )
 
 
-def llm_usage_snapshot() -> dict[str, int | float] | None:
-    """Return the current aggregate counters without exposing any free text.
-
-    A local debug-run wrapper uses two snapshots around one provider call to
-    associate OpenRouter's existing token/cost accounting with that call.  The
-    masked JSONL trace remains the only persistent output from this module.
-    """
-    usage = _current_llm_usage.get()
-    if usage is None:
-        return None
-    return {
-        "successful_api_calls": usage.successful_api_calls,
-        "usage_recorded_calls": usage.usage_recorded_calls,
-        "cost_recorded_api_calls": usage.cost_recorded_api_calls,
-        "input_tokens": usage.input_tokens,
-        "output_tokens": usage.output_tokens,
-        "total_tokens": usage.total_tokens,
-        "cost_usd": usage.cost_usd,
-    }
-
-
 def mask_text(text: str) -> dict:
     """The only sanctioned way to let free text influence a log line."""
     return {"len": len(text), "sha256": hashlib.sha256(text.encode()).hexdigest()[:12]}
@@ -189,15 +168,18 @@ def _cost(value: Any) -> float | None:
 
 
 def extract_llm_usage(response: Any) -> dict[str, int | float | None]:
-    """Normalize LangChain/OpenRouter usage metadata from a model response.
+    """Normalize OpenRouter usage metadata from a model response.
 
-    OpenRouter may expose the native ``usage`` object either in LangChain's
-    ``usage_metadata`` or in ``response_metadata``.  We deliberately use the
-    provider-reported cost instead of duplicating a mutable pricing table.
+    The HTTP response carries its native ``usage`` object at the top level;
+    older shapes exposing ``usage_metadata`` / ``response_metadata`` are still
+    accepted.  We deliberately use the provider-reported cost instead of
+    duplicating a mutable pricing table.
     """
+    response_mapping = _as_mapping(response)
     response_metadata = _as_mapping(getattr(response, "response_metadata", None))
     candidates = (
         _as_mapping(getattr(response, "usage_metadata", None)),
+        _as_mapping(response_mapping.get("usage")),
         _as_mapping(response_metadata.get("usage")),
         _as_mapping(response_metadata.get("token_usage")),
     )

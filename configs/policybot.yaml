@@ -13,16 +13,3 @@ llm:
       max_tokens: 2048
       temperature: 0.0
       timeout: 60
-
-cache:
-  arp:
-    # read_write: lit le cache et enregistre les nouvelles analyses
-    # refresh: ignore le cache existant et le remplace
-    # read_only: lit le cache sans jamais écrire
-    # disabled: ne lit ni n'écrit dans le cache
-    mode: disabled
-
-# Diagnostics locaux en clair : à activer seulement pendant un débogage local.
-debug_runs:
-  enabled: false
-  output_dir: logs/runs

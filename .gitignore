@@ -240,4 +240,18 @@ configs/*
 !configs/recherche_defaults.yaml
 !configs/recherche_criteres/
 !configs/recherche_criteres/*.yaml
+# Genere par `policybot creer-formulaire`, versionne a dessein : sans lui,
+# les questionId d'un formulaire deja diffuse ne sont plus traduisibles en
+# champs DemandeIAG. Ne contient aucune reponse, aucun secret.
+!configs/formulaire-google.json
 tmp/*
+
+# Identifiants Google (Phase 0). Meme regime que .env : jamais versionnes.
+# credentials.json vient de la console Google Cloud, token.json est ecrit
+# par le flux OAuth et vaut un acces complet aux formulaires du compte.
+credentials.json
+token.json
+
+# Reponses telechargees depuis l'API Forms. Contiennent data_free_text et
+# usage_description EN CLAIR — tout ce que tracing.py masque par ailleurs.
+reponses*.json

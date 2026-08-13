@@ -5,15 +5,13 @@ from io import BytesIO
 import os
 from pathlib import Path
 import re
-from urllib.parse import urlsplit
-import zipfile
+import unicodedata
 import xml.etree.ElementTree as ET
+import zipfile
 
-from policybot.criteria import ARP_CRITERIA, USAGE_CRITERIA
-from policybot.models import CriterionCitation, CriterionFinding, InterviewState
+from policybot.models import CriterionFinding, InterviewState
 
 
-_DEFAULT_PDF_OUTPUT_DIR = Path("output") / "pdf"
 _DEFAULT_DOCX_OUTPUT_DIR = Path("output") / "docx"
 _DEFAULT_FICHE_TEMPLATE = (
     Path(__file__).resolve().parents[2]
@@ -36,25 +34,13 @@ def _safe_filename(value: str) -> str:
 
 
 def _filename_stem(state: InterviewState) -> str:
-    """Le numéro de demande précède l'horodatage.
-
-    Sans lui, deux demandes d'un même lot traitées dans la même seconde
-    écriraient dans le même fichier.
-    """
+    """Prefix the timestamp with the request number to avoid collisions."""
     numero = _safe_filename(state.request.numero) if state.request.numero else "policybot"
     return f"{numero}_{datetime.now():{_FILENAME_TIMESTAMP_FORMAT}}"
 
 
-def pdf_filename(state: InterviewState) -> str:
-    return f"{_filename_stem(state)}.pdf"
-
-
 def docx_filename(state: InterviewState) -> str:
     return f"{_filename_stem(state)}-fiche.docx"
-
-
-def pdf_output_dir() -> Path:
-    return Path(os.environ.get("POLICYBOT_PDF_OUTPUT_DIR") or _DEFAULT_PDF_OUTPUT_DIR)
 
 
 def docx_output_dir() -> Path:
@@ -75,33 +61,22 @@ def _first_usage(state: InterviewState):
 
 def _findings(state: InterviewState, partie: str | None = None) -> list[CriterionFinding]:
     tool = _first_tool(state)
-    findings = tool.arp.findings if tool and tool.arp else []
+    findings = tool.findings if tool else []
     return [item for item in findings if partie is None or item.partie == partie]
 
 
-def _ordered_rows(
-    findings: list[CriterionFinding],
-    criteria: list[tuple[str, str, str]],
-) -> list[dict]:
-    by_key = {(item.category, item.criterion): item for item in findings}
+def _ordered_rows(findings: list[CriterionFinding], criteria) -> list[dict]:
+    by_id = {item.id: item for item in findings}
     return [
         {
-            "category": category,
-            "criterion": criterion,
-            "description": description,
-            "finding": by_key.get((category, criterion)),
+            "id": definition.id,
+            "category": definition.category,
+            "criterion": definition.criterion,
+            "description": definition.question,
+            "finding": by_id.get(definition.id),
         }
-        for category, criterion, description in criteria
+        for definition in criteria
     ]
-
-
-def _group(rows: list[dict]) -> list[tuple[str, list[dict]]]:
-    groups: list[tuple[str, list[dict]]] = []
-    for row in rows:
-        if not groups or groups[-1][0] != row["category"]:
-            groups.append((row["category"], []))
-        groups[-1][1].append(row)
-    return groups
 
 
 def _format_french_date(value: object | None) -> str:
@@ -117,354 +92,14 @@ def _format_french_date(value: object | None) -> str:
 
 def _source_type_label(source_type: str) -> str:
     return {
-        "contractual": "Contractuelle",
-        "official_technical": "Technique officielle",
-        "secondary": "Secondaire",
+        "official": "Officielle",
+        "other": "Autre",
         "unknown": "Non précisée",
     }.get(source_type, source_type.replace("_", " ").capitalize())
 
 
-def _source_reference_label(url: str) -> str:
-    parsed = urlsplit(url)
-    parts = [part for part in parsed.path.split("/") if part]
-    if parsed.netloc and parts:
-        return f"{parsed.netloc} / {parts[-1]}"
-    return parsed.netloc or url
-
-
-def _unique_sources(state: InterviewState) -> list[CriterionCitation]:
-    seen: set[str] = set()
-    result: list[CriterionCitation] = []
-    for finding in _findings(state):
-        for citation in finding.citations:
-            if citation.url and citation.url not in seen:
-                seen.add(citation.url)
-                result.append(citation)
-    return result
-
-
-def _finding_observation(finding: CriterionFinding | None) -> str:
-    if finding is None:
-        return ""
-    if finding.outcome != "ok" or not finding.answer:
-        text = "Aucune source probante trouvée."
-    else:
-        text = finding.answer
-        if finding.justification:
-            text += f"\nJustification : {finding.justification}"
-    if finding.rejected_citations:
-        text += (
-            f"\n{finding.rejected_citations} citation(s) non ancrée(s) rejetée(s)."
-        )
-    return text
-
-
 def _text(value: object | None) -> str:
     return "" if value is None else str(value)
-
-
-def _para(value: object | None, style):
-    from reportlab.platypus import Paragraph
-    from xml.sax.saxutils import escape
-
-    content = escape(_text(value)).replace("\n", "<br/>")
-    return Paragraph(content or " ", style)
-
-
-def _make_reportlab_styles():
-    from reportlab.lib import colors
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-
-    styles = getSampleStyleSheet()
-    styles["Title"].fontSize = 22
-    styles["Title"].leading = 26
-    styles["Title"].textColor = colors.HexColor("#101827")
-    styles["Heading2"].fontSize = 15
-    styles["Heading2"].leading = 18
-    styles["Heading2"].spaceBefore = 14
-    styles["Heading2"].spaceAfter = 8
-    styles["Heading2"].textColor = colors.HexColor("#2b6169")
-    styles["Heading3"].fontSize = 11
-    styles["Heading3"].leading = 14
-    styles["Heading3"].spaceBefore = 10
-    styles["Heading3"].spaceAfter = 6
-    styles["BodyText"].fontSize = 9
-    styles["BodyText"].leading = 12
-    styles.add(ParagraphStyle(
-        name="Small", parent=styles["BodyText"], fontSize=7.2, leading=8.6,
-    ))
-    styles.add(ParagraphStyle(
-        name="Observation", parent=styles["Small"], fontSize=6.8, leading=8.1,
-    ))
-    styles.add(ParagraphStyle(
-        name="SourceLink", parent=styles["Small"], fontSize=6.8, leading=8.2,
-        textColor=colors.HexColor("#1d4ed8"),
-    ))
-    styles.add(ParagraphStyle(
-        name="Footer", parent=styles["BodyText"], fontSize=7.5, leading=9,
-        textColor=colors.HexColor("#667085"),
-    ))
-    return styles
-
-
-def _basic_table(rows: list[list[object]], col_widths=None, repeat_rows: int = 1):
-    from reportlab.lib import colors
-    from reportlab.platypus import Table, TableStyle
-
-    table = Table(
-        rows, colWidths=col_widths, hAlign="LEFT", repeatRows=repeat_rows,
-        splitInRow=1,
-    )
-    table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#d0d5dd")),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef6f7")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    return table
-
-
-def _finding_flowables(finding: CriterionFinding | None, styles):
-    from reportlab.platypus import Paragraph
-    from xml.sax.saxutils import escape
-
-    if finding is None:
-        return []
-    flowables = [_para(_finding_observation(finding), styles["Observation"])]
-    for citation in finding.citations:
-        target = escape(citation.deep_link or citation.url, {'"': "&quot;"})
-        quote = escape(citation.text)
-        label = escape(_source_type_label(citation.source_type))
-        flowables.append(Paragraph(
-            f'{label} — <link href="{target}"><u>« {quote} »</u></link>',
-            styles["Observation"],
-        ))
-    return flowables
-
-
-def _risk_table(groups: list[tuple[str, list[dict]]], styles, usage: bool = False):
-    from reportlab.lib import colors
-    from reportlab.platypus import Table, TableStyle
-
-    headers = [
-        "Critère",
-        "Risque évalué" if usage else "Description / question",
-        "Risque inhérent",
-        "Mesures de mitigation",
-        "Risque résiduel",
-        "Responsable",
-        "Observations" if usage else "Observations / constats",
-    ]
-    rows: list[list[object]] = [[_para(header, styles["Small"]) for header in headers]]
-    category_rows: list[int] = []
-    for category, group_rows in groups:
-        category_rows.append(len(rows))
-        rows.append([_para(category, styles["Small"])] + [""] * 6)
-        for row in group_rows:
-            finding = row["finding"]
-            rows.append([
-                _para(row["criterion"], styles["Small"]),
-                _para(row["description"], styles["Small"]),
-                _para(finding.inherent_risk if finding else "", styles["Small"]),
-                _para("", styles["Small"]),
-                _para("", styles["Small"]),
-                _para("", styles["Small"]),
-                _finding_flowables(finding, styles),
-            ])
-    table = Table(
-        rows, colWidths=[50, 145, 48, 110, 48, 58, 103], hAlign="LEFT",
-        repeatRows=1, splitInRow=1,
-    )
-    commands = [
-        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d0d5dd")),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef6f7")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]
-    for row_index in category_rows:
-        commands.extend([
-            ("SPAN", (0, row_index), (-1, row_index)),
-            ("BACKGROUND", (0, row_index), (-1, row_index), colors.HexColor("#f8fafc")),
-            ("TEXTCOLOR", (0, row_index), (-1, row_index), colors.HexColor("#2b6169")),
-        ])
-    table.setStyle(TableStyle(commands))
-    return table
-
-
-def _source_register(sources: list[CriterionCitation], styles):
-    from reportlab.platypus import Paragraph
-    from xml.sax.saxutils import escape
-
-    rows = [[
-        _para("Type", styles["Small"]),
-        _para("Source", styles["Small"]),
-        _para("Collectée le", styles["Small"]),
-        _para("Date d'effet", styles["Small"]),
-    ]]
-    for source in sources:
-        url = escape(source.url, {'"': "&quot;"})
-        label = escape(_source_reference_label(source.url))
-        rows.append([
-            _para(_source_type_label(source.source_type), styles["Small"]),
-            Paragraph(f'<link href="{url}"><u>{label}</u></link>', styles["SourceLink"]),
-            _para(_format_french_date(source.collected_at), styles["Small"]),
-            _para("Non précisée", styles["Small"]),
-        ])
-    return _basic_table(rows, [108, 398, 105, 89])
-
-
-def _footer(canvas, doc):
-    canvas.saveState()
-    canvas.setFont("Helvetica", 7.5)
-    canvas.setFillColorRGB(0.4, 0.44, 0.52)
-    canvas.drawCentredString(doc.pagesize[0] / 2, 10, f"PolicyBot - page {doc.page}")
-    canvas.restoreState()
-
-
-def render_pdf(state: InterviewState) -> bytes:
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import landscape, letter
-    from reportlab.lib.units import mm
-    from reportlab.platypus import KeepTogether, SimpleDocTemplate, Spacer, TableStyle
-
-    styles = _make_reportlab_styles()
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(letter),
-        leftMargin=13 * mm,
-        rightMargin=13 * mm,
-        topMargin=13 * mm,
-        bottomMargin=15 * mm,
-        title=f"Rapport PolicyBot {state.request.numero}",
-    )
-    story = [
-        _para("Rapport de recommandation - PolicyBot", styles["Title"]),
-        Spacer(1, 8),
-    ]
-    disclaimer = _basic_table(
-        [[_para(
-            "PolicyBot fournit des constats et des niveaux de risque proposés; il "
-            "n'autorise pas. La partie C doit être complétée et validée par "
-            "l'autorité désignée.",
-            styles["BodyText"],
-        )]],
-        [700],
-        repeat_rows=0,
-    )
-    disclaimer.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fff5f5")),
-        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#f2b8b5")),
-    ]))
-    story.extend([disclaimer, Spacer(1, 10)])
-
-    story.append(_para("Identification", styles["Heading2"]))
-    tool_names = ", ".join(tool.name for tool in state.tools)
-    story.append(_basic_table([
-        [_para("Numéro demande", styles["BodyText"]), _para(state.request.numero, styles["BodyText"])],
-        [_para("Outil évalué", styles["BodyText"]), _para(tool_names, styles["BodyText"])],
-        [_para("Demandeur", styles["BodyText"]), _para(state.request.demandeur, styles["BodyText"])],
-        [_para("Unité", styles["BodyText"]), _para(state.request.unite, styles["BodyText"])],
-        [_para("Date", styles["BodyText"]), _para(_format_french_date(state.request.date), styles["BodyText"])],
-    ], [150, 550]))
-
-    story.append(_para("Partie A - Analyse des risques du produit (ARP)", styles["Heading2"]))
-    story.append(_para(
-        "L'ARP évalue l'outil en tant que produit, indépendamment des usages spécifiques.",
-        styles["BodyText"],
-    ))
-    for tool in state.tools or [None]:
-        story.append(_para(f"Outil : {tool.name if tool else ''}", styles["Heading3"]))
-        offering = (
-            tool.offering or (tool.arp.offering if tool and tool.arp else None)
-            if tool else None
-        )
-        if offering:
-            story.append(_para(
-                f"Identité de l'offre contractuelle : {offering.display_label()}",
-                styles["BodyText"],
-            ))
-        story.append(_risk_table(
-            _group(_ordered_rows(
-                [item for item in (tool.arp.findings if tool and tool.arp else []) if item.partie == "A"],
-                ARP_CRITERIA,
-            )),
-            styles,
-        ))
-        story.append(Spacer(1, 8))
-
-    story.append(_para("Partie B - Évaluation des risques par usage", styles["Heading2"]))
-    usages = state.usages or [None]
-    part_b_groups = _group(_ordered_rows(_findings(state, "B"), USAGE_CRITERIA))
-    for index, usage in enumerate(usages, start=1):
-        description = usage.description if usage else ""
-        story.append(_para(f"Usage {index} : {description}", styles["Heading3"]))
-        if usage:
-            story.append(_para(
-                f"Classification des données : {usage.data_classification or ''} | "
-                f"Renseignements personnels : {'Oui' if usage.rens_personnels else 'Non'}",
-                styles["BodyText"],
-            ))
-        story.append(_risk_table(part_b_groups, styles, usage=True))
-        story.append(Spacer(1, 8))
-
-    story.append(KeepTogether([
-        _para("Partie C - Synthèse et décision", styles["Heading2"]),
-        _para(
-            "Section réservée à l'autorité désignée. Aucun résultat n'est calculé "
-            "automatiquement par PolicyBot.",
-            styles["BodyText"],
-        ),
-        _basic_table([
-            [_para("Niveau de risque global", styles["BodyText"]), _para("", styles["BodyText"])],
-            [_para("EFVP-R requise", styles["BodyText"]), _para("", styles["BodyText"])],
-            [_para("Recommandation préliminaire", styles["BodyText"]), _para("", styles["BodyText"])],
-            [_para("Conditions / restrictions proposées", styles["BodyText"]), _para("", styles["BodyText"])],
-        ], [190, 510], repeat_rows=0),
-    ]))
-
-    sources = _unique_sources(state)
-    if sources:
-        story.append(_para("Sources contractuelles consultées", styles["Heading2"]))
-        story.append(_para(
-            "Liens consultés pour l'analyse. Chaque adresse est affichée une seule fois.",
-            styles["BodyText"],
-        ))
-        story.append(_source_register(sources, styles))
-
-    tool = _first_tool(state)
-    total_cost = tool.arp.total_cost_dollars if tool and tool.arp else 0.0
-    story.extend([
-        Spacer(1, 10),
-        _para(
-            f"Coût total estimé des recherches Exa : {total_cost:.4f} $ US.",
-            styles["Footer"],
-        ),
-        _para(
-            "Rapport généré par PolicyBot — validation et autorisation par "
-            "l'autorité désignée requises.",
-            styles["Footer"],
-        ),
-    ])
-    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
-    return buffer.getvalue()
-
-
-def write_pdf(
-    state: InterviewState, output_dir: str | os.PathLike | None = None
-) -> Path:
-    directory = Path(output_dir) if output_dir is not None else pdf_output_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / pdf_filename(state)
-    path.write_bytes(render_pdf(state))
-    return path
 
 
 def _w(tag: str) -> str:
@@ -473,6 +108,39 @@ def _w(tag: str) -> str:
 
 def _table_cell(table: ET.Element, row_index: int, cell_index: int) -> ET.Element:
     return table.findall(_w("tr"))[row_index].findall(_w("tc"))[cell_index]
+
+
+def _cell_text(cell: ET.Element) -> str:
+    return " ".join(
+        "".join(node.text or "" for node in paragraph.iter(_w("t"))).strip()
+        for paragraph in cell.findall(_w("p"))
+    ).strip()
+
+
+def _normalized_heading(value: str) -> str:
+    """Neutralise casse, accents, espaces insécables, tirets et apostrophes."""
+    folded = unicodedata.normalize("NFKD", value.replace("\xa0", " "))
+    folded = "".join(char for char in folded if not unicodedata.combining(char))
+    for dash in ("—", "–", "‑"):
+        folded = folded.replace(dash, "-")
+    for quote in ("’", "‘", "`"):
+        folded = folded.replace(quote, "'")
+    return " ".join(folded.casefold().split())
+
+
+def _table_by_heading(tables: list[ET.Element], heading: str) -> ET.Element:
+    wanted = _normalized_heading(heading)
+    for table in tables:
+        rows = table.findall(_w("tr"))
+        if not rows:
+            continue
+        cells = rows[0].findall(_w("tc"))
+        if cells and _normalized_heading(_cell_text(cells[0])).startswith(wanted):
+            return table
+    raise RuntimeError(
+        "Le gabarit Word de fiche de qualification ne contient aucun tableau "
+        f"commençant par « {heading} »."
+    )
 
 
 def _set_cell_text(cell: ET.Element, value: object | None) -> None:
@@ -581,11 +249,12 @@ def _fill_identification_table(table: ET.Element, state: InterviewState) -> None
 def _fill_tools_table(table: ET.Element, state: InterviewState) -> None:
     for index, tool in enumerate(state.tools[:2]):
         offset = index * 4
-        offering = tool.offering or (tool.arp.offering if tool.arp else None)
+        offering = tool.offering
         _set_table_value(table, offset, tool.name)
         _set_table_value(table, offset + 1, _label(tool.iag_type, _IAG_TYPE_LABELS))
         _set_table_value(
-            table, offset + 2,
+            table,
+            offset + 2,
             offering.display_label() if offering else tool.version_plan_tarifaire,
         )
         _set_table_value(table, offset + 3, tool.vendor or "")
@@ -603,7 +272,10 @@ def _fill_usages_table(table: ET.Element, state: InterviewState) -> None:
 
 def _fill_profile_table(table: ET.Element, state: InterviewState) -> None:
     q = state.qualification
-    _set_table_value(table, 0, q.nb_utilisateurs_vises if q.nb_utilisateurs_vises is not None else "")
+    _set_table_value(
+        table, 0,
+        q.nb_utilisateurs_vises if q.nb_utilisateurs_vises is not None else "",
+    )
     _set_table_value(table, 1, q.fonctions_roles)
     _set_table_value(table, 2, _label(q.niveau_maitrise_ti, _NIVEAU_TI_LABELS))
     _set_table_value(table, 3, _label(q.formation_iag_recue, _FORMATION_LABELS))
@@ -624,7 +296,7 @@ def _fill_data_table(table: ET.Element, state: InterviewState) -> None:
     _set_table_value(table, 4, training.answer if training else "")
     _set_table_value(
         table, 5,
-        "Voir le rapport PolicyBot et les sources contractuelles consultées."
+        "Voir la grille d'évaluation et les sources contractuelles consultées."
         if _findings(state) else "",
     )
 
@@ -647,49 +319,27 @@ def _fill_finance_table(table: ET.Element, state: InterviewState) -> None:
     _set_table_value(table, 4, q.responsable_budgetaire)
 
 
-def _fill_observations_table(table: ET.Element, state: InterviewState) -> None:
-    found = [
-        f"{item.criterion} : {item.answer}"
-        for item in _findings(state)
-        if item.outcome == "ok" and item.answer
-    ]
-    missing = [
-        row["criterion"]
-        for row in _ordered_rows(_findings(state, "B"), USAGE_CRITERIA)
-        if row["finding"] is None
-    ]
-    _set_table_value(table, 0, _join_lines(found))
-    _set_table_value(table, 1, "")
-    _set_table_value(
-        table, 2,
-        "Critères non recherchés à compléter par l'autorité désignée : "
-        + ", ".join(missing)
-        if missing else "",
-    )
-    _set_table_value(table, 3, "")
-    _set_table_value(
-        table, 4,
-        "Compléter la partie C du rapport, puis faire valider la qualification "
-        "et les mesures par la Direction des systèmes d'information.",
-    )
+# La section 8 (« Points de conformité identifiés ») reste volontairement
+# vierge : elle est complétée par le responsable SI, pas par PolicyBot.
+_FICHE_TABLES = (
+    ("Numéro de demande", _fill_identification_table),
+    ("Outil 1", _fill_tools_table),
+    ("Description de l'usage", _fill_usages_table),
+    ("Nombre d'utilisateurs visés", _fill_profile_table),
+    ("L'outil accède-t-il à des données institutionnelles", _fill_data_table),
+    ("Problème ou besoin d'affaires adressé", _fill_value_table),
+    ("Coût estimé", _fill_finance_table),
+)
 
 
 def _fill_fiche_document(document_xml: bytes, state: InterviewState) -> bytes:
     root = ET.fromstring(document_xml)
     tables = root.findall(f".//{_w('tbl')}")
-    if len(tables) < 8:
-        raise RuntimeError(
-            "Le gabarit Word de fiche de qualification ne contient pas les "
-            "8 tableaux attendus."
-        )
-    _fill_identification_table(tables[0], state)
-    _fill_tools_table(tables[1], state)
-    _fill_usages_table(tables[2], state)
-    _fill_profile_table(tables[3], state)
-    _fill_data_table(tables[4], state)
-    _fill_value_table(tables[5], state)
-    _fill_finance_table(tables[6], state)
-    _fill_observations_table(tables[7], state)
+    for heading, fill in _FICHE_TABLES:
+        fill(_table_by_heading(tables, heading), state)
+    section_8 = _table_by_heading(tables, "Points de conformité identifiés")
+    for row_index in range(len(section_8.findall(_w("tr")))):
+        _set_table_value(section_8, row_index, "")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 

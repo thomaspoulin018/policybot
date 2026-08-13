@@ -63,7 +63,6 @@ def test_l_identite_d_offre_est_resolue_a_partir_des_reponses():
         version_plan_tarifaire="Enterprise",
         contract_version="MCA-2026",
         jurisdiction="Québec, Canada",
-        contract_effective_date=date(2026, 1, 1),
     ).vers_entrees_orchestrateur()
 
     offre = entrees.offering
@@ -72,7 +71,8 @@ def test_l_identite_d_offre_est_resolue_a_partir_des_reponses():
     # Un plan Enterprise implique une offre gérée et un contrat institutionnel.
     assert offre.deployment_mode == "managed_saas"
     assert offre.contract_type == "institutional_agreement"
-    assert offre.effective_date == date(2026, 1, 1)
+    assert offre.contract_version == "MCA-2026"
+    assert offre.jurisdiction == "Québec, Canada"
 
 
 def test_un_outil_hors_registre_sans_type_est_refuse():

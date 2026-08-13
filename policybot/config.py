@@ -9,14 +9,24 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 LLMTask: TypeAlias = Literal["data_classification"]
-ArpCacheMode: TypeAlias = Literal[
-    "read_write",
-    "refresh",
-    "read_only",
-    "disabled",
-]
 
 LLM_TASKS: tuple[LLMTask, ...] = ("data_classification",)
+
+
+class CleApiManquante(RuntimeError):
+    """Une clé API indispensable est absente de l'environnement.
+
+    PolicyBot s'arrête au lieu de produire un dossier vide : sans OpenRouter la
+    classification des données est impossible, sans Exa les constats
+    resteraient vides tout en produisant un rapport d'apparence complète.
+    """
+
+    def __init__(self, nom: str):
+        super().__init__(
+            f"{nom} est absente de l'environnement. Renseigne-la dans .env "
+            "(voir .env.example). Aucune analyse n'est produite sans elle."
+        )
+        self.nom = nom
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "configs" / "policybot.yaml"
@@ -45,34 +55,11 @@ class LLMConfig(BaseModel):
     tasks: LLMTasksConfig
 
 
-class ArpCacheConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    mode: ArpCacheMode = "read_write"
-
-
-class CacheConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    arp: ArpCacheConfig = Field(default_factory=ArpCacheConfig)
-
-
-class DebugRunsConfig(BaseModel):
-    """Local-only clear-text diagnostics; disabled unless YAML opts in."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    output_dir: str = "logs/runs"
-
-
 class PolicyBotConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: Literal[1] = 1
     llm: LLMConfig
-    cache: CacheConfig = Field(default_factory=CacheConfig)
-    debug_runs: DebugRunsConfig = Field(default_factory=DebugRunsConfig)
 
 
 _GLOBAL_ENV_FIELDS = {
@@ -96,10 +83,6 @@ def _apply_environment_overrides(raw: dict, env: Mapping[str, str]) -> dict:
                 value = env.get(global_name)
             if value is not None and value != "":
                 task_config[field] = value
-
-    cache_mode = env.get("POLICYBOT_ARP_CACHE_MODE")
-    if cache_mode:
-        raw.setdefault("cache", {}).setdefault("arp", {})["mode"] = cache_mode
     return raw
 
 

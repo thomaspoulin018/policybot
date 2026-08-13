@@ -1,0 +1,6 @@
+version: 2
+id: B09
+partie: B
+category: Éthique et fiabilité des résultats
+criterion: Propriété intellectuelle du contenu généré
+question: Les contenus générés pourraient reproduire du matériel protégé ou créer des ambiguïtés sur la propriété des livrables.

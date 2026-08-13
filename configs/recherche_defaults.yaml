@@ -6,11 +6,6 @@ exa:
   contents:
     text:
       max_characters: 24000
-    highlights:
-      num_sentences: 3
-budget:
-  max_cost_dollars_per_interview: 2.50
-  on_exceeded: degrade_to_neural
 schemas:
   global:
     type: object
@@ -55,13 +50,6 @@ prompts:
     court, continu et verbatim, copié exactement du texte de la page. Indique les index de début
     et de fin de cet extrait. Si la page ne répond pas, retourne une citation vide.
     Question : {question}
+# Les gabarits d'observation et de ligne de citation ont été retirés : le rendu
+# compose ses propres textes dans report/renderer.py, rien ne les lisait.
 max_citations_per_criterion: 3
-observation_template: |
-  {answer}
-
-  Risque inhérent proposé : {inherent_risk} — {justification}
-
-  Sources vérifiées :
-  {citations}
-citation_line_template: '- {source_type} — « {text} » ({deep_link})'
-citation_link_template: '{url}#:~:text={prefix},{suffix}'

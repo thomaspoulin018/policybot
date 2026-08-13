@@ -4,10 +4,8 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.6",
-    "langchain-openai>=0.2",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
-    "openpyxl>=3.1",
     "exa-py>=1.0",
     "python-docx>=1.1",
 ]
@@ -16,8 +14,11 @@ dependencies = [
 policybot = "policybot.cli:main"
 
 [project.optional-dependencies]
-pdf = ["reportlab>=4.0"]
 dev = ["pytest>=8.0"]
+# Seul le flux OAuth est délégué : l'écrire à la main (échange de code,
+# rafraîchissement, serveur de redirection local) est du travail sans
+# valeur. Les appels à l'API Forms restent en urllib, comme llm.py.
+google = ["google-auth>=2.0", "google-auth-oauthlib>=1.2"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -26,20 +27,19 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["policybot*"]
 
-[tool.setuptools.package-data]
-# Le registre d'outils et le gabarit DOCX sont lus par le code du package :
-# sans eux, une installation depuis un wheel casse au premier appel.
-"policybot.preapproved" = ["known_tools.yaml"]
-
 [tool.setuptools.data-files]
 "configs" = [
     "configs/policybot.yaml",
     "configs/prompts.yaml",
     "configs/formulaire.yaml",
+    "configs/formulaire-google.json",
     "configs/recherche_defaults.yaml",
 ]
 "configs/recherche_criteres" = ["configs/recherche_criteres/*.yaml"]
-"documents_reference" = ["documents_reference/SI_-_Fiche_de_qualification.docx"]
+"documents_reference" = [
+    "documents_reference/SI_-_Fiche_de_qualification.docx",
+    "documents_reference/SI_-_Grille_valuation_des_risques.docx",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

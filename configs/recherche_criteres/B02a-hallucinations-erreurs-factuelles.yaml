@@ -1,0 +1,6 @@
+version: 2
+id: B07
+partie: B
+category: Éthique et fiabilité des résultats
+criterion: Hallucinations et erreurs factuelles
+question: L'outil génère des informations inexactes présentées comme vraies. Risque de décisions basées sur des données erronées.
